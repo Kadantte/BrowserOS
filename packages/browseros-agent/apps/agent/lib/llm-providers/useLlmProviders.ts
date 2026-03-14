@@ -146,8 +146,12 @@ export function useLlmProviders(): UseLlmProvidersReturn {
     await providersStorage.setValue(updatedProviders)
   }
 
+  // Fall back to first provider if defaultProviderId is stale/invalid
   const selectedProvider = useMemo(
-    () => providers.find((p) => p.id === defaultProviderId) ?? null,
+    () =>
+      providers.find((p) => p.id === defaultProviderId) ??
+      providers[0] ??
+      null,
     [providers, defaultProviderId],
   )
 
