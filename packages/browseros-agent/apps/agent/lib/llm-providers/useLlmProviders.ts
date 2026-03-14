@@ -60,6 +60,15 @@ export function useLlmProviders(): UseLlmProvidersReturn {
           await defaultProviderIdStorage.setValue(loadedDefaultId)
         }
 
+        // Repair stale default ID that doesn't match any provider
+        const defaultExists = loadedProviders.some(
+          (p) => p.id === loadedDefaultId,
+        )
+        if (!defaultExists && loadedProviders.length > 0) {
+          loadedDefaultId = loadedProviders[0].id
+          await defaultProviderIdStorage.setValue(loadedDefaultId)
+        }
+
         setProviders(loadedProviders)
         setDefaultProviderId(loadedDefaultId)
       } catch {
