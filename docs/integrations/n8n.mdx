@@ -24,7 +24,7 @@ Before you start:
 
 In n8n, go to **Settings → Community Nodes** and install `n8n-nodes-mcp`:
 
-<img src="/images/n8n-node.png" alt="Installing n8n-nodes-mcp community node" />
+<img src="/integrations/n8n-node.png" alt="Installing n8n-nodes-mcp community node" />
 
 ### 2. Create a workflow
 
@@ -35,13 +35,13 @@ Build a workflow with these nodes:
 3. Add a **Chat Model** under the AI Agent (e.g., OpenAI, Claude)
 4. Add an **MCP Client Tool** under the AI Agent
 
-<img src="/images/n8n-step3-workflow.png" alt="n8n workflow with AI Agent and MCP Client" />
+<img src="/integrations/n8n-step3-workflow.png" alt="n8n workflow with AI Agent and MCP Client" />
 
 ### 3. Configure the AI Agent
 
 In the AI Agent node, set **Source for Prompt** to **Connected Chat Trigger Node**.
 
-<img src="/images/n8n-step4-agent-prompt.png" alt="AI Agent prompt configuration" />
+<img src="/integrations/n8n-step4-agent-prompt.png" alt="AI Agent prompt configuration" />
 
 ### 4. Connect to BrowserOS
 
@@ -50,7 +50,7 @@ Click on the MCP Client node and configure:
 - **Endpoint**: Your BrowserOS MCP URL (find it in Settings → BrowserOS as MCP)
 - **Server Transport**: `HTTP Streamable`
 
-<img src="/images/n8n-step5-mcp-client.png" alt="MCP Client configuration with BrowserOS URL" />
+<img src="/integrations/n8n-step5-mcp-client.png" alt="MCP Client configuration with BrowserOS URL" />
 
 ### 5. Test it
 
@@ -60,7 +60,7 @@ Save the workflow, click **Open chat**, and try:
 open google.com in BrowserOS
 ```
 
-<img src="/images/n8n-step6-test.png" alt="Testing the workflow" />
+<img src="/integrations/n8n-step6-test.png" alt="Testing the workflow" />
 
 ## Troubleshooting
 
