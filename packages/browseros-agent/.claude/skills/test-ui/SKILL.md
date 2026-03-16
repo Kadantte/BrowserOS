@@ -150,11 +150,21 @@ bun scripts/dev/inspect-ui.ts snapshot sidepanel
 #         [60] link "Chat history"
 #         [99] button "Agent Mode ON"
 
-# Fill the chat input
+# Fill the chat input and press Enter to send
 bun scripts/dev/inspect-ui.ts fill sidepanel 37 "Hello world"
+bun scripts/dev/inspect-ui.ts press_key sidepanel Enter
 
-# Click a button
+# Or click the Send button
 bun scripts/dev/inspect-ui.ts click sidepanel 124
+
+# Wait for a response to appear
+bun scripts/dev/inspect-ui.ts wait_for sidepanel text "response text"
+
+# Scroll down to see more content
+bun scripts/dev/inspect-ui.ts scroll sidepanel down 3
+
+# Hover over an element to test hover states
+bun scripts/dev/inspect-ui.ts hover sidepanel 99
 
 # Screenshot to verify
 bun scripts/dev/inspect-ui.ts screenshot sidepanel /tmp/result.png
@@ -183,6 +193,11 @@ If something looks wrong:
 | `snapshot <target>` | Print accessibility tree with `[elementId] role "name"` |
 | `click <target> <elementId>` | Click element by ID (3-tier coordinate fallback + JS click) |
 | `fill <target> <elementId> <text>` | Focus element, clear, type text |
+| `press_key <target> <key>` | Press key or combo: `Enter`, `Escape`, `Tab`, `Control+A`, `Meta+Shift+P` |
+| `scroll <target> <dir> [amount]` | Scroll `up`/`down`/`left`/`right`, amount in ticks (default 3) |
+| `hover <target> <elementId>` | Hover over element (for tooltips, hover states) |
+| `select_option <target> <id> <val>` | Select dropdown option by value or visible text |
+| `wait_for <target> text\|selector <v>` | Wait up to 10s for text or CSS selector to appear |
 | `eval <target> <expression>` | Run JavaScript in the target's context |
 | `open-sidepanel` | Enable and open the right side panel |
 
