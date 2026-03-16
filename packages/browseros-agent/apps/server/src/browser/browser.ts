@@ -1261,8 +1261,4 @@ export class Browser {
     await this.resolveSession(page)
     return this.consoleCollector.getLogs(page, opts)
   }
-
-  async clearConsoleLogs(page: number): Promise<void> {
-    this.consoleCollector.clear(page)
-  }
 }

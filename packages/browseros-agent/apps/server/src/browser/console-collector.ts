@@ -104,8 +104,14 @@ export class ConsoleCollector {
   }
 
   attach(pageId: number, sessionId: string): void {
-    if (this.buffers.has(pageId)) return
-    this.buffers.set(pageId, [])
+    if (!this.buffers.has(pageId)) {
+      this.buffers.set(pageId, [])
+    }
+    // Clean up old session mapping if session changed (re-attach after detach)
+    const oldSession = this.pageToSession.get(pageId)
+    if (oldSession && oldSession !== sessionId) {
+      this.sessionToPage.delete(oldSession)
+    }
     this.sessionToPage.set(sessionId, pageId)
     this.pageToSession.set(pageId, sessionId)
   }
@@ -145,12 +151,6 @@ export class ConsoleCollector {
     }
 
     return { entries, totalCount }
-  }
-
-  clear(pageId: number): void {
-    if (this.buffers.has(pageId)) {
-      this.buffers.set(pageId, [])
-    }
   }
 
   private addEntry(pageId: number, entry: ConsoleEntry): void {
