@@ -386,7 +386,8 @@ async function cmdClick(
   const target = resolveTarget(targets, targetQuery)
   const sessionId = await attachSession(cdp, target.targetId)
   try {
-    await enableDomains(cdp, sessionId, ['DOM', 'Runtime', 'Input'])
+    await enableDomains(cdp, sessionId, ['DOM', 'Runtime'])
+    await cdp.send('DOM.getDocument', { depth: 0 }, sessionId)
 
     // Scroll into view first
     try {
@@ -446,7 +447,8 @@ async function cmdFill(
   const target = resolveTarget(targets, targetQuery)
   const sessionId = await attachSession(cdp, target.targetId)
   try {
-    await enableDomains(cdp, sessionId, ['DOM', 'Runtime', 'Input'])
+    await enableDomains(cdp, sessionId, ['DOM', 'Runtime'])
+    await cdp.send('DOM.getDocument', { depth: 0 }, sessionId)
 
     // Scroll into view
     try {
@@ -556,10 +558,12 @@ async function cmdOpenSidepanel(cdp: CDPClient): Promise<void> {
       'Runtime.evaluate',
       {
         expression: `(async () => {
-          const [win] = await chrome.windows.getAll({ windowTypes: ['normal'] });
-          if (!win) throw new Error('No browser window found');
-          await chrome.sidePanel.open({ windowId: win.id });
-          return { windowId: win.id };
+          const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+          const tabId = tabs[0]?.id;
+          if (!tabId) throw new Error('No active tab found');
+          await chrome.sidePanel.setOptions({ enabled: true, tabId, path: 'sidepanel.html' });
+          const result = await chrome.sidePanel.browserosToggle({ tabId });
+          return { tabId, ...result };
         })()`,
         awaitPromise: true,
         returnByValue: true,
