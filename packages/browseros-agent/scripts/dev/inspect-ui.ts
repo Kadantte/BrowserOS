@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 
+// Matches DEV_PORTS.cdp from @browseros/shared/constants/ports
 const DEFAULT_CDP_PORT = 9010
 const REQUEST_TIMEOUT_MS = 30_000
 const EXTENSION_ID = 'bflpfmnmnokmjhmgnolecpppdbdophmk'
@@ -123,7 +124,8 @@ function resolveTarget(targets: TargetInfo[], query: string): TargetInfo {
   if (!Number.isNaN(idx) && idx >= 0 && idx < targets.length) {
     return targets[idx]
   }
-  const match = targets.find((t) => t.url.includes(query) || t.title.includes(query))
+  const q = query.toLowerCase()
+  const match = targets.find((t) => t.url.toLowerCase().includes(q) || t.title.toLowerCase().includes(q))
   if (!match) throw new Error(`No target matching "${query}"`)
   return match
 }
@@ -519,8 +521,7 @@ async function cmdEval(
       exception?: { description?: string }
     } | undefined
     if (exnDetails) {
-      console.error('Exception:', exnDetails.exception?.description ?? 'unknown error')
-      process.exit(1)
+      throw new Error(`JS exception: ${exnDetails.exception?.description ?? 'unknown error'}`)
     }
     if (evalResult?.type === 'undefined') {
       console.log('undefined')
@@ -554,7 +555,12 @@ async function cmdOpenSidepanel(cdp: CDPClient): Promise<void> {
     const result = await cdp.send(
       'Runtime.evaluate',
       {
-        expression: 'chrome.sidePanel.open({})',
+        expression: `(async () => {
+          const [win] = await chrome.windows.getAll({ windowTypes: ['normal'] });
+          if (!win) throw new Error('No browser window found');
+          await chrome.sidePanel.open({ windowId: win.id });
+          return { windowId: win.id };
+        })()`,
         awaitPromise: true,
         returnByValue: true,
       },
