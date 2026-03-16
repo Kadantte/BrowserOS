@@ -1,0 +1,210 @@
+---
+name: test-ui
+description: Test the BrowserOS agent extension UI by starting the dev environment and visually verifying changes via CDP. Covers the new tab page (left sidebar — Home, Scheduled Tasks, Settings, etc.) and the right side panel (chat interface). Use after making UI changes to apps/agent/.
+argument-hint: [what to test, e.g. "verify the new settings page renders correctly"]
+---
+
+# Test Agent UI
+
+Visually test the BrowserOS agent extension UI — both the new tab page (left sidebar) and the right side panel (chat) — by starting the dev environment and inspecting via CDP.
+
+## When to use
+
+After making code changes to `apps/agent/` (the Chrome extension), use this skill to:
+- Verify new UI components render correctly
+- Check navigation between views works
+- Confirm layout/styling changes look right
+- Test interactive elements (buttons, inputs, forms)
+
+## Prerequisites
+
+- **Go** must be installed (`brew install go`) — the dev tool is written in Go
+- **BrowserOS.app** must be installed at `/Applications/BrowserOS.app/`
+- The `scripts/dev/inspect-ui.ts` utility must exist (CDP inspector script)
+
+## Step 1: Start the dev environment
+
+```bash
+bun run dev:watch -- --new
+```
+
+This single command handles everything:
+- Builds the Go dev CLI tool
+- Picks random available ports (avoids conflicts)
+- Creates a fresh browser profile
+- Builds controller-ext
+- Runs GraphQL codegen if `apps/agent/generated/graphql/` doesn't exist
+- Starts the agent extension with WXT HMR (hot module replacement)
+- Waits for CDP to be ready
+- Starts the MCP server
+
+Run it in the background and **read the output to find the CDP port**:
+
+```
+[info] Ports: CDP=9552 Server=9065 Extension=9929
+```
+
+The CDP port is randomized. You MUST extract it from the output and set it for all subsequent commands:
+
+```bash
+export BROWSEROS_CDP_PORT=<port from output>
+```
+
+Wait for these messages before proceeding:
+1. `[server] CDP ready`
+2. `[server] HTTP server listening`
+
+## Step 2: Discover targets
+
+```bash
+bun scripts/dev/inspect-ui.ts targets
+```
+
+You will see targets like:
+- `[service_worker]` — extension background scripts (not directly testable for UI)
+- `[page] chrome-extension://bflpfmnmnokmjhmgnolecpppdbdophmk/app.html#/...` — **New tab page (left sidebar)**
+- `[page] sidepanel.html` — **Right side panel (chat)**
+
+The two main testable surfaces:
+- **`app.html`** — the new tab page with left sidebar (Home, Connect Apps, Scheduled Tasks, Skills, Memory, Soul, Settings)
+- **`sidepanel.html`** — the right side panel chat interface
+
+## Step 3: Navigate to the main UI
+
+A fresh profile opens the **onboarding page** (`app.html#/onboarding`). Navigate to the home page first:
+
+```bash
+bun scripts/dev/inspect-ui.ts eval app.html "window.location.hash = '#/home'"
+```
+
+Now screenshot to verify:
+```bash
+bun scripts/dev/inspect-ui.ts screenshot app.html /tmp/home.png
+```
+
+Then read `/tmp/home.png` to view it.
+
+## Step 4: Test the new tab page (left sidebar)
+
+### Get element IDs
+
+```bash
+bun scripts/dev/inspect-ui.ts snapshot app.html
+```
+
+Output shows interactive elements with IDs:
+```
+[52] link "Home"
+[57] link "Connect Apps"
+[65] link "Scheduled Tasks"
+[74] link "Skills"
+[103] link "Settings"
+```
+
+### Navigate via click or hash routing
+
+**Click-based** (use element IDs from snapshot):
+```bash
+bun scripts/dev/inspect-ui.ts click app.html 65    # Click "Scheduled Tasks"
+```
+
+**Hash routing** (faster, no snapshot needed):
+```bash
+bun scripts/dev/inspect-ui.ts eval app.html "window.location.hash = '#/settings'"
+bun scripts/dev/inspect-ui.ts eval app.html "window.location.hash = '#/scheduled-tasks'"
+bun scripts/dev/inspect-ui.ts eval app.html "window.location.hash = '#/home'"
+```
+
+### Screenshot to verify
+
+```bash
+bun scripts/dev/inspect-ui.ts screenshot app.html /tmp/settings.png
+```
+
+### CRITICAL: Re-snapshot after every navigation
+
+React re-renders change element IDs. **Always run snapshot again** before clicking/filling after navigating to a new view. Using stale IDs will fail.
+
+## Step 5: Open and test the right side panel
+
+The side panel starts **disabled** in a fresh profile. Open it using BrowserOS-specific APIs:
+
+```bash
+bun scripts/dev/inspect-ui.ts open-sidepanel
+```
+
+Wait 2 seconds for it to appear as a target, then:
+
+```bash
+bun scripts/dev/inspect-ui.ts screenshot sidepanel /tmp/panel.png
+bun scripts/dev/inspect-ui.ts snapshot sidepanel
+```
+
+### Interact with the side panel
+
+```bash
+# Get element IDs
+bun scripts/dev/inspect-ui.ts snapshot sidepanel
+# Output: [37] textbox "What should I do?"
+#         [124] button "Send"
+#         [60] link "Chat history"
+#         [99] button "Agent Mode ON"
+
+# Fill the chat input
+bun scripts/dev/inspect-ui.ts fill sidepanel 37 "Hello world"
+
+# Click a button
+bun scripts/dev/inspect-ui.ts click sidepanel 124
+
+# Screenshot to verify
+bun scripts/dev/inspect-ui.ts screenshot sidepanel /tmp/result.png
+```
+
+## Step 6: Verify and iterate
+
+The core loop is:
+
+```
+snapshot → identify element IDs → click/fill → screenshot → verify
+```
+
+If something looks wrong:
+1. Fix the code in `apps/agent/`
+2. WXT HMR will hot-reload the extension automatically
+3. Wait a few seconds for the reload
+4. Re-snapshot and re-screenshot to verify the fix
+
+## Available commands reference
+
+| Command | Description |
+|---------|-------------|
+| `targets` | List all CDP targets, marks extension pages with `[EXTENSION]` |
+| `screenshot <target> [file]` | Capture PNG screenshot (default: `screenshot.png`) |
+| `snapshot <target>` | Print accessibility tree with `[elementId] role "name"` |
+| `click <target> <elementId>` | Click element by ID (3-tier coordinate fallback + JS click) |
+| `fill <target> <elementId> <text>` | Focus element, clear, type text |
+| `eval <target> <expression>` | Run JavaScript in the target's context |
+| `open-sidepanel` | Enable and open the right side panel |
+
+`<target>` is a URL substring (e.g., `sidepanel`, `app.html`) or numeric index from `targets` output.
+
+## Known app.html routes
+
+These can be used with `eval app.html "window.location.hash = '#/<route>'"`:
+
+| Route | View |
+|-------|------|
+| `/home` | Home page with search bar and top sites |
+| `/settings` | Settings (LLM providers, customization, workflows, MCP) |
+| `/scheduled-tasks` | Scheduled Tasks management |
+| `/onboarding` | Onboarding flow (first-run experience) |
+
+## Gotchas learned from real testing
+
+1. **Ports are randomized** with `--new` — always extract from dev server output
+2. **Fresh profile = onboarding page** — navigate to `#/home` to see the main UI
+3. **Element IDs change after navigation** — always re-snapshot before clicking
+4. **Side panel starts disabled** — `open-sidepanel` handles the BrowserOS-specific enable + toggle API
+5. **`Input.enable` does not exist** — the CDP Input domain has no enable method (already handled in the script)
+6. **`DOM.getDocument` required** — must be called before DOM operations like `pushNodesByBackendIdsToFrontend` (already handled in the script)
+7. **Settings sub-navigation** — the settings page has its own left sidebar (BrowserOS AI, Chat & Council Provider, Search Provider, Customize BrowserOS, BrowserOS as MCP, Workflows) — use snapshot + click to navigate within settings
