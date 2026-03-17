@@ -1,9 +1,6 @@
 import { platform } from 'node:os'
 import type { ProtocolApi } from '@browseros/cdp-protocol/protocol-api'
 
-// Meta (Cmd) on macOS, Control on everything else
-const PLATFORM_MODIFIER = platform() === 'darwin' ? 4 : 2
-
 type KeyInfo = { code: string; keyCode: number | undefined }
 
 const KEY_MAP: Record<string, KeyInfo> = {
@@ -184,34 +181,9 @@ export async function typeText(
 }
 
 export async function clearField(session: ProtocolApi): Promise<void> {
-  // Select all: Cmd+A on macOS, Ctrl+A on others
-  await session.Input.dispatchKeyEvent({
-    type: 'keyDown',
-    key: 'a',
-    code: 'KeyA',
-    modifiers: PLATFORM_MODIFIER,
-    windowsVirtualKeyCode: 65,
-  })
-  await session.Input.dispatchKeyEvent({
-    type: 'keyUp',
-    key: 'a',
-    code: 'KeyA',
-    modifiers: PLATFORM_MODIFIER,
-    windowsVirtualKeyCode: 65,
-  })
-  // Backspace to delete selection (more reliable cross-platform than Delete)
-  await session.Input.dispatchKeyEvent({
-    type: 'keyDown',
-    key: 'Backspace',
-    code: 'Backspace',
-    windowsVirtualKeyCode: 8,
-  })
-  await session.Input.dispatchKeyEvent({
-    type: 'keyUp',
-    key: 'Backspace',
-    code: 'Backspace',
-    windowsVirtualKeyCode: 8,
-  })
+  const selectAllCombo = platform() === 'darwin' ? 'Meta+A' : 'Control+A'
+  await pressCombo(session, selectAllCombo)
+  await pressCombo(session, 'Backspace')
 }
 
 function parseKeyCombo(input: string): {

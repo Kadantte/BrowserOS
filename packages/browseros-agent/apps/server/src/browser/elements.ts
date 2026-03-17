@@ -1,5 +1,58 @@
 import type { ProtocolApi } from '@browseros/cdp-protocol/protocol-api'
 
+const CLEAR_EDITABLE_TARGET_BODY = `
+if (!(target instanceof Element)) return false;
+if (typeof target.focus === 'function') target.focus();
+const inputType =
+  target instanceof HTMLInputElement ? target.type.toLowerCase() : '';
+const canClearInput =
+  target instanceof HTMLInputElement &&
+  ![
+    'button',
+    'checkbox',
+    'color',
+    'file',
+    'hidden',
+    'image',
+    'radio',
+    'range',
+    'reset',
+    'submit',
+  ].includes(inputType);
+if (target instanceof HTMLTextAreaElement || canClearInput) {
+  if (target.disabled || target.readOnly) return false;
+  const prototype =
+    target instanceof HTMLTextAreaElement
+      ? HTMLTextAreaElement.prototype
+      : HTMLInputElement.prototype;
+  const descriptor = Object.getOwnPropertyDescriptor(prototype, 'value');
+  if (descriptor?.set) {
+    descriptor.set.call(target, '');
+  } else {
+    target.value = '';
+  }
+  if (typeof target.setSelectionRange === 'function') {
+    try {
+      target.setSelectionRange(0, 0);
+    } catch {}
+  }
+} else if (target instanceof HTMLElement && target.isContentEditable) {
+  target.replaceChildren();
+  const selection = window.getSelection();
+  if (selection) {
+    const range = document.createRange();
+    range.selectNodeContents(target);
+    range.collapse(false);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+} else {
+  return false;
+}
+target.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+return true;
+`
+
 function quadCenter(q: number[]): { x: number; y: number } {
   const x = ((q[0] ?? 0) + (q[2] ?? 0) + (q[4] ?? 0) + (q[6] ?? 0)) / 4
   const y = ((q[1] ?? 0) + (q[3] ?? 0) + (q[5] ?? 0) + (q[7] ?? 0)) / 4
@@ -108,6 +161,45 @@ export async function getInputValue(
     return (value as string) ?? ''
   } catch {
     return ''
+  }
+}
+
+export async function clearEditableElement(
+  session: ProtocolApi,
+  backendNodeId: number,
+): Promise<boolean> {
+  try {
+    const cleared = await callOnElement(
+      session,
+      backendNodeId,
+      `function(){const target=this;${CLEAR_EDITABLE_TARGET_BODY}}`,
+    )
+    return Boolean(cleared)
+  } catch {
+    return false
+  }
+}
+
+export async function clearFocusedEditableElement(
+  session: ProtocolApi,
+): Promise<boolean> {
+  try {
+    const result = await session.Runtime.evaluate({
+      expression: `(() => {
+        let target = document.activeElement;
+        while (
+          target instanceof HTMLElement &&
+          target.shadowRoot?.activeElement instanceof Element
+        ) {
+          target = target.shadowRoot.activeElement;
+        }
+        ${CLEAR_EDITABLE_TARGET_BODY}
+      })()`,
+      returnByValue: true,
+    })
+    return Boolean(result.result?.value)
+  } catch {
+    return false
   }
 }
 

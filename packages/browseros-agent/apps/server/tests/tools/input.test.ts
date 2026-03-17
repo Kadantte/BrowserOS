@@ -2,12 +2,14 @@ import { describe, it } from 'bun:test'
 import assert from 'node:assert'
 import {
   check,
+  clear,
   click,
   fill,
   hover,
   press_key,
   scroll,
   select_option,
+  type_at,
   uncheck,
 } from '../../src/tools/input'
 import { close_page, new_page } from '../../src/tools/navigation'
@@ -112,6 +114,100 @@ describe('input tools', () => {
         expression: 'document.getElementById("name").value',
       })
       assert.strictEqual(textOf(val), 'John Doe')
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('fill replaces existing text by default', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: FORM_PAGE })
+      const pageId = pageIdOf(newResult)
+
+      const snap = await execute(take_snapshot, { page: pageId })
+      const inputId = findElementId(textOf(snap), 'Enter name')
+
+      await execute(fill, { page: pageId, element: inputId, text: 'Alpha' })
+      const fillResult = await execute(fill, {
+        page: pageId,
+        element: inputId,
+        text: 'Beta',
+      })
+      assert.ok(!fillResult.isError, textOf(fillResult))
+
+      const val = await execute(evaluate_script, {
+        page: pageId,
+        expression: 'document.getElementById("name").value',
+      })
+      assert.strictEqual(textOf(val), 'Beta')
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('clear removes all text from an input', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: FORM_PAGE })
+      const pageId = pageIdOf(newResult)
+
+      const snap = await execute(take_snapshot, { page: pageId })
+      const inputId = findElementId(textOf(snap), 'Enter name')
+
+      await execute(fill, { page: pageId, element: inputId, text: 'Alpha' })
+      const clearResult = await execute(clear, {
+        page: pageId,
+        element: inputId,
+      })
+      assert.ok(!clearResult.isError, textOf(clearResult))
+
+      const val = await execute(evaluate_script, {
+        page: pageId,
+        expression: 'document.getElementById("name").value',
+      })
+      assert.strictEqual(textOf(val), '')
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('type_at clears the focused input when requested', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: FORM_PAGE })
+      const pageId = pageIdOf(newResult)
+
+      const snap = await execute(take_snapshot, { page: pageId })
+      const inputId = findElementId(textOf(snap), 'Enter name')
+      await execute(fill, { page: pageId, element: inputId, text: 'Alpha' })
+
+      const coordsResult = await execute(evaluate_script, {
+        page: pageId,
+        expression: `(() => {
+          const rect = document.getElementById("name").getBoundingClientRect();
+          return JSON.stringify({
+            x: Math.round(rect.left + rect.width / 2),
+            y: Math.round(rect.top + rect.height / 2),
+          });
+        })()`,
+      })
+      const coords = JSON.parse(textOf(coordsResult)) as {
+        x: number
+        y: number
+      }
+
+      const typeResult = await execute(type_at, {
+        page: pageId,
+        x: coords.x,
+        y: coords.y,
+        text: 'Beta',
+        clear: true,
+      })
+      assert.ok(!typeResult.isError, textOf(typeResult))
+
+      const val = await execute(evaluate_script, {
+        page: pageId,
+        expression: 'document.getElementById("name").value',
+      })
+      assert.strictEqual(textOf(val), 'Beta')
 
       await execute(close_page, { page: pageId })
     })

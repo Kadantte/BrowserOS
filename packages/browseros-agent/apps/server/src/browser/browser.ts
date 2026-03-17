@@ -763,8 +763,11 @@ export class Browser {
   ): Promise<void> {
     const session = await this.resolveSession(page)
     await mouse.dispatchClick(session, x, y, 'left', 1, 0)
-    if (clear) await keyboard.clearField(session)
-    await keyboard.typeText(session, text)
+    if (clear) {
+      const cleared = await elements.clearFocusedEditableElement(session)
+      if (!cleared) await keyboard.clearField(session)
+    }
+    if (text) await keyboard.typeText(session, text)
   }
 
   async dragAt(
@@ -815,27 +818,20 @@ export class Browser {
     }
 
     if (clear) {
-      // Primary: keyboard select-all + backspace
-      await keyboard.clearField(session)
-
-      // Fallback: if field still has content, triple-click to select all
-      // then typeText will overwrite the selection
-      if (coords) {
-        const value = await elements.getInputValue(session, element)
-        if (value) {
-          await mouse.dispatchClick(
-            session,
-            coords.x,
-            coords.y,
-            'left',
-            3,
-            0,
-          )
+      const cleared = await elements.clearEditableElement(session, element)
+      if (!cleared || (await elements.getInputValue(session, element))) {
+        await keyboard.clearField(session)
+        if (coords) {
+          const value = await elements.getInputValue(session, element)
+          if (value) {
+            await mouse.dispatchClick(session, coords.x, coords.y, 'left', 3, 0)
+            if (!text) await keyboard.pressCombo(session, 'Backspace')
+          }
         }
       }
     }
 
-    await keyboard.typeText(session, text)
+    if (text) await keyboard.typeText(session, text)
     return coords
   }
 
