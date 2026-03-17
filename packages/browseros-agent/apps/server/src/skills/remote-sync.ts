@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { SKILLS_LIMITS } from '@browseros/shared/constants/limits'
 import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
 import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
 import { INLINED_ENV } from '../env'
@@ -18,6 +19,11 @@ export const MANIFEST_FILE = '.remote-manifest.json'
 
 let syncTimer: ReturnType<typeof setInterval> | null = null
 
+export function extractVersion(content: string): string {
+  const match = content.match(/^\s*version:\s*["']?([^"'\n]+)["']?/m)
+  return match?.[1]?.trim() || '1.0'
+}
+
 export function contentHash(content: string): string {
   return createHash('sha256').update(content).digest('hex')
 }
@@ -32,10 +38,24 @@ function isValidManifest(data: unknown): data is SkillManifest {
   return typeof d.lastSyncedAt === 'string' && typeof d.skills === 'object' && d.skills !== null
 }
 
+function isValidSkillEntry(entry: unknown): entry is RemoteSkillEntry {
+  if (typeof entry !== 'object' || entry === null) return false
+  const e = entry as Record<string, unknown>
+  return (
+    typeof e.id === 'string' &&
+    typeof e.version === 'string' &&
+    typeof e.content === 'string'
+  )
+}
+
 function isValidCatalog(data: unknown): data is RemoteSkillCatalog {
   if (typeof data !== 'object' || data === null) return false
   const d = data as Record<string, unknown>
-  return typeof d.version === 'number' && Array.isArray(d.skills)
+  return (
+    typeof d.version === 'number' &&
+    Array.isArray(d.skills) &&
+    d.skills.every(isValidSkillEntry)
+  )
 }
 
 export async function loadManifest(): Promise<SkillManifest> {
@@ -71,7 +91,14 @@ export async function fetchRemoteCatalog(): Promise<RemoteSkillCatalog | null> {
       })
       return null
     }
-    const data: unknown = await response.json()
+    const text = await response.text()
+    if (text.length > SKILLS_LIMITS.MAX_CATALOG_BYTES) {
+      logger.warn('Remote skill catalog response too large', {
+        size: text.length,
+      })
+      return null
+    }
+    const data: unknown = JSON.parse(text)
     if (!isValidCatalog(data)) {
       logger.warn('Remote skill catalog has invalid format')
       return null
@@ -171,8 +198,10 @@ export async function syncRemoteSkills(): Promise<{
     }
   }
 
-  manifest.lastSyncedAt = new Date().toISOString()
-  await saveManifest(manifest)
+  if (result.installed > 0 || result.updated > 0) {
+    manifest.lastSyncedAt = new Date().toISOString()
+    await saveManifest(manifest)
+  }
 
   return result
 }

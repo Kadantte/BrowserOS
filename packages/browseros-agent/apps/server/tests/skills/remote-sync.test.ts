@@ -139,6 +139,31 @@ describe('fetchRemoteCatalog', () => {
     fetchSpy.mockRestore()
   })
 
+  it('returns null when skill entries have invalid shape', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          version: 1,
+          skills: [{ id: 123, version: '1.0', content: null }],
+        }),
+        { status: 200 },
+      ),
+    )
+    const result = await fetchRemoteCatalog()
+    assert.strictEqual(result, null)
+    fetchSpy.mockRestore()
+  })
+
+  it('returns null for oversized response', async () => {
+    const huge = 'x'.repeat(1_100_000)
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(huge, { status: 200 }),
+    )
+    const result = await fetchRemoteCatalog()
+    assert.strictEqual(result, null)
+    fetchSpy.mockRestore()
+  })
+
   it('returns null when skills field is missing', async () => {
     const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify({ version: 1 }), { status: 200 }),

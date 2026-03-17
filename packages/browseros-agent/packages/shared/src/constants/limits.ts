@@ -78,6 +78,10 @@ export const CDP_LIMITS = {
   RECONNECT_MAX_RETRIES: 3,
 } as const
 
+export const SKILLS_LIMITS = {
+  MAX_CATALOG_BYTES: 1_000_000,
+} as const
+
 export const CONTENT_LIMITS = {
   BODY_CONTEXT_SIZE: 10_000,
   MAX_QUEUE_SIZE: 1_000,

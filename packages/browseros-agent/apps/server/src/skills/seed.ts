@@ -4,6 +4,7 @@ import { logger } from '../lib/logger'
 import { DEFAULT_SKILLS } from './defaults'
 import {
   contentHash,
+  extractVersion,
   installSkill,
   loadManifest,
   saveManifest,
@@ -18,11 +19,6 @@ async function hasExistingSkills(skillsDir: string): Promise<boolean> {
   } catch {
     return false
   }
-}
-
-function extractVersion(content: string): string {
-  const match = content.match(/^\s*version:\s*["']?([^"'\n]+)["']?/m)
-  return match?.[1]?.trim() || '1.0'
 }
 
 export async function seedDefaultSkills(): Promise<void> {
