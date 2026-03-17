@@ -32,6 +32,7 @@ export async function seedDefaultSkills(): Promise<void> {
   let seeded = 0
 
   for (const skill of DEFAULT_SKILLS) {
+    if (manifest.skills[skill.id]) continue
     try {
       const version = extractVersion(skill.content)
       await writeSkillFile(skill.id, skill.content)
