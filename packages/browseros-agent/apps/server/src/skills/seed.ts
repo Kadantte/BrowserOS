@@ -1,4 +1,5 @@
-import { readdir } from 'node:fs/promises'
+import { readdir, stat } from 'node:fs/promises'
+import { join } from 'node:path'
 import { getSkillsDir } from '../lib/browseros-dir'
 import { logger } from '../lib/logger'
 import { DEFAULT_SKILLS } from './defaults'
@@ -13,6 +14,15 @@ async function hasExistingSkills(skillsDir: string): Promise<boolean> {
   }
 }
 
+async function skillExists(skillsDir: string, id: string): Promise<boolean> {
+  try {
+    await stat(join(skillsDir, id, 'SKILL.md'))
+    return true
+  } catch {
+    return false
+  }
+}
+
 export async function seedDefaultSkills(): Promise<void> {
   const skillsDir = getSkillsDir()
   if (await hasExistingSkills(skillsDir)) return
@@ -22,6 +32,7 @@ export async function seedDefaultSkills(): Promise<void> {
 
   let seeded = 0
   for (const skill of DEFAULT_SKILLS) {
+    if (await skillExists(skillsDir, skill.id)) continue
     try {
       await writeSkillFile(skill.id, skill.content)
       seeded++
