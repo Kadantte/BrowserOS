@@ -179,6 +179,22 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
     type: p.type,
   }))
 
+  // Replace textarea content via execCommand so the browser's native undo
+  // stack (Cmd+Z / Ctrl+Z) records the change. Falls back to form.setValue
+  // if the textarea element can't be found.
+  const setQueryWithUndo = (value: string) => {
+    const textarea = document.querySelector(
+      'textarea[name="query"]',
+    ) as HTMLTextAreaElement
+    if (textarea) {
+      textarea.focus()
+      textarea.select()
+      document.execCommand('insertText', false, value)
+    } else {
+      form.setValue('query', value)
+    }
+  }
+
   const handleRefinePrompt = async () => {
     const currentQuery = form.getValues('query').trim()
     const currentName = form.getValues('name').trim()
@@ -195,7 +211,7 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
         providerId: form.getValues('providerId'),
       })
       if (requestId !== refineRequestIdRef.current) return
-      form.setValue('query', refined)
+      setQueryWithUndo(refined)
       track(SCHEDULED_TASK_PROMPT_REFINED_EVENT)
     } catch {
       if (requestId !== refineRequestIdRef.current) return
@@ -210,7 +226,7 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
 
   const handleUndoRefine = () => {
     if (originalPromptRef.current !== null) {
-      form.setValue('query', originalPromptRef.current)
+      setQueryWithUndo(originalPromptRef.current)
       originalPromptRef.current = null
     }
   }
@@ -289,12 +305,6 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
                       placeholder="What should the agent do? e.g., Check my email and summarize important messages"
                       className="min-h-[100px] resize-none"
                       {...field}
-                      onChange={(e) => {
-                        field.onChange(e)
-                        if (originalPromptRef.current !== null) {
-                          originalPromptRef.current = null
-                        }
-                      }}
                     />
                   </FormControl>
                   {!isRefining && originalPromptRef.current !== null ? (
