@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'bun:test'
+import { platform } from 'node:os'
 import {
+  clearField,
   getKeyInfo,
   modifierBitmask,
   normalizeKey,
@@ -156,5 +158,50 @@ describe('pressCombo validation', () => {
     await expect(pressCombo(fakeSession, 'Shift++')).rejects.not.toThrow(
       /Unknown key/,
     )
+  })
+})
+
+describe('clearField', () => {
+  it('uses lowercase select-all without standalone modifier events', async () => {
+    const events: Array<Record<string, unknown>> = []
+    const fakeSession = {
+      Input: {
+        dispatchKeyEvent: async (event: Record<string, unknown>) => {
+          events.push(event)
+        },
+      },
+    } as unknown as Parameters<typeof clearField>[0]
+
+    await clearField(fakeSession)
+
+    const modifier = platform() === 'darwin' ? 4 : 2
+    expect(events).toEqual([
+      {
+        type: 'keyDown',
+        key: 'a',
+        code: 'KeyA',
+        modifiers: modifier,
+        windowsVirtualKeyCode: 65,
+      },
+      {
+        type: 'keyUp',
+        key: 'a',
+        code: 'KeyA',
+        modifiers: modifier,
+        windowsVirtualKeyCode: 65,
+      },
+      {
+        type: 'keyDown',
+        key: 'Backspace',
+        code: 'Backspace',
+        windowsVirtualKeyCode: 8,
+      },
+      {
+        type: 'keyUp',
+        key: 'Backspace',
+        code: 'Backspace',
+        windowsVirtualKeyCode: 8,
+      },
+    ])
   })
 })

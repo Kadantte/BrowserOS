@@ -1,6 +1,8 @@
 import { platform } from 'node:os'
 import type { ProtocolApi } from '@browseros/cdp-protocol/protocol-api'
 
+const PLATFORM_MODIFIER = platform() === 'darwin' ? 4 : 2
+
 type KeyInfo = { code: string; keyCode: number | undefined }
 
 const KEY_MAP: Record<string, KeyInfo> = {
@@ -181,9 +183,32 @@ export async function typeText(
 }
 
 export async function clearField(session: ProtocolApi): Promise<void> {
-  const selectAllCombo = platform() === 'darwin' ? 'Meta+A' : 'Control+A'
-  await pressCombo(session, selectAllCombo)
-  await pressCombo(session, 'Backspace')
+  await session.Input.dispatchKeyEvent({
+    type: 'keyDown',
+    key: 'a',
+    code: 'KeyA',
+    modifiers: PLATFORM_MODIFIER,
+    windowsVirtualKeyCode: 65,
+  })
+  await session.Input.dispatchKeyEvent({
+    type: 'keyUp',
+    key: 'a',
+    code: 'KeyA',
+    modifiers: PLATFORM_MODIFIER,
+    windowsVirtualKeyCode: 65,
+  })
+  await session.Input.dispatchKeyEvent({
+    type: 'keyDown',
+    key: 'Backspace',
+    code: 'Backspace',
+    windowsVirtualKeyCode: 8,
+  })
+  await session.Input.dispatchKeyEvent({
+    type: 'keyUp',
+    key: 'Backspace',
+    code: 'Backspace',
+    windowsVirtualKeyCode: 8,
+  })
 }
 
 function parseKeyCombo(input: string): {
