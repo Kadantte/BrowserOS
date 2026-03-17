@@ -42,7 +42,7 @@ import {
 import type { LlmProviderConfig, ProviderType } from '@/lib/llm-providers/types'
 import { SCHEDULED_TASK_PROMPT_REFINED_EVENT } from '@/lib/constants/analyticsEvents'
 import { track } from '@/lib/metrics/track'
-import { refinePrompt } from '@/lib/schedules/refinePrompt'
+import { refinePrompt } from '@/lib/schedules/refine-prompt'
 import { toast } from 'sonner'
 import type { ScheduledJob } from './types'
 
@@ -132,6 +132,7 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
 
   useEffect(() => {
     if (open) {
+      refineRequestIdRef.current++
       originalPromptRef.current = null
       setIsRefining(false)
       if (initialValues) {
