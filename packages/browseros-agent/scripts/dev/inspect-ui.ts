@@ -3,7 +3,7 @@
 // Matches DEV_PORTS.cdp from @browseros/shared/constants/ports
 const DEFAULT_CDP_PORT = 9010
 const REQUEST_TIMEOUT_MS = 30_000
-const EXTENSION_ID = 'bflpfmnmnokmjhmgnolecpppdbdophmk'
+const EXTENSION_ID = process.env.BROWSEROS_EXTENSION_ID || 'bflpfmnmnokmjhmgnolecpppdbdophmk'
 
 // ─── CDP WebSocket Client ────────────────────────────────────────────
 
@@ -663,7 +663,7 @@ async function cmdScroll(
   const target = resolveTarget(targets, targetQuery)
   const sessionId = await attachSession(cdp, target.targetId)
   try {
-    await enableDomains(cdp, sessionId, ['Runtime'])
+    await enableDomains(cdp, sessionId, ['Page'])
 
     const pixels = amount * 120
     const deltaX = direction === 'left' ? -pixels : direction === 'right' ? pixels : 0
@@ -728,7 +728,8 @@ async function cmdWaitFor(
     }
 
     console.error(`Timeout: ${waitType} "${waitValue}" not found after ${timeoutMs}ms`)
-    process.exit(1)
+    process.exitCode = 1
+    return
   } finally {
     await detachSession(cdp, sessionId)
   }

@@ -174,7 +174,11 @@ After making UI changes to the agent extension (`apps/agent/`), you can visually
 
 The dev server must be running:
 ```bash
-bun scripts/dev/start.ts --manual   # or --watch for HMR
+bun run dev:watch -- --new
+```
+Read the output to find the randomized CDP port, then:
+```bash
+export BROWSEROS_CDP_PORT=<port from output>
 ```
 
 ### Workflow
