@@ -262,13 +262,15 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
       return () => document.removeEventListener('mousedown', handleClickOutside)
     }, [mentionState.isOpen, closeMention])
 
-    const renderActionButton = () => {
-      if (voice?.isRecording) {
+    const renderVoiceButton = () => {
+      if (!voice) return null
+
+      if (voice.isRecording) {
         return (
           <button
             type="button"
             onClick={voice.onStopRecording}
-            className="absolute right-1.5 bottom-1.5 cursor-pointer rounded-full bg-red-600 p-2 text-white shadow-sm transition-all duration-200 hover:bg-red-900"
+            className="cursor-pointer rounded-full bg-red-600 p-2 text-white shadow-sm transition-all duration-200 hover:bg-red-900"
           >
             <Square className="h-3.5 w-3.5" />
             <span className="sr-only">Stop recording</span>
@@ -276,25 +278,35 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         )
       }
 
-      if (voice?.isTranscribing) {
+      if (voice.isTranscribing) {
         return (
-          <button
-            type="button"
-            disabled
-            className="absolute right-1.5 bottom-1.5 rounded-full bg-muted p-2 text-muted-foreground"
-          >
+          <button type="button" disabled className="rounded-full p-2 text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
             <span className="sr-only">Transcribing</span>
           </button>
         )
       }
 
+      return (
+        <button
+          type="button"
+          onClick={voice.onStartRecording}
+          disabled={isBusy}
+          className="cursor-pointer rounded-full p-2 text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          <Mic className="h-3.5 w-3.5" />
+          <span className="sr-only">Voice input</span>
+        </button>
+      )
+    }
+
+    const renderSendButton = () => {
       if (isBusy) {
         return (
           <button
             type="button"
             onClick={onStop}
-            className="absolute right-1.5 bottom-1.5 cursor-pointer rounded-full bg-red-600 p-2 text-white shadow-sm transition-all duration-200 hover:bg-red-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="cursor-pointer rounded-full bg-red-600 p-2 text-white shadow-sm transition-all duration-200 hover:bg-red-900"
           >
             <SquareStop className="h-3.5 w-3.5" />
             <span className="sr-only">Stop</span>
@@ -302,36 +314,11 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         )
       }
 
-      if (input.trim()) {
-        return (
-          <button
-            type="submit"
-            className="absolute right-1.5 bottom-1.5 cursor-pointer rounded-full bg-[var(--accent-orange)] p-2 text-white shadow-sm transition-all duration-200 hover:bg-[var(--accent-orange-bright)]"
-          >
-            <Send className="h-3.5 w-3.5" />
-            <span className="sr-only">Send</span>
-          </button>
-        )
-      }
-
-      if (voice) {
-        return (
-          <button
-            type="button"
-            onClick={voice.onStartRecording}
-            className="absolute right-1.5 bottom-1.5 cursor-pointer rounded-full p-2 text-muted-foreground transition-all duration-200 hover:bg-muted hover:text-foreground"
-          >
-            <Mic className="h-3.5 w-3.5" />
-            <span className="sr-only">Voice input</span>
-          </button>
-        )
-      }
-
       return (
         <button
           type="submit"
-          disabled
-          className="absolute right-1.5 bottom-1.5 cursor-pointer rounded-full bg-[var(--accent-orange)] p-2 text-white shadow-sm transition-all duration-200 hover:bg-[var(--accent-orange-bright)] disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={!input.trim() || voice?.isRecording || voice?.isTranscribing}
+          className="cursor-pointer rounded-full bg-[var(--accent-orange)] p-2 text-white shadow-sm transition-all duration-200 hover:bg-[var(--accent-orange-bright)] disabled:cursor-not-allowed disabled:opacity-50"
         >
           <Send className="h-3.5 w-3.5" />
           <span className="sr-only">Send</span>
@@ -342,7 +329,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
     return (
       <form
         onSubmit={handleSubmit}
-        className="relative mt-2 flex w-full items-end gap-2"
+        className="relative mt-2 flex w-full items-end gap-1.5"
       >
         <TabPickerPopover
           variant="mention"
@@ -356,7 +343,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         {voice?.isRecording ? (
           <div
             className={cn(
-              'flex min-h-[42px] flex-1 items-center justify-center gap-1 rounded-2xl border border-red-500/50 bg-muted/50 px-4 py-2.5 pr-11',
+              'flex min-h-[42px] flex-1 items-center justify-center gap-1 rounded-2xl border border-red-500/50 bg-muted/50 px-4 py-2.5',
             )}
           >
             {voice.audioLevels.map((level, i) => (
@@ -373,7 +360,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
           <textarea
             ref={textareaRef}
             className={cn(
-              'field-sizing-content max-h-60 min-h-[42px] flex-1 resize-none overflow-hidden rounded-2xl border border-border/50 bg-muted/50 px-4 py-2.5 pr-11 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-border focus:border-[var(--accent-orange)]',
+              'field-sizing-content max-h-60 min-h-[42px] flex-1 resize-none overflow-hidden rounded-2xl border border-border/50 bg-muted/50 px-4 py-2.5 text-sm outline-none transition-colors placeholder:text-muted-foreground/70 hover:border-border focus:border-[var(--accent-orange)]',
             )}
             value={input}
             onChange={(e) => handleInputChange(e.target.value)}
@@ -389,7 +376,8 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
             rows={1}
           />
         )}
-        {renderActionButton()}
+        {renderVoiceButton()}
+        {renderSendButton()}
       </form>
     )
   },
