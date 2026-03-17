@@ -14,6 +14,7 @@ export type ProviderType =
   | 'bedrock'
   | 'browseros'
   | 'moonshot'
+  | 'chatgpt-pro'
 
 /**
  * LLM Provider configuration

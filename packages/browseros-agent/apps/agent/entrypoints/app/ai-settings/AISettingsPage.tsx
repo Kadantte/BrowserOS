@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { type FC, useMemo, useState } from 'react'
+import { type FC, useEffect, useMemo, useRef, useState } from 'react'
 import { toast } from 'sonner'
 import {
   AlertDialog,
@@ -13,6 +13,11 @@ import {
 } from '@/components/ui/alert-dialog'
 import { useSessionInfo } from '@/lib/auth/sessionStorage'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
+import {
+  CHATGPT_PRO_OAUTH_COMPLETED_EVENT,
+  CHATGPT_PRO_OAUTH_DISCONNECTED_EVENT,
+  CHATGPT_PRO_OAUTH_STARTED_EVENT,
+} from '@/lib/constants/analyticsEvents'
 import { GetProfileIdByUserIdDocument } from '@/lib/conversations/graphql/uploadConversationDocument'
 import { getQueryKeyFromDocument } from '@/lib/graphql/getQueryKeyFromDocument'
 import { useGraphqlMutation } from '@/lib/graphql/useGraphqlMutation'
@@ -21,6 +26,8 @@ import type { ProviderTemplate } from '@/lib/llm-providers/providerTemplates'
 import { testProvider } from '@/lib/llm-providers/testProvider'
 import type { LlmProviderConfig } from '@/lib/llm-providers/types'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
+import { useOAuthStatus } from '@/lib/llm-providers/useOAuthStatus'
+import { track } from '@/lib/metrics/track'
 import { ConfiguredProvidersList } from './ConfiguredProvidersList'
 import {
   DeleteRemoteLlmProviderDocument,
@@ -101,12 +108,65 @@ export const AISettingsPage: FC = () => {
     null,
   )
 
+  // OAuth status for ChatGPT Pro
+  const {
+    status: chatgptProStatus,
+    startPolling: startChatGPTProPolling,
+    disconnect: disconnectChatGPTPro,
+  } = useOAuthStatus('chatgpt-pro')
+
+  // Guard against duplicate auto-create calls
+  const isCreatingOAuthProviderRef = useRef(false)
+
+  // Auto-create provider when OAuth completes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — only trigger on auth status change
+  useEffect(() => {
+    if (!chatgptProStatus?.authenticated) return
+    if (isCreatingOAuthProviderRef.current) return
+
+    const exists = providers.some((p) => p.type === 'chatgpt-pro')
+    if (exists) return
+
+    isCreatingOAuthProviderRef.current = true
+
+    const now = Date.now()
+    try {
+      saveProvider({
+        id: `chatgpt-pro-${now}`,
+        type: 'chatgpt-pro',
+        name: `ChatGPT Pro${chatgptProStatus.email ? ` (${chatgptProStatus.email})` : ''}`,
+        modelId: 'gpt-5.3-codex',
+        supportsImages: true,
+        contextWindow: 400000,
+        temperature: 0.2,
+        createdAt: now,
+        updatedAt: now,
+      })
+      track(CHATGPT_PRO_OAUTH_COMPLETED_EVENT, {
+        email: chatgptProStatus.email,
+      })
+      toast.success('ChatGPT Pro Connected', {
+        description: chatgptProStatus.email
+          ? `Authenticated as ${chatgptProStatus.email}`
+          : 'Successfully authenticated with ChatGPT Pro',
+      })
+    } finally {
+      isCreatingOAuthProviderRef.current = false
+    }
+  }, [chatgptProStatus?.authenticated])
+
   const handleAddProvider = () => {
     setTemplateValues(undefined)
     setIsNewDialogOpen(true)
   }
 
   const handleUseTemplate = (template: ProviderTemplate) => {
+    // OAuth providers: trigger OAuth flow instead of opening form dialog
+    if (template.id === 'chatgpt-pro') {
+      handleStartChatGPTProOAuth()
+      return
+    }
+
     setTemplateValues({
       type: template.id,
       name: template.name,
@@ -117,6 +177,26 @@ export const AISettingsPage: FC = () => {
       temperature: 0.2,
     })
     setIsNewDialogOpen(true)
+  }
+
+  const handleStartChatGPTProOAuth = () => {
+    if (!agentServerUrl) {
+      toast.error('Server not available', {
+        description: 'Cannot start OAuth flow without server connection.',
+      })
+      return
+    }
+
+    const extensionSettingsUrl = chrome.runtime.getURL('app.html#/ai-settings')
+    const startUrl = `${agentServerUrl}/oauth/chatgpt-pro/start?redirect=${encodeURIComponent(extensionSettingsUrl)}`
+    window.open(startUrl, '_blank')
+
+    // Start polling for OAuth completion
+    startChatGPTProPolling()
+    track(CHATGPT_PRO_OAUTH_STARTED_EVENT)
+    toast.info('Authenticating with ChatGPT Pro', {
+      description: 'Complete the login in the opened tab.',
+    })
   }
 
   const handleEditProvider = (provider: LlmProviderConfig) => {
@@ -130,6 +210,11 @@ export const AISettingsPage: FC = () => {
 
   const confirmDeleteProvider = async () => {
     if (providerToDelete) {
+      // Clear OAuth tokens on server for OAuth-based providers
+      if (providerToDelete.type === 'chatgpt-pro') {
+        await disconnectChatGPTPro()
+        track(CHATGPT_PRO_OAUTH_DISCONNECTED_EVENT)
+      }
       await deleteProvider(providerToDelete.id)
       deleteRemoteProviderMutation.mutate({ rowId: providerToDelete.id })
       setProviderToDelete(null)

@@ -10,4 +10,6 @@ export const EXTERNAL_URLS = {
   KLAVIS_PROXY: 'https://llm.browseros.com/klavis',
   POSTHOG_DEFAULT: 'https://us.i.posthog.com',
   CODEGEN_SERVICE: 'https://graph.browseros.com',
+  OPENAI_AUTH: 'https://auth.openai.com/oauth/authorize',
+  OPENAI_TOKEN: 'https://auth.openai.com/oauth/token',
 } as const

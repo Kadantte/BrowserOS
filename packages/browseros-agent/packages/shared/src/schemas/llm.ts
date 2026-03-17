@@ -24,6 +24,7 @@ export const LLM_PROVIDERS = {
   BROWSEROS: 'browseros',
   OPENAI_COMPATIBLE: 'openai-compatible',
   MOONSHOT: 'moonshot',
+  CHATGPT_PRO: 'chatgpt-pro',
 } as const
 
 /**
@@ -42,6 +43,7 @@ export const LLMProviderSchema: z.ZodEnum<
     'browseros',
     'openai-compatible',
     'moonshot',
+    'chatgpt-pro',
   ]
 > = z.enum([
   LLM_PROVIDERS.ANTHROPIC,
@@ -55,6 +57,7 @@ export const LLMProviderSchema: z.ZodEnum<
   LLM_PROVIDERS.BROWSEROS,
   LLM_PROVIDERS.OPENAI_COMPATIBLE,
   LLM_PROVIDERS.MOONSHOT,
+  LLM_PROVIDERS.CHATGPT_PRO,
 ])
 
 export type LLMProvider = z.infer<typeof LLMProviderSchema>

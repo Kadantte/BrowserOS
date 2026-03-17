@@ -61,6 +61,7 @@ const providerTypeEnum = z.enum([
   'lmstudio',
   'bedrock',
   'browseros',
+  'chatgpt-pro',
 ])
 
 /**
@@ -126,6 +127,10 @@ export const providerFormSchema = z
           path: ['region'],
         })
       }
+    }
+    // ChatGPT Pro: no credentials needed (server-managed OAuth)
+    else if (data.type === 'chatgpt-pro') {
+      // No validation needed — OAuth tokens are on the server
     }
     // Other providers: require baseUrl
     else if (!data.baseUrl) {
@@ -363,6 +368,9 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
   const canTest = (): boolean => {
     if (!watchedModelId) return false
 
+    // ChatGPT Pro: always testable (server has the OAuth token)
+    if (watchedType === 'chatgpt-pro') return true
+
     if (watchedType === 'azure') {
       return !!(watchedResourceName || watchedBaseUrl) && !!watchedApiKey
     }
@@ -444,6 +452,15 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
   }
 
   const renderProviderSpecificFields = () => {
+    // ChatGPT Pro: no credential fields (server manages OAuth tokens)
+    if (watchedType === 'chatgpt-pro') {
+      return (
+        <div className="rounded-lg border border-green-200 bg-green-50 p-3 text-green-700 text-sm dark:border-green-800 dark:bg-green-950 dark:text-green-300">
+          Credentials are managed via OAuth. No API key needed.
+        </div>
+      )
+    }
+
     if (watchedType === 'azure') {
       return (
         <>

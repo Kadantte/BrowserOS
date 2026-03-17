@@ -54,6 +54,7 @@ export class ChatService {
       accessKeyId: llmConfig.accessKeyId,
       secretAccessKey: llmConfig.secretAccessKey,
       sessionToken: llmConfig.sessionToken,
+      accountId: llmConfig.accountId,
       contextWindowSize: request.contextWindowSize,
       userSystemPrompt: request.userSystemPrompt,
       workingDir,
