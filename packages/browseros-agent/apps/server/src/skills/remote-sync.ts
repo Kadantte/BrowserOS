@@ -241,25 +241,29 @@ export async function seedFromRemote(): Promise<boolean> {
   return seeded === catalog.skills.length
 }
 
+async function runSync(): Promise<void> {
+  try {
+    const { installed, updated, skipped } = await syncRemoteSkills()
+    if (installed > 0 || updated > 0) {
+      logger.info('Remote skill sync completed', {
+        installed,
+        updated,
+        skipped,
+      })
+    }
+  } catch (err) {
+    logger.warn('Skill sync failed', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
 export function startSkillSync(): void {
   if (syncTimer) return
 
-  syncTimer = setInterval(async () => {
-    try {
-      const { installed, updated, skipped } = await syncRemoteSkills()
-      if (installed > 0 || updated > 0) {
-        logger.info('Remote skill sync completed', {
-          installed,
-          updated,
-          skipped,
-        })
-      }
-    } catch (err) {
-      logger.warn('Skill sync failed', {
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }, TIMEOUTS.SKILLS_SYNC_INTERVAL)
+  runSync()
+
+  syncTimer = setInterval(runSync, TIMEOUTS.SKILLS_SYNC_INTERVAL)
 
   syncTimer.unref()
 }
