@@ -431,11 +431,11 @@ export const uncheck = defineTool({
 export const upload_file = defineTool({
   name: 'upload_file',
   description:
-    'Set file(s) on a file input element. Files must be absolute paths on disk.',
+    'Upload file(s) via a file input or any element that triggers a file chooser dialog (e.g. buttons, dropzones). Files must be absolute paths on disk.',
   input: z.object({
     page: pageParam,
     element: elementParam.describe(
-      'Element ID of the <input type="file"> element',
+      'Element ID of the file input, upload button, or dropzone that triggers a file chooser',
     ),
     files: z.array(z.string()).describe('Absolute file paths to upload'),
   }),

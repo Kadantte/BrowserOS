@@ -1015,7 +1015,47 @@ export class Browser {
     files: string[],
   ): Promise<void> {
     const session = await this.resolveSession(page)
-    await session.DOM.setFileInputFiles({ files, backendNodeId: element })
+
+    // Fast path: element is a <input type="file">
+    try {
+      await session.DOM.setFileInputFiles({ files, backendNodeId: element })
+      return
+    } catch {
+      // Element is not a file input — fall back to file chooser interception
+    }
+
+    // Fallback: intercept the native file chooser dialog triggered by clicking the element
+    await session.Page.setInterceptFileChooserDialog({ enabled: true })
+    try {
+      const fileChooserPromise = new Promise<number>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          unsubscribe()
+          reject(
+            new Error(
+              'File chooser did not open within 3s after clicking the element. Ensure the element triggers a file upload dialog.',
+            ),
+          )
+        }, 3000)
+
+        const unsubscribe = session.Page.on(
+          'fileChooserOpened',
+          (event) => {
+            clearTimeout(timeout)
+            unsubscribe()
+            resolve(event.backendNodeId ?? element)
+          },
+        )
+      })
+
+      await this.click(page, element)
+      const fileInputNodeId = await fileChooserPromise
+      await session.DOM.setFileInputFiles({
+        files,
+        backendNodeId: fileInputNodeId,
+      })
+    } finally {
+      await session.Page.setInterceptFileChooserDialog({ enabled: false })
+    }
   }
 
   // --- File operations ---
