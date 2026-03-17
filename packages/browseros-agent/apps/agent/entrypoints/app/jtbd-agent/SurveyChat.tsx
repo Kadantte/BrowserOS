@@ -81,6 +81,7 @@ export const Chat: FC<Props> = ({
   }, [messagesLength])
 
   // Insert transcript into input when transcription completes
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only trigger on transcript/transcribing change
   useEffect(() => {
     if (voice.transcript && !voice.isTranscribing) {
       setInput((prev) => {
@@ -89,7 +90,7 @@ export const Chat: FC<Props> = ({
       })
       voice.clearTranscript()
     }
-  }, [voice])
+  }, [voice.transcript, voice.isTranscribing])
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()

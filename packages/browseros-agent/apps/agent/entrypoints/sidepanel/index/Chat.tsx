@@ -174,9 +174,13 @@ export const Chat = () => {
     executeMessage(suggestion)
   }
 
-  const handleStartRecording = () => {
-    track(SIDEPANEL_VOICE_RECORDING_STARTED_EVENT)
-    voice.startRecording()
+  const handleStartRecording = async () => {
+    try {
+      await voice.startRecording()
+      track(SIDEPANEL_VOICE_RECORDING_STARTED_EVENT)
+    } catch {
+      // error surfaced via voice.error state
+    }
   }
 
   const handleStopRecording = async () => {
