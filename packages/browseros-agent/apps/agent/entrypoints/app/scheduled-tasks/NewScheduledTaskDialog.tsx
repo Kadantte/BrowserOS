@@ -116,6 +116,7 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
   const queryValue = form.watch('query')
   const [isRefining, setIsRefining] = useState(false)
   const originalPromptRef = useRef<string | null>(null)
+  const refineRequestIdRef = useRef(0)
 
   // Load providers from storage
   useEffect(() => {
@@ -182,6 +183,7 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
     const currentName = form.getValues('name').trim()
     if (!currentQuery) return
 
+    const requestId = ++refineRequestIdRef.current
     setIsRefining(true)
     originalPromptRef.current = currentQuery
 
@@ -191,13 +193,17 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
         name: currentName || 'Untitled Task',
         providerId: form.getValues('providerId'),
       })
+      if (requestId !== refineRequestIdRef.current) return
       form.setValue('query', refined)
       track(SCHEDULED_TASK_PROMPT_REFINED_EVENT)
     } catch {
+      if (requestId !== refineRequestIdRef.current) return
       toast.error('Failed to rewrite prompt. Please try again.')
       originalPromptRef.current = null
     } finally {
-      setIsRefining(false)
+      if (requestId === refineRequestIdRef.current) {
+        setIsRefining(false)
+      }
     }
   }
 
