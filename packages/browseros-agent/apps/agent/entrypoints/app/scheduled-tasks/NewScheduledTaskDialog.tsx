@@ -1,7 +1,7 @@
 import { zodResolver } from '@hookform/resolvers/zod'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, Loader2, Sparkles, Undo2 } from 'lucide-react'
 import type { FC } from 'react'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useForm } from 'react-hook-form'
 import { z } from 'zod/v3'
 import { ChatProviderSelector } from '@/components/chat/ChatProviderSelector'
@@ -40,6 +40,10 @@ import {
   providersStorage,
 } from '@/lib/llm-providers/storage'
 import type { LlmProviderConfig, ProviderType } from '@/lib/llm-providers/types'
+import { SCHEDULED_TASK_PROMPT_REFINED_EVENT } from '@/lib/constants/analyticsEvents'
+import { track } from '@/lib/metrics/track'
+import { refinePrompt } from '@/lib/schedules/refinePrompt'
+import { toast } from 'sonner'
 import type { ScheduledJob } from './types'
 
 const formSchema = z
@@ -109,6 +113,9 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
 
   const scheduleType = form.watch('scheduleType')
   const selectedProviderId = form.watch('providerId')
+  const queryValue = form.watch('query')
+  const [isRefining, setIsRefining] = useState(false)
+  const originalPromptRef = useRef<string | null>(null)
 
   // Load providers from storage
   useEffect(() => {
@@ -168,6 +175,36 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
     type: p.type,
   }))
 
+  const handleRefinePrompt = async () => {
+    const currentQuery = form.getValues('query').trim()
+    const currentName = form.getValues('name').trim()
+    if (!currentQuery) return
+
+    setIsRefining(true)
+    originalPromptRef.current = currentQuery
+
+    try {
+      const refined = await refinePrompt({
+        prompt: currentQuery,
+        name: currentName || 'Untitled Task',
+      })
+      form.setValue('query', refined)
+      track(SCHEDULED_TASK_PROMPT_REFINED_EVENT)
+    } catch {
+      toast.error('Failed to rewrite prompt. Please try again.')
+      originalPromptRef.current = null
+    } finally {
+      setIsRefining(false)
+    }
+  }
+
+  const handleUndoRefine = () => {
+    if (originalPromptRef.current !== null) {
+      form.setValue('query', originalPromptRef.current)
+      originalPromptRef.current = null
+    }
+  }
+
   const onSubmit = (values: FormValues) => {
     onSave({
       name: values.name.trim(),
@@ -218,17 +255,51 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
               name="query"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Prompt</FormLabel>
+                  <div className="flex items-center justify-between">
+                    <FormLabel>Prompt</FormLabel>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-auto gap-1 px-2 py-1 text-xs text-muted-foreground"
+                      disabled={!queryValue?.trim() || isRefining}
+                      onClick={handleRefinePrompt}
+                    >
+                      {isRefining ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {isRefining ? 'Rewriting...' : 'Rewrite with AI'}
+                    </Button>
+                  </div>
                   <FormControl>
                     <Textarea
                       placeholder="What should the agent do? e.g., Check my email and summarize important messages"
                       className="min-h-[100px] resize-none"
                       {...field}
+                      onChange={(e) => {
+                        field.onChange(e)
+                        if (originalPromptRef.current !== null) {
+                          originalPromptRef.current = null
+                        }
+                      }}
                     />
                   </FormControl>
-                  <FormDescription>
-                    The instruction that will be sent to the agent
-                  </FormDescription>
+                  {originalPromptRef.current !== null ? (
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                      onClick={handleUndoRefine}
+                    >
+                      <Undo2 className="h-3 w-3" />
+                      Undo rewrite
+                    </button>
+                  ) : (
+                    <FormDescription>
+                      The instruction that will be sent to the agent
+                    </FormDescription>
+                  )}
                   <FormMessage />
                 </FormItem>
               )}
