@@ -3,6 +3,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
 import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
+import { INLINED_ENV } from '../env'
 import { getSkillsDir } from '../lib/browseros-dir'
 import { logger } from '../lib/logger'
 import type {
@@ -37,9 +38,13 @@ async function saveManifest(manifest: SkillManifest): Promise<void> {
   await writeFile(getManifestPath(), JSON.stringify(manifest, null, 2))
 }
 
+function getCatalogUrl(): string {
+  return INLINED_ENV.SKILLS_CATALOG_URL || EXTERNAL_URLS.SKILLS_CATALOG
+}
+
 export async function fetchRemoteCatalog(): Promise<RemoteSkillCatalog | null> {
   try {
-    const response = await fetch(EXTERNAL_URLS.SKILLS_CATALOG, {
+    const response = await fetch(getCatalogUrl(), {
       signal: AbortSignal.timeout(TIMEOUTS.SKILLS_FETCH),
     })
     if (!response.ok) {
