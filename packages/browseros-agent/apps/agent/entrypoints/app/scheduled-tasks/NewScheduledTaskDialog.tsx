@@ -132,6 +132,7 @@ export const NewScheduledTaskDialog: FC<NewScheduledTaskDialogProps> = ({
   useEffect(() => {
     if (open) {
       originalPromptRef.current = null
+      setIsRefining(false)
       if (initialValues) {
         form.reset({
           name: initialValues.name,
