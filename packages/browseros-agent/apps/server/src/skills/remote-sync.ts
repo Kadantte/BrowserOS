@@ -1,6 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
-import { SKILLS_LIMITS } from '@browseros/shared/constants/limits'
 import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
 import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
 import { INLINED_ENV } from '../env'
@@ -51,14 +50,7 @@ export async function fetchRemoteCatalog(): Promise<RemoteSkillCatalog | null> {
       })
       return null
     }
-    const text = await response.text()
-    if (text.length > SKILLS_LIMITS.MAX_CATALOG_BYTES) {
-      logger.warn('Remote skill catalog response too large', {
-        size: text.length,
-      })
-      return null
-    }
-    const data: unknown = JSON.parse(text)
+    const data: unknown = await response.json()
     if (!isValidCatalog(data)) {
       logger.warn('Remote skill catalog has invalid format')
       return null

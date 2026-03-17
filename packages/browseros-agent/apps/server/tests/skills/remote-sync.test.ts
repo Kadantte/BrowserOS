@@ -102,13 +102,6 @@ describe('fetchRemoteCatalog', () => {
     spy.mockRestore()
   })
 
-  it('returns null for oversized response', async () => {
-    const spy = spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response('x'.repeat(1_100_000), { status: 200 }),
-    )
-    assert.strictEqual(await fetchRemoteCatalog(), null)
-    spy.mockRestore()
-  })
 })
 
 describe('syncRemoteSkills', () => {
