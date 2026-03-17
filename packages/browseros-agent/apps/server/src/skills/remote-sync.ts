@@ -6,6 +6,7 @@ import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
 import { INLINED_ENV } from '../env'
 import { getSkillsDir } from '../lib/browseros-dir'
 import { logger } from '../lib/logger'
+import { safeSkillDir } from './service'
 import type {
   ManagedSkillRecord,
   RemoteSkillCatalog,
@@ -13,11 +14,11 @@ import type {
   SkillManifest,
 } from './types'
 
-const MANIFEST_FILE = '.remote-manifest.json'
+export const MANIFEST_FILE = '.remote-manifest.json'
 
 let syncTimer: ReturnType<typeof setInterval> | null = null
 
-function contentHash(content: string): string {
+export function contentHash(content: string): string {
   return createHash('sha256').update(content).digest('hex')
 }
 
@@ -25,16 +26,33 @@ function getManifestPath(): string {
   return join(getSkillsDir(), MANIFEST_FILE)
 }
 
+function isValidManifest(data: unknown): data is SkillManifest {
+  if (typeof data !== 'object' || data === null) return false
+  const d = data as Record<string, unknown>
+  return typeof d.lastSyncedAt === 'string' && typeof d.skills === 'object' && d.skills !== null
+}
+
+function isValidCatalog(data: unknown): data is RemoteSkillCatalog {
+  if (typeof data !== 'object' || data === null) return false
+  const d = data as Record<string, unknown>
+  return typeof d.version === 'number' && Array.isArray(d.skills)
+}
+
 export async function loadManifest(): Promise<SkillManifest> {
   try {
     const raw = await readFile(getManifestPath(), 'utf-8')
-    return JSON.parse(raw) as SkillManifest
+    const parsed: unknown = JSON.parse(raw)
+    if (!isValidManifest(parsed)) {
+      logger.warn('Invalid manifest file, resetting')
+      return { lastSyncedAt: '', skills: {} }
+    }
+    return parsed
   } catch {
     return { lastSyncedAt: '', skills: {} }
   }
 }
 
-async function saveManifest(manifest: SkillManifest): Promise<void> {
+export async function saveManifest(manifest: SkillManifest): Promise<void> {
   await writeFile(getManifestPath(), JSON.stringify(manifest, null, 2))
 }
 
@@ -53,7 +71,12 @@ export async function fetchRemoteCatalog(): Promise<RemoteSkillCatalog | null> {
       })
       return null
     }
-    return (await response.json()) as RemoteSkillCatalog
+    const data: unknown = await response.json()
+    if (!isValidCatalog(data)) {
+      logger.warn('Remote skill catalog has invalid format')
+      return null
+    }
+    return data
   } catch (err) {
     logger.debug('Remote skill catalog unavailable', {
       error: err instanceof Error ? err.message : String(err),
@@ -74,25 +97,23 @@ function isSkillCustomized(
 
 async function readSkillContent(skillId: string): Promise<string | null> {
   try {
-    return await readFile(
-      join(getSkillsDir(), skillId, 'SKILL.md'),
-      'utf-8',
-    )
+    const safeDir = safeSkillDir(skillId)
+    return await readFile(join(safeDir, 'SKILL.md'), 'utf-8')
   } catch {
     return null
   }
 }
 
-async function writeSkillFile(
+export async function writeSkillFile(
   skillId: string,
   content: string,
 ): Promise<void> {
-  const targetDir = join(getSkillsDir(), skillId)
-  await mkdir(targetDir, { recursive: true })
-  await writeFile(join(targetDir, 'SKILL.md'), content)
+  const safeDir = safeSkillDir(skillId)
+  await mkdir(safeDir, { recursive: true })
+  await writeFile(join(safeDir, 'SKILL.md'), content)
 }
 
-async function installSkill(
+export async function installSkill(
   skill: RemoteSkillEntry,
   manifest: SkillManifest,
 ): Promise<void> {
@@ -115,33 +136,39 @@ export async function syncRemoteSkills(): Promise<{
   const manifest = await loadManifest()
 
   for (const remoteSkill of catalog.skills) {
-    const localContent = await readSkillContent(remoteSkill.id)
-    const localRecord: ManagedSkillRecord | undefined =
-      manifest.skills[remoteSkill.id]
+    try {
+      const localContent = await readSkillContent(remoteSkill.id)
+      const localRecord: ManagedSkillRecord | undefined =
+        manifest.skills[remoteSkill.id]
 
-    if (!localContent) {
+      if (!localContent) {
+        await installSkill(remoteSkill, manifest)
+        result.installed++
+        continue
+      }
+
+      if (!localRecord) {
+        result.skipped++
+        continue
+      }
+
+      if (localRecord.version === remoteSkill.version) {
+        continue
+      }
+
+      if (isSkillCustomized(remoteSkill.id, localContent, manifest)) {
+        result.skipped++
+        continue
+      }
+
       await installSkill(remoteSkill, manifest)
-      result.installed++
-      continue
+      result.updated++
+    } catch (err) {
+      logger.warn('Failed to sync skill', {
+        id: remoteSkill.id,
+        error: err instanceof Error ? err.message : String(err),
+      })
     }
-
-    if (!localRecord) {
-      // Skill exists locally but isn't tracked — treat as user-managed
-      result.skipped++
-      continue
-    }
-
-    if (localRecord.version === remoteSkill.version) {
-      continue
-    }
-
-    if (isSkillCustomized(remoteSkill.id, localContent, manifest)) {
-      result.skipped++
-      continue
-    }
-
-    await installSkill(remoteSkill, manifest)
-    result.updated++
   }
 
   manifest.lastSyncedAt = new Date().toISOString()
@@ -159,11 +186,7 @@ export async function seedFromRemote(): Promise<boolean> {
 
   for (const skill of catalog.skills) {
     try {
-      await writeSkillFile(skill.id, skill.content)
-      manifest.skills[skill.id] = {
-        version: skill.version,
-        contentHash: contentHash(skill.content),
-      }
+      await installSkill(skill, manifest)
       seeded++
     } catch (err) {
       logger.warn('Failed to seed remote skill', {
@@ -173,13 +196,13 @@ export async function seedFromRemote(): Promise<boolean> {
     }
   }
 
-  if (seeded > 0) {
-    manifest.lastSyncedAt = new Date().toISOString()
-    await saveManifest(manifest)
-    logger.info(`Seeded ${seeded} skills from remote catalog`)
-  }
+  if (seeded === 0) return false
 
-  return seeded > 0
+  manifest.lastSyncedAt = new Date().toISOString()
+  await saveManifest(manifest)
+  logger.info(`Seeded ${seeded}/${catalog.skills.length} skills from remote catalog`)
+
+  return seeded === catalog.skills.length
 }
 
 export function startSkillSync(): void {
@@ -202,7 +225,6 @@ export function startSkillSync(): void {
     }
   }, TIMEOUTS.SKILLS_SYNC_INTERVAL)
 
-  // Don't block process exit
   syncTimer.unref()
 }
 

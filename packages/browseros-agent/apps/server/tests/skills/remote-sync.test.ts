@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, it, mock, spyOn } from 'bun:test'
 import assert from 'node:assert'
 import { mkdtemp, readFile, rm, writeFile, mkdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import type { RemoteSkillCatalog, SkillManifest } from '../../src/skills/types'
 
 let testDir: string
@@ -79,6 +79,21 @@ describe('loadManifest', () => {
     const loaded = await loadManifest()
     assert.deepStrictEqual(loaded, manifest)
   })
+
+  it('returns empty manifest for invalid JSON', async () => {
+    await writeFile(join(testDir, '.remote-manifest.json'), '{ corrupted }}}')
+    const loaded = await loadManifest()
+    assert.deepStrictEqual(loaded, { lastSyncedAt: '', skills: {} })
+  })
+
+  it('returns empty manifest for wrong shape', async () => {
+    await writeFile(
+      join(testDir, '.remote-manifest.json'),
+      JSON.stringify({ wrong: 'shape' }),
+    )
+    const loaded = await loadManifest()
+    assert.deepStrictEqual(loaded, { lastSyncedAt: '', skills: {} })
+  })
 })
 
 describe('fetchRemoteCatalog', () => {
@@ -112,6 +127,24 @@ describe('fetchRemoteCatalog', () => {
     )
     const result = await fetchRemoteCatalog()
     assert.deepStrictEqual(result, catalog)
+    fetchSpy.mockRestore()
+  })
+
+  it('returns null for invalid catalog shape', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ skills: 'not-an-array' }), { status: 200 }),
+    )
+    const result = await fetchRemoteCatalog()
+    assert.strictEqual(result, null)
+    fetchSpy.mockRestore()
+  })
+
+  it('returns null when skills field is missing', async () => {
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({ version: 1 }), { status: 200 }),
+    )
+    const result = await fetchRemoteCatalog()
+    assert.strictEqual(result, null)
     fetchSpy.mockRestore()
   })
 })
@@ -151,7 +184,6 @@ describe('syncRemoteSkills', () => {
   })
 
   it('updates managed skills when version changes and content is unmodified', async () => {
-    // Set up existing skill and manifest
     await mkdir(join(testDir, 'test-skill'), { recursive: true })
     await writeFile(join(testDir, 'test-skill', 'SKILL.md'), SKILL_CONTENT)
 
@@ -219,7 +251,6 @@ describe('syncRemoteSkills', () => {
     assert.strictEqual(result.skipped, 1)
     assert.strictEqual(result.updated, 0)
 
-    // Content should remain the user's customized version
     const content = await readFile(
       join(testDir, 'test-skill', 'SKILL.md'),
       'utf-8',
@@ -232,7 +263,6 @@ describe('syncRemoteSkills', () => {
   it('skips locally existing skills not in manifest (untracked)', async () => {
     await mkdir(join(testDir, 'my-skill'), { recursive: true })
     await writeFile(join(testDir, 'my-skill', 'SKILL.md'), SKILL_CONTENT)
-    // No manifest entry for my-skill
 
     const catalog = makeCatalog([
       { id: 'my-skill', version: '2.0', content: SKILL_CONTENT_V2 },
@@ -279,6 +309,20 @@ describe('syncRemoteSkills', () => {
 
     fetchSpy.mockRestore()
   })
+
+  it('rejects path traversal in skill ids', async () => {
+    const catalog = makeCatalog([
+      { id: '../../etc/evil', version: '1.0', content: SKILL_CONTENT },
+    ])
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(catalog), { status: 200 }),
+    )
+
+    const result = await syncRemoteSkills()
+    assert.strictEqual(result.installed, 0)
+
+    fetchSpy.mockRestore()
+  })
 })
 
 describe('seedFromRemote', () => {
@@ -319,6 +363,21 @@ describe('seedFromRemote', () => {
 
   it('returns false for empty catalog', async () => {
     const catalog = makeCatalog([])
+    const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify(catalog), { status: 200 }),
+    )
+
+    const result = await seedFromRemote()
+    assert.strictEqual(result, false)
+
+    fetchSpy.mockRestore()
+  })
+
+  it('returns false on partial failure (triggers bundled fallback)', async () => {
+    const catalog = makeCatalog([
+      { id: 'good-skill', version: '1.0', content: SKILL_CONTENT },
+      { id: '../../traversal', version: '1.0', content: 'evil' },
+    ])
     const fetchSpy = spyOn(globalThis, 'fetch').mockResolvedValue(
       new Response(JSON.stringify(catalog), { status: 200 }),
     )
