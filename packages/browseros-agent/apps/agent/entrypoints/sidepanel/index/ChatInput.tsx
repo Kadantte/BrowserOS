@@ -342,10 +342,7 @@ export const ChatInput = forwardRef<ChatInputHandle, ChatInputProps>(
         />
         {voice?.isRecording ? (
           <div
-            className={cn(
-              'flex min-h-[42px] flex-1 items-center justify-center gap-1 rounded-2xl border border-red-500/50 bg-muted/50 px-4 py-2.5',
-              voice ? 'pr-[4.5rem]' : 'pr-11',
-            )}
+            className="flex min-h-[42px] flex-1 items-center justify-center gap-1 rounded-2xl border border-red-500/50 bg-muted/50 px-4 py-2.5 pr-[4.5rem]"
           >
             {voice.audioLevels.map((level, i) => (
               <div
