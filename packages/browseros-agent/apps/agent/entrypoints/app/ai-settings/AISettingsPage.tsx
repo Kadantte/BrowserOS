@@ -31,6 +31,7 @@ import type { LlmProviderConfig } from '@/lib/llm-providers/types'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { useOAuthStatus } from '@/lib/llm-providers/useOAuthStatus'
 import { track } from '@/lib/metrics/track'
+import { ChatGPTProFeatureCard } from './ChatGPTProFeatureCard'
 import { ConfiguredProvidersList } from './ConfiguredProvidersList'
 import {
   DeleteRemoteLlmProviderDocument,
@@ -114,9 +115,12 @@ export const AISettingsPage: FC = () => {
   // OAuth status for ChatGPT Plus/Pro
   const {
     status: chatgptProStatus,
+    isPolling: isChatGPTProPolling,
     startPolling: startChatGPTProPolling,
     disconnect: disconnectChatGPTPro,
   } = useOAuthStatus('chatgpt-pro')
+  const chatgptProProvider = providers.find((p) => p.type === 'chatgpt-pro')
+  const isChatGPTProDefault = defaultProviderId === chatgptProProvider?.id
 
   // Track whether user explicitly started an OAuth flow this session
   const oauthFlowStartedRef = useRef(false)
@@ -327,6 +331,25 @@ export const AISettingsPage: FC = () => {
         defaultProviderId={defaultProviderId}
         onDefaultProviderChange={setDefaultProvider}
         onAddProvider={handleAddProvider}
+      />
+
+      <ChatGPTProFeatureCard
+        provider={chatgptProProvider}
+        email={chatgptProStatus?.email}
+        isAuthenticated={chatgptProStatus?.authenticated === true}
+        isPolling={isChatGPTProPolling}
+        isDefault={isChatGPTProDefault}
+        onConnect={handleStartChatGPTProOAuth}
+        onDisconnect={() => {
+          if (chatgptProProvider) {
+            handleDeleteProvider(chatgptProProvider)
+          }
+        }}
+        onMakeDefault={() => {
+          if (chatgptProProvider) {
+            handleSelectProvider(chatgptProProvider.id)
+          }
+        }}
       />
 
       <ProviderTemplatesSection onUseTemplate={handleUseTemplate} />
