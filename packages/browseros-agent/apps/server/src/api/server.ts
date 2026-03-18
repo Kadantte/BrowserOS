@@ -72,7 +72,6 @@ export async function createHttpServer(config: HttpServerConfig) {
     rateLimiter,
     version,
     browser,
-    controller,
     registry,
   } = config
 
@@ -117,7 +116,7 @@ export async function createHttpServer(config: HttpServerConfig) {
         },
       }),
     )
-    .route('/status', createStatusRoute({ controller }))
+    .route('/status', createStatusRoute())
     .route('/soul', createSoulRoutes())
     .route('/memory', createMemoryRoutes())
     .route('/skills', createSkillsRoutes())

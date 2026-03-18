@@ -12,7 +12,6 @@ export interface AgentContext {
   // Page resolved once at task start (fresh browser has exactly one page)
   initialPageId: number
 
-  // Browser window info (only for controller-based agents, not used by CDP-based single-agent)
   windowId?: number
   tabId?: number
 

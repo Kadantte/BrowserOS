@@ -14,7 +14,6 @@ import {
 } from '@browseros/shared/schemas/browser-context'
 import { LLMConfigSchema } from '@browseros/shared/schemas/llm'
 import { z } from 'zod'
-import type { ControllerBackend } from '../browser/backends/controller'
 import type { Browser } from '../browser/browser'
 import type { RateLimiter } from '../lib/rate-limiter/rate-limiter'
 import type { ToolRegistry } from '../tools/tool-registry'
@@ -86,7 +85,6 @@ export interface HttpServerConfig {
 
   version: string
   browser: Browser
-  controller: ControllerBackend
   registry: ToolRegistry
 
   browserosId?: string

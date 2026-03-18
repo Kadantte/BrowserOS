@@ -14,7 +14,7 @@
  * Each worker gets isolated ports: base + workerIndex offset.
  */
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Subprocess, spawn, spawnSync } from 'bun'
@@ -32,25 +32,21 @@ const MONOREPO_ROOT = join(
 
 const BROWSEROS_BINARY = '/Applications/BrowserOS.app/Contents/MacOS/BrowserOS'
 
-const CONTROLLER_EXT_DIR = join(MONOREPO_ROOT, 'apps/controller-ext/dist')
-
 export class BrowserOSAppManager {
   private ports: EvalPorts
   private chromeProc: Subprocess | null = null
   private serverProc: Subprocess | null = null
   private tempDir: string | null = null
   private readonly workerIndex: number
-  private readonly loadExtensions: boolean
   private readonly headless: boolean
 
   constructor(
     workerIndex: number = 0,
     basePorts?: EvalPorts,
-    loadExtensions: boolean = false,
+    _loadExtensions: boolean = false,
     headless: boolean = false,
   ) {
     this.workerIndex = workerIndex
-    this.loadExtensions = loadExtensions
     this.headless = headless
     const base = basePorts ?? { cdp: 9010, server: 9110, extension: 9310 }
     this.ports = {
@@ -66,24 +62,6 @@ export class BrowserOSAppManager {
 
   getPorts(): EvalPorts {
     return this.ports
-  }
-
-  /**
-   * Build extensions (call once before starting workers).
-   * Builds controller-ext — same as start.ts buildExtension('controller-ext', 'build:ext')
-   */
-  static buildExtensions(): void {
-    console.log(`[BROWSEROS] Building controller extension...`)
-    const result = spawnSync({
-      cmd: ['bun', 'run', 'build:ext'],
-      cwd: MONOREPO_ROOT,
-      stdout: 'inherit',
-      stderr: 'inherit',
-    })
-    if (result.exitCode !== 0) {
-      throw new Error('Failed to build controller extension')
-    }
-    console.log(`[BROWSEROS] Controller extension built`)
   }
 
   /**
@@ -123,7 +101,7 @@ export class BrowserOSAppManager {
    *   --disable-browseros-extensions  (we load them explicitly if needed)
    *   --remote-debugging-port, --browseros-mcp-port, --browseros-extension-port
    *   --user-data-dir (unique per worker)
-   *   --load-extension (optional, controller-ext)
+   *   --load-extension (optional)
    */
   private async startAll(): Promise<void> {
     const { cdp, server, extension } = this.ports
@@ -151,10 +129,6 @@ export class BrowserOSAppManager {
       `--browseros-extension-port=${extension}`,
       `--user-data-dir=${this.tempDir}`,
     ]
-
-    if (this.loadExtensions && existsSync(CONTROLLER_EXT_DIR)) {
-      chromeArgs.push(`--load-extension=${CONTROLLER_EXT_DIR}`)
-    }
 
     chromeArgs.push('about:blank')
 

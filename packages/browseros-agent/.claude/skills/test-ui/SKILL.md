@@ -32,7 +32,6 @@ This single command handles everything:
 - Builds the Go dev CLI tool
 - Picks random available ports (avoids conflicts)
 - Creates a fresh browser profile
-- Builds controller-ext
 - Runs GraphQL codegen if `apps/agent/generated/graphql/` doesn't exist
 - Starts the agent extension with WXT HMR (hot module replacement)
 - Waits for CDP to be ready

@@ -14,7 +14,6 @@ function extractTabId(toolPart: ToolUIPart | null): number | undefined {
   )?.output
   if (output?.metadata?.tabId) return output.metadata.tabId
 
-  // Legacy controller tools: tabId in input
   const input = (toolPart as ToolUIPart & { input?: { tabId?: number } })?.input
   return input?.tabId
 }

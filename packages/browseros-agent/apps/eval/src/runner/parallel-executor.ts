@@ -87,12 +87,6 @@ export class ParallelExecutor {
 
     const cleanup = this.setupSignalHandlers()
 
-    // Build extensions once if needed (shared across workers)
-    const loadExtensions = this.config.config.browseros.load_extensions ?? false
-    if (loadExtensions) {
-      BrowserOSAppManager.buildExtensions()
-    }
-
     this.queue = new TaskQueue(tasks)
     const totalTasks = tasks.length
 
@@ -100,7 +94,7 @@ export class ParallelExecutor {
       const queue = this.queue
       // Launch N workers in parallel — each gets its own Chrome + Server
       const workers = Array.from({ length: this.numWorkers }, (_, i) =>
-        this.runWorker(i, queue, totalTasks, loadExtensions, onProgress),
+        this.runWorker(i, queue, totalTasks, onProgress),
       )
       await Promise.all(workers)
 
@@ -127,7 +121,6 @@ export class ParallelExecutor {
     workerIndex: number,
     queue: TaskQueue,
     totalTasks: number,
-    loadExtensions: boolean,
     onProgress?: ProgressCallback,
   ): Promise<void> {
     // Per-worker isolated ports
@@ -140,7 +133,7 @@ export class ParallelExecutor {
     const appManager = new BrowserOSAppManager(
       workerIndex,
       basePorts,
-      loadExtensions,
+      false,
       headless,
     )
     this.appManagers.set(workerIndex, appManager)
