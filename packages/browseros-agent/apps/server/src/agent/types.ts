@@ -31,6 +31,8 @@ export interface ResolvedAgentConfig {
   secretAccessKey?: string
   sessionToken?: string
   accountId?: string
+  reasoningEffort?: string
+  reasoningSummary?: string
   contextWindowSize?: number
   userSystemPrompt?: string
   workingDir: string

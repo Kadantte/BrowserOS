@@ -205,8 +205,10 @@ export class AiSdkAgent {
         providerOptions: {
           openai: {
             store: false,
-            reasoningEffort: 'high',
-            reasoningSummary: 'auto',
+            reasoningEffort:
+              config.resolvedConfig.reasoningEffort || 'high',
+            reasoningSummary:
+              config.resolvedConfig.reasoningSummary || 'auto',
             include: ['reasoning.encrypted_content'],
           },
         },
