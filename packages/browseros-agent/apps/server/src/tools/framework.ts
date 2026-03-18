@@ -74,8 +74,12 @@ export async function executeTool(
 
   const result = await response.build(ctx.browser)
 
-  // TODO: nikhil -- maybe add to tool context instead of ugly args casting
-  const pageId = (args as Record<string, unknown>).page
+  // Resolve tabId for the page this tool operated on.
+  // First check the `page` input param (tools that act on existing pages),
+  // then fall back to `structuredContent.pageId` (tools that create new pages
+  // like new_page / new_hidden_page).
+  const pageId =
+    (args as Record<string, unknown>).page ?? result.structuredContent?.pageId
   if (typeof pageId === 'number') {
     const tabId = ctx.browser.getTabIdForPage(pageId)
     if (tabId !== undefined) {

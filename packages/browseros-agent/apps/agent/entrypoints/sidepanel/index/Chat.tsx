@@ -42,6 +42,7 @@ export const Chat = () => {
     disliked,
     onClickDislike,
     isRestoringConversation,
+    isFollowing,
   } = useChatSessionContext()
 
   const {
@@ -202,7 +203,7 @@ export const Chat = () => {
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : messages.length === 0 ? (
+        ) : messages.length === 0 && !isFollowing ? (
           <ChatEmptyState
             mode={mode}
             mounted={mounted}
@@ -227,19 +228,36 @@ export const Chat = () => {
         {chatError && <ChatError error={chatError} />}
       </main>
 
-      <ChatFooter
-        mode={mode}
-        onModeChange={handleModeChange}
-        input={input}
-        onInputChange={setInput}
-        onSubmit={handleSubmit}
-        status={status}
-        onStop={handleStop}
-        attachedTabs={attachedTabs}
-        onToggleTab={toggleTabSelection}
-        onRemoveTab={removeTab}
-        voice={voiceState}
-      />
+      {isFollowing ? (
+        <footer className="border-border/40 border-t bg-background/80 backdrop-blur-md">
+          <div className="flex items-center justify-between p-3">
+            <span className="text-muted-foreground text-sm">
+              Following active task...
+            </span>
+            <button
+              type="button"
+              onClick={handleStop}
+              className="cursor-pointer rounded-full bg-red-600 px-3 py-1.5 font-medium text-white text-xs shadow-sm transition-all duration-200 hover:bg-red-900"
+            >
+              Stop
+            </button>
+          </div>
+        </footer>
+      ) : (
+        <ChatFooter
+          mode={mode}
+          onModeChange={handleModeChange}
+          input={input}
+          onInputChange={setInput}
+          onSubmit={handleSubmit}
+          status={status}
+          onStop={handleStop}
+          attachedTabs={attachedTabs}
+          onToggleTab={toggleTabSelection}
+          onRemoveTab={removeTab}
+          voice={voiceState}
+        />
+      )}
     </>
   )
 }

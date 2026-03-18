@@ -1,3 +1,4 @@
+import { activeStreamsStorage } from '@/lib/active-stream/active-stream-storage'
 import { sessionStorage } from '@/lib/auth/sessionStorage'
 import { Capabilities } from '@/lib/browseros/capabilities'
 import { getHealthCheckUrl, getMcpServerUrl } from '@/lib/browseros/helpers'
@@ -91,6 +92,31 @@ export default defineBackground(() => {
         timestamp: Date.now(),
       })
     }
+  })
+
+  // Auto-open side panel on tabs the agent interacts with during streaming.
+  // Iterates all active streams (supports parallel execution) and opens
+  // side panels on followerTabIds extracted from tool output metadata.
+  const openedFollowerTabs = new Set<number>()
+  activeStreamsStorage.watch(async (map) => {
+    if (!map || Object.keys(map).length === 0) {
+      openedFollowerTabs.clear()
+      return
+    }
+    for (const state of Object.values(map)) {
+      const isActive =
+        state.status === 'streaming' || state.status === 'submitted'
+      if (!isActive || !state.followerTabIds?.length) continue
+
+      for (const tabId of state.followerTabIds) {
+        if (openedFollowerTabs.has(tabId)) continue
+        openedFollowerTabs.add(tabId)
+        openSidePanel(tabId).catch(() => {})
+      }
+    }
+  })
+  chrome.tabs.onRemoved.addListener((tabId) => {
+    openedFollowerTabs.delete(tabId)
   })
 
   sessionStorage.watch(async (newSession) => {

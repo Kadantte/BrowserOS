@@ -1,10 +1,17 @@
 import { useChat } from '@ai-sdk/react'
-import { DefaultChatTransport, type UIMessage } from 'ai'
+import { type ChatStatus, DefaultChatTransport, type UIMessage } from 'ai'
 import { compact } from 'es-toolkit/array'
 import { useEffect, useRef, useState } from 'react'
 import { useSearchParams } from 'react-router'
 import useDeepCompareEffect from 'use-deep-compare-effect'
 import type { Provider } from '@/components/chat/chatComponentTypes'
+import {
+  activeStreamsStorage,
+  clearActiveStream,
+  extractToolTabIds,
+  findStreamForTab,
+  setActiveStream,
+} from '@/lib/active-stream/active-stream-storage'
 import { Capabilities, Feature } from '@/lib/browseros/capabilities'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
 import type { ChatAction } from '@/lib/chat-actions/types'
@@ -128,6 +135,26 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   useEffect(() => {
     conversationIdRef.current = conversationId
   }, [conversationId])
+
+  // Multi-tab stream sync: leader broadcasts, followers display
+  const isLeaderRef = useRef(false)
+  const isFollowingRef = useRef(false)
+  const ownTabIdRef = useRef<number | undefined>()
+  // When user resets on a follower, opt out so it doesn't re-enter following
+  const optedOutRef = useRef(false)
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [followedMessages, setFollowedMessages] = useState<UIMessage[]>([])
+  const [followedStatus, setFollowedStatus] = useState<ChatStatus>('ready')
+
+  // Resolve own tab ID on mount so follower can check if it's an agent-opened tab
+  useEffect(() => {
+    chrome.tabs
+      .query({ active: true, currentWindow: true })
+      .then((tabs) => {
+        ownTabIdRef.current = tabs[0]?.id
+      })
+      .catch(() => {})
+  }, [])
 
   const onClickLike = (messageId: string) => {
     const { responseText, queryText } = getResponseAndQueryFromMessageId(
@@ -335,10 +362,110 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   }, [messages, status, setMessages])
 
   useNotifyActiveTab({
-    messages,
-    status,
+    messages: isFollowing ? followedMessages : messages,
+    status: isFollowing ? followedStatus : status,
     conversationId: conversationIdRef.current,
   })
+
+  // Leader: broadcast stream state to shared storage (debounced)
+  const writeTimeoutRef = useRef<ReturnType<typeof setTimeout>>()
+  useEffect(() => {
+    if (!isLeaderRef.current) return
+
+    const isStreaming = status === 'streaming' || status === 'submitted'
+    const isFinished = status === 'ready' || status === 'error'
+    const followerTabIds = extractToolTabIds(messages)
+
+    if (isStreaming) {
+      clearTimeout(writeTimeoutRef.current)
+      writeTimeoutRef.current = setTimeout(() => {
+        setActiveStream({
+          conversationId,
+          messages,
+          status,
+          lastUpdated: Date.now(),
+          followerTabIds,
+        })
+      }, 300)
+      return () => clearTimeout(writeTimeoutRef.current)
+    }
+
+    if (isFinished && messages.length > 0) {
+      clearTimeout(writeTimeoutRef.current)
+      setActiveStream({
+        conversationId,
+        messages,
+        status,
+        lastUpdated: Date.now(),
+        followerTabIds,
+      })
+      isLeaderRef.current = false
+      // Clean up after followers have had time to read the final state
+      setTimeout(() => {
+        clearActiveStream(conversationId)
+      }, 2000)
+    }
+  }, [messages, status, conversationId])
+
+  // Follower: watch for active streams from other panels.
+  // Searches all active streams (supports parallel agents) to find one
+  // whose followerTabIds includes this panel's tab.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only set up once on mount
+  useEffect(() => {
+    const STALE_THRESHOLD_MS = 10_000
+
+    const handleStreamsMap = (
+      map: Awaited<ReturnType<typeof activeStreamsStorage.getValue>>,
+    ) => {
+      if (isLeaderRef.current || optedOutRef.current) return
+
+      const ownTabId = ownTabIdRef.current
+      if (ownTabId === undefined) return
+
+      const state = findStreamForTab(map, ownTabId)
+
+      if (!state) {
+        if (isFollowingRef.current) {
+          isFollowingRef.current = false
+          setIsFollowing(false)
+        }
+        return
+      }
+
+      const isActive =
+        state.status === 'streaming' || state.status === 'submitted'
+
+      // Detect stale leader (e.g. leader tab was closed mid-stream)
+      if (isActive && Date.now() - state.lastUpdated > STALE_THRESHOLD_MS) {
+        if (isFollowingRef.current) {
+          isFollowingRef.current = false
+          setIsFollowing(false)
+        }
+        return
+      }
+
+      if (isActive) {
+        isFollowingRef.current = true
+        setIsFollowing(true)
+        setFollowedMessages(state.messages)
+        setFollowedStatus(state.status)
+        setConversationId(
+          state.conversationId as ReturnType<typeof crypto.randomUUID>,
+        )
+      } else if (state.status === 'ready' && isFollowingRef.current) {
+        isFollowingRef.current = false
+        setIsFollowing(false)
+        setMessages(state.messages)
+        setConversationId(
+          state.conversationId as ReturnType<typeof crypto.randomUUID>,
+        )
+      }
+    }
+
+    activeStreamsStorage.getValue().then(handleStreamsMap)
+    const unwatch = activeStreamsStorage.watch(handleStreamsMap)
+    return unwatch
+  }, [])
 
   const {
     data: remoteConversationData,
@@ -452,6 +579,11 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   }, [isIntegrationsSynced, baseSendMessage])
 
   const sendMessage = (params: { text: string; action?: ChatAction }) => {
+    isLeaderRef.current = true
+    isFollowingRef.current = false
+    optedOutRef.current = false
+    setIsFollowing(false)
+
     track(MESSAGE_SENT_EVENT, {
       mode,
       provider_type: selectedLlmProvider?.type,
@@ -518,6 +650,14 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   const resetConversation = () => {
     track(CONVERSATION_RESET_EVENT, { message_count: messages.length })
     stop()
+    if (isLeaderRef.current) {
+      clearActiveStream(conversationIdRef.current)
+      isLeaderRef.current = false
+    }
+    isFollowingRef.current = false
+    optedOutRef.current = true
+    setIsFollowing(false)
+    setFollowedMessages([])
     setConversationId(crypto.randomUUID())
     setMessages([])
     setTextToAction(new Map())
@@ -530,18 +670,26 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   const isRestoringConversation =
     !!conversationIdParam && restoredConversationId !== conversationIdParam
 
+  const stopFollowedStream = () => {
+    stopAgentStorage.setValue({
+      conversationId: conversationIdRef.current,
+      timestamp: Date.now(),
+    })
+  }
+
   return {
     mode,
     setMode,
-    messages,
+    messages: isFollowing ? followedMessages : messages,
     sendMessage,
-    status,
-    stop,
+    status: isFollowing ? followedStatus : status,
+    stop: isFollowing ? stopFollowedStream : stop,
     providers,
     selectedProvider,
     isLoading: isLoadingProviders || isLoadingAgentUrl,
     isSyncing: !isIntegrationsSynced,
     isRestoringConversation,
+    isFollowing,
     agentUrlError,
     chatError,
     handleSelectProvider,
