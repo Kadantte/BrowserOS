@@ -398,6 +398,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   // Follower: if this panel opened with no messages and there's an active
   // stream, follow it. Background only opens side panels on agent-interacted
   // tabs, so any fresh panel during streaming is a follower.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: must run once — re-runs tear down the watcher
   useEffect(() => {
     const STALE_THRESHOLD_MS = 10_000
     let staleCheckTimer: ReturnType<typeof setTimeout> | undefined
@@ -465,11 +466,13 @@ export const useChatSession = (options?: ChatSessionOptions) => {
       staleCheckTimer = setTimeout(check, STALE_THRESHOLD_MS + 500)
     }
 
-    // Only auto-follow if this panel has no conversation
+    // Only auto-follow if this panel has no conversation of its own
     if (messagesRef.current.length === 0) {
       check()
     }
 
+    // Watch all storage changes — the watcher calls check() which
+    // handles both entering and updating follower mode
     const unwatchStreams = watchActiveStreams(() => {
       if (isFollowingRef.current || messagesRef.current.length === 0) {
         check()
@@ -480,7 +483,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
       unwatchStreams()
       clearTimeout(staleCheckTimer)
     }
-  }, [setMessages])
+  }, [])
 
   const {
     data: remoteConversationData,
