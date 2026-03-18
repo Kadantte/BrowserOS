@@ -90,9 +90,9 @@ async function scanDir(
     }
 
     const skill = await parseSkillFile(skillMdPath, entry, builtIn)
-    if (!skill || seen.has(skill.name)) continue
+    if (!skill || seen.has(skill.id)) continue
 
-    seen.add(skill.name)
+    seen.add(skill.id)
     skills.push(skill)
   }
 

@@ -85,11 +85,17 @@ async function writeSkillFile(skillId: string, content: string): Promise<void> {
 async function applyEnabled(skillId: string, enabled: string): Promise<void> {
   const filePath = join(safeBuiltinSkillDir(skillId), 'SKILL.md')
   let content = await readFile(filePath, 'utf-8')
-  content = content.replace(
+  const updated = content.replace(
     /^(\s*enabled:\s*)["']?(?:true|false)["']?/m,
     `$1"${enabled}"`,
   )
-  await writeFile(filePath, content)
+  if (updated === content) {
+    logger.warn('Could not apply enabled state — no enabled field found', {
+      id: skillId,
+    })
+    return
+  }
+  await writeFile(filePath, updated)
 }
 
 async function skillExistsLocally(skillId: string): Promise<boolean> {
