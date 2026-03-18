@@ -16,6 +16,8 @@ export type SkillFrontmatter = {
   'allowed-tools'?: string
 }
 
+export type SkillSource = 'system' | 'user'
+
 export type SkillMeta = {
   id: string
   name: string
@@ -23,6 +25,7 @@ export type SkillMeta = {
   location: string
   enabled: boolean
   version?: string
+  source: SkillSource
 }
 
 export type SkillDetail = SkillMeta & {
@@ -49,4 +52,3 @@ export type RemoteSkillCatalog = {
   version: number
   skills: RemoteSkillEntry[]
 }
-

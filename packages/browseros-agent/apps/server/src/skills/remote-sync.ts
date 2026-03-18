@@ -2,8 +2,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
 import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
+import matter from 'gray-matter'
 import { INLINED_ENV } from '../env'
-import { getSkillsDir } from '../lib/browseros-dir'
 import { logger } from '../lib/logger'
 import { safeSkillDir } from './service'
 import type { RemoteSkillCatalog, RemoteSkillEntry } from './types'
@@ -74,6 +74,36 @@ async function getLocalVersion(skillId: string): Promise<string | null> {
   }
 }
 
+async function getLocalEnabledState(skillId: string): Promise<string | null> {
+  try {
+    const safeDir = safeSkillDir(skillId)
+    const content = await readFile(join(safeDir, 'SKILL.md'), 'utf-8')
+    const { data } = matter(content)
+    const meta = data?.metadata as Record<string, string> | undefined
+    return meta?.enabled ?? null
+  } catch {
+    return null
+  }
+}
+
+export function ensureSystemSource(content: string): string {
+  const parsed = matter(content)
+  const data = parsed.data as Record<string, unknown>
+  const meta = (data.metadata ?? {}) as Record<string, string>
+  meta.source = 'system'
+  data.metadata = meta
+  return matter.stringify(parsed.content, data)
+}
+
+function setEnabledState(content: string, enabled: string): string {
+  const parsed = matter(content)
+  const data = parsed.data as Record<string, unknown>
+  const meta = (data.metadata ?? {}) as Record<string, string>
+  meta.enabled = enabled
+  data.metadata = meta
+  return matter.stringify(parsed.content, data)
+}
+
 export async function writeSkillFile(
   skillId: string,
   content: string,
@@ -94,9 +124,10 @@ export async function syncRemoteSkills(): Promise<{
   for (const remoteSkill of catalog.skills) {
     try {
       const localVersion = await getLocalVersion(remoteSkill.id)
+      let content = ensureSystemSource(remoteSkill.content)
 
       if (!localVersion) {
-        await writeSkillFile(remoteSkill.id, remoteSkill.content)
+        await writeSkillFile(remoteSkill.id, content)
         result.installed++
         continue
       }
@@ -105,7 +136,12 @@ export async function syncRemoteSkills(): Promise<{
         continue
       }
 
-      await writeSkillFile(remoteSkill.id, remoteSkill.content)
+      const localEnabled = await getLocalEnabledState(remoteSkill.id)
+      if (localEnabled === 'false') {
+        content = setEnabledState(content, 'false')
+      }
+
+      await writeSkillFile(remoteSkill.id, content)
       result.updated++
     } catch (err) {
       logger.warn('Failed to sync skill', {
@@ -126,7 +162,8 @@ export async function seedFromRemote(): Promise<boolean> {
 
   for (const skill of catalog.skills) {
     try {
-      await writeSkillFile(skill.id, skill.content)
+      const content = ensureSystemSource(skill.content)
+      await writeSkillFile(skill.id, content)
       seeded++
     } catch (err) {
       logger.warn('Failed to seed remote skill', {
@@ -137,7 +174,9 @@ export async function seedFromRemote(): Promise<boolean> {
   }
 
   if (seeded > 0) {
-    logger.info(`Seeded ${seeded}/${catalog.skills.length} skills from remote catalog`)
+    logger.info(
+      `Seeded ${seeded}/${catalog.skills.length} skills from remote catalog`,
+    )
   }
 
   return seeded === catalog.skills.length

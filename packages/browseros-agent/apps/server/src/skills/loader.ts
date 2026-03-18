@@ -2,7 +2,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import matter from 'gray-matter'
 import { logger } from '../lib/logger'
-import type { SkillFrontmatter, SkillMeta } from './types'
+import type { SkillFrontmatter, SkillMeta, SkillSource } from './types'
 
 async function isDirectory(dirPath: string): Promise<boolean> {
   try {
@@ -41,6 +41,7 @@ async function parseSkillFile(
     }
 
     const meta = data.metadata
+    const source: SkillSource = meta?.source === 'system' ? 'system' : 'user'
     return {
       id: dirName,
       name: meta?.['display-name'] || data.name,
@@ -48,6 +49,7 @@ async function parseSkillFile(
       location: skillMdPath,
       enabled: meta?.enabled !== 'false',
       version: meta?.version,
+      source,
     }
   } catch (err) {
     logger.warn('Failed to parse skill', {

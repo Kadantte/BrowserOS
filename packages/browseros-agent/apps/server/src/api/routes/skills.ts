@@ -58,7 +58,11 @@ export function createSkillsRoutes() {
         return c.json({ ok: true })
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'Failed to delete'
-        const status = msg.includes('not found') ? 404 : 500
+        const status = msg.includes('not found')
+          ? 404
+          : msg.includes('Cannot delete system')
+            ? 403
+            : 500
         return c.json({ error: msg }, status)
       }
     })

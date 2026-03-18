@@ -53,6 +53,8 @@ export const SkillsPage: FC = () => {
   const [editingSkill, setEditingSkill] = useState<SkillDetail | null>(null)
   const [skillToDelete, setSkillToDelete] = useState<SkillMeta | null>(null)
 
+  const userSkills = skills.filter((s) => s.source !== 'system')
+  const systemSkills = skills.filter((s) => s.source === 'system')
   const enabledCount = skills.filter((skill) => skill.enabled).length
 
   const handleCreate = () => {
@@ -108,16 +110,30 @@ export const SkillsPage: FC = () => {
       ) : null}
 
       {!isLoading && !error && skills.length > 0 ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {skills.map((skill) => (
-            <SkillCard
-              key={skill.id}
-              skill={skill}
-              onEdit={() => handleEdit(skill)}
-              onDelete={() => setSkillToDelete(skill)}
-              onToggle={(enabled) => handleToggle(skill, enabled)}
+        <div className="space-y-8">
+          <SkillsSection
+            title="My Skills"
+            subtitle="Custom skills you've created"
+            skills={userSkills}
+            showDelete
+            onEdit={handleEdit}
+            onDelete={setSkillToDelete}
+            onToggle={handleToggle}
+            emptyMessage={
+              'No custom skills yet. Click "New Skill" to create one.'
+            }
+          />
+
+          {systemSkills.length > 0 ? (
+            <SkillsSection
+              title="System Skills"
+              subtitle="Built-in skills provided by BrowserOS"
+              skills={systemSkills}
+              onEdit={handleEdit}
+              onDelete={setSkillToDelete}
+              onToggle={handleToggle}
             />
-          ))}
+          ) : null}
         </div>
       ) : null}
 
@@ -251,12 +267,58 @@ const EmptyState: FC<{ onCreateClick: () => void }> = ({ onCreateClick }) => (
   </Card>
 )
 
+const SkillsSection: FC<{
+  title: string
+  subtitle: string
+  skills: SkillMeta[]
+  showDelete?: boolean
+  onEdit: (skill: SkillMeta) => void
+  onDelete: (skill: SkillMeta) => void
+  onToggle: (skill: SkillMeta, enabled: boolean) => void
+  emptyMessage?: string
+}> = ({
+  title,
+  subtitle,
+  skills,
+  showDelete,
+  onEdit,
+  onDelete,
+  onToggle,
+  emptyMessage,
+}) => (
+  <div className="space-y-3">
+    <div>
+      <h2 className="font-semibold text-sm">{title}</h2>
+      <p className="text-muted-foreground text-xs">{subtitle}</p>
+    </div>
+    {skills.length === 0 && emptyMessage ? (
+      <p className="py-4 text-center text-muted-foreground text-sm">
+        {emptyMessage}
+      </p>
+    ) : (
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        {skills.map((skill) => (
+          <SkillCard
+            key={skill.id}
+            skill={skill}
+            showDelete={showDelete}
+            onEdit={() => onEdit(skill)}
+            onDelete={() => onDelete(skill)}
+            onToggle={(enabled) => onToggle(skill, enabled)}
+          />
+        ))}
+      </div>
+    )}
+  </div>
+)
+
 const SkillCard: FC<{
   skill: SkillMeta
+  showDelete?: boolean
   onEdit: () => void
   onDelete: () => void
   onToggle: (enabled: boolean) => void
-}> = ({ skill, onEdit, onDelete, onToggle }) => (
+}> = ({ skill, showDelete, onEdit, onDelete, onToggle }) => (
   <Card className="h-full py-0 shadow-sm">
     <CardContent className="flex h-full flex-col p-4">
       <div className="flex items-start justify-between gap-3">
@@ -284,15 +346,17 @@ const SkillCard: FC<{
           <Pencil className="size-3.5" />
           Edit
         </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          onClick={onDelete}
-          className="size-7 text-muted-foreground hover:bg-transparent hover:text-destructive"
-          aria-label={`Delete ${skill.name}`}
-        >
-          <Trash2 className="size-4" />
-        </Button>
+        {showDelete ? (
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            onClick={onDelete}
+            className="size-7 text-muted-foreground hover:bg-transparent hover:text-destructive"
+            aria-label={`Delete ${skill.name}`}
+          >
+            <Trash2 className="size-4" />
+          </Button>
+        ) : null}
       </div>
     </CardContent>
   </Card>

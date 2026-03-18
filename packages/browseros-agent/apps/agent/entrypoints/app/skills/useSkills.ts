@@ -1,12 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
 
+export type SkillSource = 'system' | 'user'
+
 export type SkillMeta = {
   id: string
   name: string
   description: string
   location: string
   enabled: boolean
+  source: SkillSource
 }
 
 export type SkillDetail = SkillMeta & {

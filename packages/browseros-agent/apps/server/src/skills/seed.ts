@@ -3,7 +3,11 @@ import { join } from 'node:path'
 import { getSkillsDir } from '../lib/browseros-dir'
 import { logger } from '../lib/logger'
 import { DEFAULT_SKILLS } from './defaults'
-import { seedFromRemote, writeSkillFile } from './remote-sync'
+import {
+  ensureSystemSource,
+  seedFromRemote,
+  writeSkillFile,
+} from './remote-sync'
 
 async function hasExistingSkills(skillsDir: string): Promise<boolean> {
   try {
@@ -34,7 +38,8 @@ export async function seedDefaultSkills(): Promise<void> {
   for (const skill of DEFAULT_SKILLS) {
     if (await skillExists(skillsDir, skill.id)) continue
     try {
-      await writeSkillFile(skill.id, skill.content)
+      const content = ensureSystemSource(skill.content)
+      await writeSkillFile(skill.id, content)
       seeded++
     } catch (err) {
       logger.warn('Failed to seed skill', {

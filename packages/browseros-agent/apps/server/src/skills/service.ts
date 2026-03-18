@@ -9,6 +9,7 @@ import type {
   SkillDetail,
   SkillFrontmatter,
   SkillMeta,
+  SkillSource,
   UpdateSkillInput,
 } from './types'
 
@@ -59,6 +60,7 @@ export async function getSkill(id: string): Promise<SkillDetail | null> {
     }
 
     const meta = parsed.data.metadata
+    const source: SkillSource = meta?.source === 'system' ? 'system' : 'user'
     return {
       id,
       name: meta?.['display-name'] || parsed.data.name,
@@ -66,6 +68,7 @@ export async function getSkill(id: string): Promise<SkillDetail | null> {
       location: skillMdPath,
       enabled: meta?.enabled !== 'false',
       version: meta?.version,
+      source,
       content: parsed.content.trim(),
     }
   } catch (err) {
@@ -106,6 +109,7 @@ export async function createSkill(input: CreateSkillInput): Promise<SkillMeta> {
     description: input.description,
     location: join(dirPath, 'SKILL.md'),
     enabled: true,
+    source: 'user',
   }
 }
 
@@ -145,6 +149,8 @@ export async function updateSkill(
 
   await writeFile(skillMdPath, buildSkillMd(frontmatter, content))
 
+  const source: SkillSource =
+    existingMeta.source === 'system' ? 'system' : 'user'
   return {
     id,
     name: displayName,
@@ -152,13 +158,23 @@ export async function updateSkill(
     location: skillMdPath,
     enabled,
     version: existingMeta.version,
+    source,
   }
 }
 
 export async function deleteSkill(id: string): Promise<void> {
   const dirPath = safeSkillDir(id)
-  if (!(await fileExists(join(dirPath, 'SKILL.md')))) {
+  const skillMdPath = join(dirPath, 'SKILL.md')
+  if (!(await fileExists(skillMdPath))) {
     throw new Error(`Skill "${id}" not found`)
   }
+
+  const raw = await readFile(skillMdPath, 'utf-8')
+  const parsed = matter(raw)
+  const meta = parsed.data?.metadata as Record<string, string> | undefined
+  if (meta?.source === 'system') {
+    throw new Error(`Cannot delete system skill "${id}"`)
+  }
+
   await rm(dirPath, { recursive: true })
 }
