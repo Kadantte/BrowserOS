@@ -44,10 +44,13 @@ export function createCodexFetch(accountId?: string) {
         if (!json.instructions) {
           json.instructions = 'You are a helpful assistant.'
         }
-        // Strip item IDs — Codex doesn't persist items when store=false,
-        // so referencing them in subsequent turns causes "item not found" errors
+        // Strip item IDs from messages — Codex doesn't persist items when store=false,
+        // so referencing them in subsequent turns causes "item not found" errors.
+        // Keep IDs on function_call_output items — those are call_ids linking
+        // tool results to their calls (required by the Responses API).
         if (Array.isArray(json.input)) {
           for (const item of json.input) {
+            if (item.type === 'function_call_output') continue
             if ('id' in item) {
               delete item.id
             }
