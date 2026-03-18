@@ -174,9 +174,9 @@ export async function syncBuiltinSkills(): Promise<void> {
     }
 
     if (catalog.skills.length > 0) {
-      const removed = await reconcileRemovedSkills(
-        new Set(catalog.skills.map((s) => s.id)),
-      )
+      const keepIds = new Set(catalog.skills.map((s) => s.id))
+      for (const skill of DEFAULT_SKILLS) keepIds.add(skill.id)
+      const removed = await reconcileRemovedSkills(keepIds)
       if (removed > 0) {
         logger.info(`Removed ${removed} obsolete built-in skills`)
       }
