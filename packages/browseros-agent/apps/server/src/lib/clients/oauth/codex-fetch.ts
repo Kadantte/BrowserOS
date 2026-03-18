@@ -44,6 +44,15 @@ export function createCodexFetch(accountId?: string) {
         if (!json.instructions) {
           json.instructions = 'You are a helpful assistant.'
         }
+        // Strip item IDs — Codex doesn't persist items when store=false,
+        // so referencing them in subsequent turns causes "item not found" errors
+        if (Array.isArray(json.input)) {
+          for (const item of json.input) {
+            if ('id' in item) {
+              delete item.id
+            }
+          }
+        }
         body = JSON.stringify(json)
       } catch (err) {
         logger.warn('Failed to inject Codex-required fields into request body', {
