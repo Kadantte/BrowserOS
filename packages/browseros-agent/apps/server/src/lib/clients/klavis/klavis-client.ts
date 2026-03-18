@@ -28,11 +28,23 @@ export interface UserIntegration {
   isAuthenticated: boolean
 }
 
+interface CachedStrata {
+  response: StrataCreateResponse
+  expiresAt: number
+}
+
 export class KlavisClient {
   private baseUrl: string
+  private strataCache = new Map<string, CachedStrata>()
+  private pendingRequests = new Map<string, Promise<StrataCreateResponse>>()
+  private static STRATA_CACHE_TTL = 5 * 60 * 1000 // 5 minutes
 
   constructor(baseUrl?: string) {
     this.baseUrl = baseUrl || EXTERNAL_URLS.KLAVIS_PROXY
+  }
+
+  private buildStrataCacheKey(userId: string, servers: string[]): string {
+    return `${userId}:${[...servers].sort().join(',')}`
   }
 
   private async request<T>(
@@ -77,18 +89,44 @@ export class KlavisClient {
   }
 
   /**
-   * Create Strata instance with specified servers
-   * Returns strataServerUrl for MCP connection and oauthUrls for authentication
+   * Create Strata instance with specified servers.
+   * Cached by (userId, sorted servers) with 5-min TTL.
+   * Concurrent requests for the same key are deduplicated.
    */
   async createStrata(
     userId: string,
     servers: string[],
   ): Promise<StrataCreateResponse> {
-    return this.request<StrataCreateResponse>(
+    const cacheKey = this.buildStrataCacheKey(userId, servers)
+
+    const cached = this.strataCache.get(cacheKey)
+    if (cached && cached.expiresAt > Date.now()) {
+      return cached.response
+    }
+
+    const pending = this.pendingRequests.get(cacheKey)
+    if (pending) return pending
+
+    const promise = this.request<StrataCreateResponse>(
       'POST',
       '/mcp-server/strata/create',
       { userId, servers },
     )
+      .then((response) => {
+        this.strataCache.set(cacheKey, {
+          response,
+          expiresAt: Date.now() + KlavisClient.STRATA_CACHE_TTL,
+        })
+        this.pendingRequests.delete(cacheKey)
+        return response
+      })
+      .catch((error) => {
+        this.pendingRequests.delete(cacheKey)
+        throw error
+      })
+
+    this.pendingRequests.set(cacheKey, promise)
+    return promise
   }
 
   /**
