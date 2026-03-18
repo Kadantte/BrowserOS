@@ -30,6 +30,7 @@ function parseErrorMessage(message: string): {
   text: string
   url?: string
   isRateLimit?: boolean
+  isCreditsExhausted?: boolean
   isConnectionError?: boolean
 } {
   // Detect MCP server connection failures
@@ -53,6 +54,7 @@ function parseErrorMessage(message: string): {
       text: 'Daily credits exhausted. Credits reset at midnight UTC.',
       url: '/app.html#/settings/usage',
       isRateLimit: true,
+      isCreditsExhausted: true,
     }
   }
 
@@ -82,9 +84,8 @@ function parseErrorMessage(message: string): {
 }
 
 export const ChatError: FC<ChatErrorProps> = ({ error, onRetry }) => {
-  const { text, url, isRateLimit, isConnectionError } = parseErrorMessage(
-    error.message,
-  )
+  const { text, url, isRateLimit, isCreditsExhausted, isConnectionError } =
+    parseErrorMessage(error.message)
 
   // --- Commented out for Kimi partnership launch (restore after) ---
   // const surveyUrl = useMemo(
@@ -140,7 +141,17 @@ export const ChatError: FC<ChatErrorProps> = ({ error, onRetry }) => {
         </p>
       )}
       --- End commented out survey code --- */}
-      {isRateLimit && (
+      {isCreditsExhausted && url && (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-muted-foreground text-xs underline hover:text-foreground"
+        >
+          View Usage & Billing
+        </a>
+      )}
+      {isRateLimit && !isCreditsExhausted && (
         <div className="flex flex-col items-center gap-1">
           <p className="text-muted-foreground text-xs">
             {/* biome-ignore lint/a11y/useValidAnchor: link with click tracking */}

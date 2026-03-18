@@ -1,8 +1,8 @@
-import { Coins } from 'lucide-react'
+import { Clock, Coins, CreditCard, Zap } from 'lucide-react'
 import type { FC } from 'react'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { useCredits } from '@/lib/credits/useCredits'
+import { BrowserOSIcon } from '@/lib/llm-providers/providerIcons'
 import { cn } from '@/lib/utils'
 
 function getCreditColor(credits: number): string {
@@ -34,65 +34,79 @@ export const UsagePage: FC = () => {
 
   return (
     <div className="space-y-6 p-6">
-      <div>
-        <h2 className="font-semibold text-lg">Usage & Billing</h2>
-        <p className="text-muted-foreground text-sm">
-          Monitor your BrowserOS AI credit usage.
-        </p>
+      {/* Header matching AI Settings style */}
+      <div className="flex items-center gap-4 rounded-xl border p-5">
+        <BrowserOSIcon size={40} />
+        <div>
+          <h2 className="font-semibold text-lg">Usage & Billing</h2>
+          <p className="text-muted-foreground text-sm">
+            Monitor your BrowserOS AI credit usage
+          </p>
+        </div>
       </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-base">
-            <Coins className="h-5 w-5" />
-            Credits
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="flex items-baseline gap-2">
-            <span className={cn('font-bold text-3xl', getCreditColor(credits))}>
-              {credits}
-            </span>
-            <span className="text-muted-foreground text-sm">
-              / {total} daily
-            </span>
+      {/* Credits overview */}
+      <div className="rounded-xl border p-5">
+        <div className="mb-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Coins className="h-5 w-5 text-muted-foreground" />
+            <span className="font-semibold text-sm">Daily Credits</span>
           </div>
+          <span className={cn('font-bold text-2xl', getCreditColor(credits))}>
+            {credits}
+            <span className="ml-1 font-normal text-muted-foreground text-sm">
+              / {total}
+            </span>
+          </span>
+        </div>
 
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                'h-full rounded-full transition-all',
-                getProgressColor(credits),
-              )}
-              style={{ width: `${percentage}%` }}
-            />
-          </div>
-
-          <div className="space-y-1 text-muted-foreground text-sm">
-            <p>1 credit per request</p>
-            <p>Resets daily at midnight UTC</p>
-            {data?.lastResetAt && (
-              <p>
-                Last reset: {new Date(data.lastResetAt).toLocaleDateString()}
-              </p>
+        <div className="mb-5 h-2.5 w-full overflow-hidden rounded-full bg-muted">
+          <div
+            className={cn(
+              'h-full rounded-full transition-all duration-500',
+              getProgressColor(credits),
             )}
-          </div>
-        </CardContent>
-      </Card>
+            style={{ width: `${percentage}%` }}
+          />
+        </div>
 
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Need more credits?</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="mb-3 text-muted-foreground text-sm">
-            Additional credit packages will be available soon.
-          </p>
-          <Button variant="outline" disabled>
-            Add Credits (Coming Soon)
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex items-center gap-2.5 rounded-lg bg-muted/50 px-3 py-2.5">
+            <Clock className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="font-medium text-xs">Resets daily</p>
+              <p className="text-muted-foreground text-xs">Midnight UTC</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 rounded-lg bg-muted/50 px-3 py-2.5">
+            <Zap className="h-4 w-4 shrink-0 text-muted-foreground" />
+            <div>
+              <p className="font-medium text-xs">Credits used today</p>
+              <p className="text-muted-foreground text-xs">
+                {total - credits} of {total}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Add credits */}
+      <div className="rounded-xl border p-5">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <CreditCard className="h-5 w-5 text-muted-foreground" />
+            <div>
+              <p className="font-semibold text-sm">Need more credits?</p>
+              <p className="text-muted-foreground text-xs">
+                Additional credit packages coming soon
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" disabled className="opacity-50">
+            Add Credits
           </Button>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   )
 }
