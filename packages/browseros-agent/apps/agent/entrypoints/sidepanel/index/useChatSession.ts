@@ -406,9 +406,22 @@ export const useChatSession = (options?: ChatSessionOptions) => {
       if (isLeaderRef.current || optedOutRef.current) return
 
       const streams = await getAllActiveStreams()
-      const state = streams.find(
+
+      // Find an active stream, or if we're already following, find the
+      // completed stream we were following (to adopt its final messages)
+      const activeStream = streams.find(
         (s) => s.status === 'streaming' || s.status === 'submitted',
       )
+      const completedStream =
+        !activeStream && isFollowingRef.current
+          ? streams.find(
+              (s) =>
+                s.status === 'ready' &&
+                s.conversationId === conversationIdRef.current,
+            )
+          : undefined
+
+      const state = activeStream ?? completedStream
 
       if (!state) {
         if (isFollowingRef.current) {
@@ -419,6 +432,19 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         return
       }
 
+      // Stream completed — adopt final messages and exit follower mode
+      if (state.status === 'ready') {
+        isFollowingRef.current = false
+        setIsFollowing(false)
+        setMessages(state.messages)
+        setConversationId(
+          state.conversationId as ReturnType<typeof crypto.randomUUID>,
+        )
+        clearTimeout(staleCheckTimer)
+        return
+      }
+
+      // Stale leader detection
       if (Date.now() - state.lastUpdated > STALE_THRESHOLD_MS) {
         if (isFollowingRef.current) {
           isFollowingRef.current = false
@@ -454,7 +480,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
       unwatchStreams()
       clearTimeout(staleCheckTimer)
     }
-  }, [])
+  }, [setMessages])
 
   const {
     data: remoteConversationData,
