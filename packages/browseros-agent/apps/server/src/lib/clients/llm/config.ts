@@ -41,5 +41,6 @@ export async function resolveLLMConfig(
     apiKey: llmConfig.apiKey,
     baseUrl: llmConfig.baseUrl,
     upstreamProvider: llmConfig.providerType,
+    browserosId,
   }
 }

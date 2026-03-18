@@ -15,6 +15,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { LLM_PROVIDERS } from '@browseros/shared/schemas/llm'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
 import type { LanguageModel } from 'ai'
+import { createBrowserOSFetch } from '../../browseros-fetch'
 import { logger } from '../../logger'
 import { createOpenRouterCompatibleFetch } from '../../openrouter-fetch'
 import type { ResolvedLLMConfig } from './types'
@@ -89,28 +90,38 @@ function createBedrockModel(config: ResolvedLLMConfig): LanguageModel {
 
 function createBrowserOSModel(config: ResolvedLLMConfig): LanguageModel {
   if (!config.baseUrl) throw new Error('BrowserOS provider requires baseUrl')
-  const { baseUrl, apiKey, model, upstreamProvider } = config
+  const { baseUrl, apiKey, model, upstreamProvider, browserosId } = config
+  const browserosFetch = browserosId
+    ? createBrowserOSFetch(browserosId)
+    : createOpenRouterCompatibleFetch()
 
   if (upstreamProvider === LLM_PROVIDERS.OPENROUTER) {
     return createOpenRouter({
       baseURL: baseUrl,
       ...(apiKey && { apiKey }),
-      fetch: createOpenRouterCompatibleFetch(),
+      fetch: browserosFetch,
     })(model)
   }
   if (upstreamProvider === LLM_PROVIDERS.ANTHROPIC) {
-    return createAnthropic({ baseURL: baseUrl, ...(apiKey && { apiKey }) })(
-      model,
-    )
+    return createAnthropic({
+      baseURL: baseUrl,
+      ...(apiKey && { apiKey }),
+      fetch: browserosFetch,
+    })(model)
   }
   if (upstreamProvider === LLM_PROVIDERS.AZURE) {
-    return createAzure({ baseURL: baseUrl, ...(apiKey && { apiKey }) })(model)
+    return createAzure({
+      baseURL: baseUrl,
+      ...(apiKey && { apiKey }),
+      fetch: browserosFetch,
+    })(model)
   }
   logger.debug('Creating OpenAI-compatible provider for BrowserOS')
   return createOpenAICompatible({
     name: 'browseros',
     baseURL: baseUrl,
     ...(apiKey && { apiKey }),
+    fetch: browserosFetch,
   })(model)
 }
 
