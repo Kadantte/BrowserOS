@@ -8,7 +8,6 @@ import type { Provider } from '@/components/chat/chatComponentTypes'
 import { Capabilities, Feature } from '@/lib/browseros/capabilities'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
 import type { ChatAction } from '@/lib/chat-actions/types'
-import { useInvalidateCredits } from '@/lib/credits/useCredits'
 import {
   CONVERSATION_RESET_EVENT,
   GLOW_STOP_CLICKED_EVENT,
@@ -22,6 +21,7 @@ import {
   useConversations,
 } from '@/lib/conversations/conversationStorage'
 import { formatConversationHistory } from '@/lib/conversations/formatConversationHistory'
+import { useInvalidateCredits } from '@/lib/credits/useCredits'
 import { declinedAppsStorage } from '@/lib/declined-apps/storage'
 import { useGraphqlQuery } from '@/lib/graphql/useGraphqlQuery'
 import { createDefaultBrowserOSProvider } from '@/lib/llm-providers/storage'
@@ -430,7 +430,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
 
   useEffect(() => {
     if (chatError) invalidateCredits()
-  }, [chatError])
+  }, [chatError, invalidateCredits])
 
   const isIntegrationsSynced = options?.isIntegrationsSynced ?? true
   const isIntegrationsSyncedRef = useRef(isIntegrationsSynced)

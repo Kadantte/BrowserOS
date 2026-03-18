@@ -11,7 +11,8 @@ const CREDITS_QUERY_KEY = ['credits']
 async function fetchCredits(): Promise<CreditsInfo> {
   const baseUrl = await getAgentServerUrl()
   const response = await fetch(`${baseUrl}/credits`)
-  if (!response.ok) throw new Error(`Failed to fetch credits: ${response.status}`)
+  if (!response.ok)
+    throw new Error(`Failed to fetch credits: ${response.status}`)
   return response.json()
 }
 

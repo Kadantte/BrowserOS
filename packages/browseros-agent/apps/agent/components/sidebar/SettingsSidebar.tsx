@@ -3,12 +3,12 @@ import {
   BookOpen,
   Bot,
   Compass,
+  CreditCard,
   GitBranch,
   MessageSquare,
   Palette,
   RotateCcw,
   Search,
-  CreditCard,
   Server,
 } from 'lucide-react'
 import type { FC } from 'react'

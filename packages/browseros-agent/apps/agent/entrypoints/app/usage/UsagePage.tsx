@@ -53,12 +53,17 @@ export const UsagePage: FC = () => {
             <span className={cn('font-bold text-3xl', getCreditColor(credits))}>
               {credits}
             </span>
-            <span className="text-muted-foreground text-sm">/ {total} daily</span>
+            <span className="text-muted-foreground text-sm">
+              / {total} daily
+            </span>
           </div>
 
           <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
             <div
-              className={cn('h-full rounded-full transition-all', getProgressColor(credits))}
+              className={cn(
+                'h-full rounded-full transition-all',
+                getProgressColor(credits),
+              )}
               style={{ width: `${percentage}%` }}
             />
           </div>
@@ -67,7 +72,9 @@ export const UsagePage: FC = () => {
             <p>1 credit per request</p>
             <p>Resets daily at midnight UTC</p>
             {data?.lastResetAt && (
-              <p>Last reset: {new Date(data.lastResetAt).toLocaleDateString()}</p>
+              <p>
+                Last reset: {new Date(data.lastResetAt).toLocaleDateString()}
+              </p>
             )}
           </div>
         </CardContent>

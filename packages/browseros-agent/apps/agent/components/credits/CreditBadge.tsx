@@ -19,7 +19,7 @@ export const CreditBadge: FC<CreditBadgeProps> = ({ credits, onClick }) => {
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs font-medium transition-colors hover:bg-muted/50',
+        'inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-xs transition-colors hover:bg-muted/50',
         getCreditColor(credits),
       )}
       title={`${credits} credits remaining`}
