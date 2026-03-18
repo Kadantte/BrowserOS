@@ -6,11 +6,11 @@ import { useSearchParams } from 'react-router'
 import useDeepCompareEffect from 'use-deep-compare-effect'
 import type { Provider } from '@/components/chat/chatComponentTypes'
 import {
-  activeStreamsStorage,
   clearActiveStream,
   extractToolTabIds,
   findStreamForTab,
   setActiveStream,
+  watchActiveStreams,
 } from '@/lib/active-stream/active-stream-storage'
 import { Capabilities, Feature } from '@/lib/browseros/capabilities'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
@@ -146,15 +146,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   const [followedMessages, setFollowedMessages] = useState<UIMessage[]>([])
   const [followedStatus, setFollowedStatus] = useState<ChatStatus>('ready')
 
-  // Resolve own tab ID on mount so follower can check if it's an agent-opened tab
-  useEffect(() => {
-    chrome.tabs
-      .query({ active: true, currentWindow: true })
-      .then((tabs) => {
-        ownTabIdRef.current = tabs[0]?.id
-      })
-      .catch(() => {})
-  }, [])
+  // Resolved in the follower effect below (sequenced before initial read)
 
   const onClickLike = (messageId: string) => {
     const { responseText, queryText } = getResponseAndQueryFromMessageId(
@@ -413,22 +405,22 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   // biome-ignore lint/correctness/useExhaustiveDependencies: only set up once on mount
   useEffect(() => {
     const STALE_THRESHOLD_MS = 10_000
+    let staleCheckTimer: ReturnType<typeof setTimeout> | undefined
 
-    const handleStreamsMap = (
-      map: Awaited<ReturnType<typeof activeStreamsStorage.getValue>>,
-    ) => {
+    const handleStreamChange = async () => {
       if (isLeaderRef.current || optedOutRef.current) return
 
       const ownTabId = ownTabIdRef.current
       if (ownTabId === undefined) return
 
-      const state = findStreamForTab(map, ownTabId)
+      const state = await findStreamForTab(ownTabId)
 
       if (!state) {
         if (isFollowingRef.current) {
           isFollowingRef.current = false
           setIsFollowing(false)
         }
+        clearTimeout(staleCheckTimer)
         return
       }
 
@@ -441,6 +433,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
           isFollowingRef.current = false
           setIsFollowing(false)
         }
+        clearTimeout(staleCheckTimer)
         return
       }
 
@@ -452,6 +445,12 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         setConversationId(
           state.conversationId as ReturnType<typeof crypto.randomUUID>,
         )
+        // Schedule a re-check in case leader dies and stops writing
+        clearTimeout(staleCheckTimer)
+        staleCheckTimer = setTimeout(
+          handleStreamChange,
+          STALE_THRESHOLD_MS + 500,
+        )
       } else if (state.status === 'ready' && isFollowingRef.current) {
         isFollowingRef.current = false
         setIsFollowing(false)
@@ -459,12 +458,27 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         setConversationId(
           state.conversationId as ReturnType<typeof crypto.randomUUID>,
         )
+        clearTimeout(staleCheckTimer)
       }
     }
 
-    activeStreamsStorage.getValue().then(handleStreamsMap)
-    const unwatch = activeStreamsStorage.watch(handleStreamsMap)
-    return unwatch
+    // Resolve own tab ID first, then do initial check (fixes race condition)
+    chrome.tabs
+      .query({ active: true, currentWindow: true })
+      .then((tabs) => {
+        ownTabIdRef.current = tabs[0]?.id
+        return handleStreamChange()
+      })
+      .catch(() => {})
+
+    const unwatchStreams = watchActiveStreams(() => {
+      handleStreamChange()
+    })
+
+    return () => {
+      unwatchStreams()
+      clearTimeout(staleCheckTimer)
+    }
   }, [])
 
   const {

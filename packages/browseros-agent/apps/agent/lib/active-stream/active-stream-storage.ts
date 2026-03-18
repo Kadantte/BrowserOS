@@ -10,15 +10,81 @@ export interface ActiveStreamState {
 }
 
 /**
- * Map of conversationId → ActiveStreamState.
- * Supports multiple parallel agent executions without overwriting each other.
+ * Registry of active conversation IDs. Each conversation's state is stored
+ * under its own key (`session:stream:<id>`) to avoid read-modify-write races
+ * when multiple agents run in parallel.
  */
-export type ActiveStreamsMap = Record<string, ActiveStreamState>
-
-export const activeStreamsStorage = storage.defineItem<ActiveStreamsMap>(
-  'session:active-streams',
-  { fallback: {} },
+export const activeStreamIdsStorage = storage.defineItem<string[]>(
+  'session:active-stream-ids',
+  { fallback: [] },
 )
+
+function streamKey(conversationId: string) {
+  return `session:stream:${conversationId}` as const
+}
+
+/** Write a conversation's stream state to its own storage key. */
+export async function setActiveStream(state: ActiveStreamState): Promise<void> {
+  const key = streamKey(state.conversationId)
+  await chrome.storage.session.set({ [key]: state }).catch(() => {})
+
+  const ids = await activeStreamIdsStorage.getValue()
+  if (!ids.includes(state.conversationId)) {
+    await activeStreamIdsStorage.setValue([...ids, state.conversationId])
+  }
+}
+
+/** Remove a conversation's stream state. */
+export async function clearActiveStream(conversationId: string): Promise<void> {
+  const key = streamKey(conversationId)
+  await chrome.storage.session.remove(key).catch(() => {})
+
+  const ids = await activeStreamIdsStorage.getValue()
+  await activeStreamIdsStorage.setValue(
+    ids.filter((id) => id !== conversationId),
+  )
+}
+
+/** Read all active streams. */
+export async function getAllActiveStreams(): Promise<ActiveStreamState[]> {
+  const ids = await activeStreamIdsStorage.getValue()
+  if (ids.length === 0) return []
+  const keys = ids.map(streamKey)
+  const result = await chrome.storage.session.get(keys)
+  return keys
+    .map((k) => result[k] as ActiveStreamState | undefined)
+    .filter((s): s is ActiveStreamState => !!s)
+}
+
+/** Find which active stream (if any) includes the given tabId as a follower. */
+export async function findStreamForTab(
+  tabId: number,
+): Promise<ActiveStreamState | undefined> {
+  const streams = await getAllActiveStreams()
+  return streams.find((s) => s.followerTabIds.includes(tabId))
+}
+
+/**
+ * Watch for changes to any active stream.
+ * Calls the handler with all current active streams whenever any stream key changes.
+ */
+export function watchActiveStreams(
+  handler: (streams: ActiveStreamState[]) => void,
+): () => void {
+  const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
+    const hasStreamChange = Object.keys(changes).some(
+      (k) =>
+        k.startsWith('session:stream:') || k === 'session:active-stream-ids',
+    )
+    if (hasStreamChange) {
+      getAllActiveStreams()
+        .then(handler)
+        .catch(() => {})
+    }
+  }
+  chrome.storage.session.onChanged.addListener(listener)
+  return () => chrome.storage.session.onChanged.removeListener(listener)
+}
 
 /**
  * Extract all unique tabIds from tool output metadata in messages.
@@ -41,29 +107,4 @@ export function extractToolTabIds(messages: UIMessage[]): number[] {
     }
   }
   return [...tabIds]
-}
-
-/** Write a single conversation's stream state into the map. */
-export async function setActiveStream(state: ActiveStreamState): Promise<void> {
-  const map = await activeStreamsStorage.getValue()
-  map[state.conversationId] = state
-  await activeStreamsStorage.setValue(map)
-}
-
-/** Remove a conversation's entry from the map. */
-export async function clearActiveStream(conversationId: string): Promise<void> {
-  const map = await activeStreamsStorage.getValue()
-  delete map[conversationId]
-  await activeStreamsStorage.setValue(map)
-}
-
-/** Find which active stream (if any) includes the given tabId as a follower. */
-export function findStreamForTab(
-  map: ActiveStreamsMap,
-  tabId: number,
-): ActiveStreamState | undefined {
-  for (const state of Object.values(map)) {
-    if (state.followerTabIds.includes(tabId)) return state
-  }
-  return undefined
 }
