@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm, stat } from 'node:fs/promises'
+import { mkdir, readdir, rm, stat, unlink, writeFile } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { PATHS } from '@browseros/shared/constants/paths'
@@ -30,6 +30,26 @@ export function getSkillsDir(): string {
 
 export function getBuiltinSkillsDir(): string {
   return join(getSkillsDir(), PATHS.BUILTIN_DIR_NAME)
+}
+
+export function getServerConfigPath(): string {
+  return join(getBrowserosDir(), PATHS.SERVER_CONFIG_FILE_NAME)
+}
+
+export async function writeServerConfig(port: number): Promise<void> {
+  const config = {
+    server_port: port,
+    url: `http://127.0.0.1:${port}`,
+  }
+  await writeFile(getServerConfigPath(), JSON.stringify(config, null, 2) + '\n')
+}
+
+export async function removeServerConfig(): Promise<void> {
+  try {
+    await unlink(getServerConfigPath())
+  } catch {
+    // File may not exist or already be removed
+  }
 }
 
 export async function ensureBrowserosDir(): Promise<void> {
