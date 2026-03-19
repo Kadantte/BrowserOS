@@ -537,24 +537,22 @@ export const NewTab = () => {
                     >
                       <Button
                         variant="ghost"
+                        size="icon"
+                        title={selectedProvider.name}
                         className={cn(
-                          'group h-8 rounded-lg px-2 transition-all',
+                          'h-8 w-8 rounded-lg transition-all',
                           'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
                         {selectedProvider.type === 'browseros' ? (
-                          <BrowserOSIcon size={16} className="shrink-0" />
+                          <BrowserOSIcon size={16} />
                         ) : (
                           <ProviderIcon
                             type={selectedProvider.type as ProviderType}
                             size={16}
-                            className="shrink-0"
                           />
                         )}
-                        <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium text-sm transition-all duration-200 ease-out group-hover:max-w-32 group-hover:pl-2">
-                          {selectedProvider.name}
-                        </span>
                       </Button>
                     </ChatProviderSelector>
                   )}
