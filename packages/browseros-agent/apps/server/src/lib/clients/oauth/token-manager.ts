@@ -185,6 +185,15 @@ export class OAuthTokenManager {
 
     const data = (await response.json()) as GitHubDeviceCodeResponse
 
+    // GitHub can return 200 with an error payload (e.g. invalid scope)
+    if ('error' in (data as Record<string, unknown>)) {
+      const errData = data as unknown as { error: string }
+      throw new Error(`GitHub device code error: ${errData.error}`)
+    }
+    if (!data.device_code || !data.user_code) {
+      throw new Error('Invalid device code response from GitHub')
+    }
+
     // Start background polling (fire-and-forget)
     this.pollDeviceCode(
       providerId,
@@ -235,7 +244,7 @@ export class OAuthTokenManager {
         if (data.access_token) {
           const tokens: StoredOAuthTokens = {
             accessToken: data.access_token,
-            refreshToken: data.access_token,
+            refreshToken: '',
             expiresAt: 0,
             email: undefined,
             accountId: undefined,
