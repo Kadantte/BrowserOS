@@ -130,9 +130,10 @@ export const MODELS_DATA: ModelsData = {
     { modelId: 'grok-code-fast-1', contextLength: 128000 },
   ],
   'qwen-code': [
-    { modelId: 'qwen3-coder-plus', contextLength: 131072 },
-    { modelId: 'qwen3-coder-next', contextLength: 131072 },
-    { modelId: 'qwen3.5-plus', contextLength: 1048576 },
+    { modelId: 'coder-model', contextLength: 1000000 },
+    { modelId: 'qwen3-coder-plus', contextLength: 1000000 },
+    { modelId: 'qwen3-coder-flash', contextLength: 1000000 },
+    { modelId: 'qwen3.5-plus', contextLength: 1000000 },
   ],
 }
 

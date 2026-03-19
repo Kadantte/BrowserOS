@@ -42,9 +42,9 @@ export const providerTemplates: ProviderTemplate[] = [
     id: 'qwen-code',
     name: 'Qwen Code',
     defaultBaseUrl: 'https://portal.qwen.ai/v1',
-    defaultModelId: 'qwen3-coder-plus',
+    defaultModelId: 'coder-model',
     supportsImages: true,
-    contextWindow: 131072,
+    contextWindow: 1000000,
     setupGuideUrl: 'https://docs.browseros.com/features/qwen-code-oauth',
   },
   {

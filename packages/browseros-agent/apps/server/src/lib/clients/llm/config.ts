@@ -42,7 +42,7 @@ export async function resolveLLMConfig(
     return resolveOAuthConfig(config, browserosId, {
       providerId: 'qwen-code',
       displayName: 'Qwen Code',
-      defaultModel: 'qwen3-coder-plus',
+      defaultModel: 'coder-model',
       useRefresh: true,
     })
   }
