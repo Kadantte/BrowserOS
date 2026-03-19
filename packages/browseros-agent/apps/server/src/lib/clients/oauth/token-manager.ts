@@ -186,9 +186,9 @@ export class OAuthTokenManager {
     const data = (await response.json()) as GitHubDeviceCodeResponse
 
     // GitHub can return 200 with an error payload (e.g. invalid scope)
-    if ('error' in (data as Record<string, unknown>)) {
-      const errData = data as unknown as { error: string }
-      throw new Error(`GitHub device code error: ${errData.error}`)
+    const dataObj = data as unknown as Record<string, unknown>
+    if ('error' in dataObj) {
+      throw new Error(`GitHub device code error: ${dataObj.error}`)
     }
     if (!data.device_code || !data.user_code) {
       throw new Error('Invalid device code response from GitHub')
