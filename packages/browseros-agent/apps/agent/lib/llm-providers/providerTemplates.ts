@@ -41,7 +41,7 @@ export const providerTemplates: ProviderTemplate[] = [
   {
     id: 'qwen-code',
     name: 'Qwen Code',
-    defaultBaseUrl: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+    defaultBaseUrl: 'https://portal.qwen.ai/v1',
     defaultModelId: 'qwen3-coder-plus',
     supportsImages: true,
     contextWindow: 131072,
@@ -189,7 +189,7 @@ export const getProviderTemplate = (
 export const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
   'chatgpt-pro': 'https://chatgpt.com/backend-api',
   'github-copilot': 'https://api.githubcopilot.com',
-  'qwen-code': 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  'qwen-code': 'https://portal.qwen.ai/v1',
   moonshot: 'https://api.moonshot.ai/v1',
   anthropic: 'https://api.anthropic.com/v1',
   openai: 'https://api.openai.com/v1',

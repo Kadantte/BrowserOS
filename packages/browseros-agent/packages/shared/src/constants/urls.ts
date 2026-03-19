@@ -18,5 +18,5 @@ export const EXTERNAL_URLS = {
   GITHUB_COPILOT_API: 'https://api.githubcopilot.com',
   QWEN_DEVICE_CODE: 'https://chat.qwen.ai/api/v1/oauth2/device/code',
   QWEN_OAUTH_TOKEN: 'https://chat.qwen.ai/api/v1/oauth2/token',
-  QWEN_CODE_API: 'https://dashscope.aliyuncs.com/compatible-mode/v1',
+  QWEN_CODE_API: 'https://portal.qwen.ai/v1',
 } as const
