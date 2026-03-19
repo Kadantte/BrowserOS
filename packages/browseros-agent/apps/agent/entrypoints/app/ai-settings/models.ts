@@ -24,6 +24,7 @@ export interface ModelsData {
   browseros: ModelInfo[]
   moonshot: ModelInfo[]
   'chatgpt-pro': ModelInfo[]
+  'github-copilot': ModelInfo[]
 }
 
 /**
@@ -100,6 +101,16 @@ export const MODELS_DATA: ModelsData = {
     { modelId: 'gpt-5.1-codex-max', contextLength: 400000 },
     { modelId: 'gpt-5.1-codex-mini', contextLength: 400000 },
     { modelId: 'gpt-5.1', contextLength: 200000 },
+  ],
+  'github-copilot': [
+    { modelId: 'gpt-4o', contextLength: 128000 },
+    { modelId: 'gpt-5-mini', contextLength: 200000 },
+    { modelId: 'claude-sonnet-4', contextLength: 200000 },
+    { modelId: 'claude-sonnet-4.5', contextLength: 200000 },
+    { modelId: 'claude-haiku-4.5', contextLength: 200000 },
+    { modelId: 'gemini-2.5-pro', contextLength: 1048576 },
+    { modelId: 'gpt-4.1', contextLength: 128000 },
+    { modelId: 'grok-code-fast-1', contextLength: 128000 },
   ],
 }
 
