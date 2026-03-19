@@ -35,7 +35,8 @@ export function useOAuthProviderFlow(
   const { status, startPolling, disconnect } = useOAuthStatus(
     config.providerType,
   )
-  const flowStartedRef = useRef(false)
+  const storageKey = `oauth-flow-started-${config.providerType}`
+  const flowStartedRef = useRef(sessionStorage.getItem(storageKey) === 'true')
 
   // Auto-create provider when OAuth completes
   // biome-ignore lint/correctness/useExhaustiveDependencies: intentional — only trigger on auth status change
@@ -70,6 +71,7 @@ export function useOAuthProviderFlow(
       })
     } finally {
       flowStartedRef.current = false
+      sessionStorage.removeItem(storageKey)
     }
   }, [status?.authenticated])
 
@@ -81,6 +83,7 @@ export function useOAuthProviderFlow(
       return
     }
     flowStartedRef.current = true
+    sessionStorage.setItem(storageKey, 'true')
 
     try {
       // Client-side device code flow (e.g. Qwen — needs browser cookies to bypass WAF)
@@ -122,6 +125,7 @@ export function useOAuthProviderFlow(
       })
     } catch (err) {
       flowStartedRef.current = false
+      sessionStorage.removeItem(storageKey)
       toast.error(`Failed to start ${config.displayName} authentication`, {
         description: err instanceof Error ? err.message : 'Unknown error',
       })
