@@ -537,22 +537,24 @@ export const NewTab = () => {
                     >
                       <Button
                         variant="ghost"
-                        size="icon"
-                        title={selectedProvider.name}
                         className={cn(
-                          'h-8 w-8 rounded-lg transition-all',
+                          'group h-8 rounded-lg px-2 transition-all',
                           'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
                         {selectedProvider.type === 'browseros' ? (
-                          <BrowserOSIcon size={16} />
+                          <BrowserOSIcon size={16} className="shrink-0" />
                         ) : (
                           <ProviderIcon
                             type={selectedProvider.type as ProviderType}
                             size={16}
+                            className="shrink-0"
                           />
                         )}
+                        <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium text-sm transition-all duration-200 ease-out group-hover:max-w-32 group-hover:pl-2">
+                          {selectedProvider.name}
+                        </span>
                       </Button>
                     </ChatProviderSelector>
                   )}
@@ -561,16 +563,17 @@ export const NewTab = () => {
                     <WorkspaceSelector>
                       <Button
                         variant="ghost"
-                        size="icon"
                         onClick={() => track(NEWTAB_WORKSPACE_OPENED_EVENT)}
-                        title={selectedFolder?.name || 'Add workspace'}
                         className={cn(
-                          'h-8 w-8 rounded-lg transition-all',
+                          'group h-8 rounded-lg px-2 transition-all',
                           'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
-                        <Folder className="h-4 w-4" />
+                        <Folder className="h-4 w-4 shrink-0" />
+                        <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium text-sm transition-all duration-200 ease-out group-hover:max-w-40 group-hover:pl-2">
+                          {selectedFolder?.name || 'Add workspace'}
+                        </span>
                       </Button>
                     </WorkspaceSelector>
                   )}
@@ -583,22 +586,19 @@ export const NewTab = () => {
                     >
                       <Button
                         variant="ghost"
-                        size="icon"
                         onClick={() => track(NEWTAB_TABS_OPENED_EVENT)}
-                        title={
-                          selectedTabs.length > 0
-                            ? `${selectedTabs.length} tab${selectedTabs.length > 1 ? 's' : ''} attached`
-                            : 'Attach tabs'
-                        }
                         className={cn(
-                          'h-8 w-8 rounded-lg transition-all',
+                          'group h-8 rounded-lg px-2 transition-all',
                           selectedTabs.length > 0
                             ? 'bg-[var(--accent-orange)]! text-white shadow-sm'
                             : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
-                        <Layers className="h-4 w-4" />
+                        <Layers className="h-4 w-4 shrink-0" />
+                        <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium text-sm transition-all duration-200 ease-out group-hover:max-w-24 group-hover:pl-2">
+                          Tabs
+                        </span>
                       </Button>
                     </TabPickerPopover>
                   </div>
