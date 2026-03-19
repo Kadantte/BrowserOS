@@ -7,7 +7,7 @@
 import { OAUTH_CALLBACK_PORT } from '@browseros/shared/constants/ports'
 import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
 import { logger } from '../../logger'
-import { getOAuthProvider } from './providers'
+import { getOAuthProvider, type OAuthProviderConfig } from './providers'
 import type { OAuthTokenStore, StoredOAuthTokens } from './token-store'
 
 interface PendingOAuthFlow {
@@ -31,16 +31,19 @@ export interface DeviceCodeResult {
   expiresIn: number
 }
 
-interface GitHubDeviceCodeResponse {
+interface DeviceCodeResponse {
   device_code: string
   user_code: string
   verification_uri: string
+  verification_uri_complete?: string
   expires_in: number
   interval: number
 }
 
-interface GitHubTokenPollResponse {
+interface DeviceCodeTokenPollResponse {
   access_token?: string
+  refresh_token?: string
+  expires_in?: number
   error?: string
   interval?: number
 }
@@ -171,32 +174,46 @@ export class OAuthTokenManager {
     // Cancel any existing flow — user may be retrying
     this.activeDeviceFlows.delete(providerId)
 
-    // Request a device code from GitHub
+    // PKCE: generate verifier/challenge if provider requires it
+    let codeVerifier: string | undefined
+    const params: Record<string, string> = {
+      client_id: provider.clientId,
+      scope: provider.scopes.join(' '),
+    }
+    if (provider.deviceCodeRequiresPKCE) {
+      codeVerifier = generateCodeVerifier()
+      params.code_challenge = await generateCodeChallenge(codeVerifier)
+      params.code_challenge_method = 'S256'
+    }
+
+    // Build request body (form-urlencoded or JSON based on provider)
+    const useForm = provider.deviceCodeContentType === 'form'
     const response = await fetch(provider.authEndpoint, {
       method: 'POST',
       headers: {
         Accept: 'application/json',
-        'Content-Type': 'application/json',
+        'Content-Type': useForm
+          ? 'application/x-www-form-urlencoded'
+          : 'application/json',
       },
-      body: JSON.stringify({
-        client_id: provider.clientId,
-        scope: provider.scopes.join(' '),
-      }),
+      body: useForm
+        ? new URLSearchParams(params).toString()
+        : JSON.stringify(params),
     })
 
     if (!response.ok) {
       throw new Error(`Failed to request device code: ${response.status}`)
     }
 
-    const data = (await response.json()) as GitHubDeviceCodeResponse
+    const data = (await response.json()) as DeviceCodeResponse
 
-    // GitHub can return 200 with an error payload (e.g. invalid scope)
+    // Some providers return 200 with an error payload
     const dataObj = data as unknown as Record<string, unknown>
     if ('error' in dataObj) {
-      throw new Error(`GitHub device code error: ${dataObj.error}`)
+      throw new Error(`Device code error: ${dataObj.error}`)
     }
     if (!data.device_code || !data.user_code) {
-      throw new Error('Invalid device code response from GitHub')
+      throw new Error('Invalid device code response')
     }
 
     // Start background polling with error handling
@@ -207,51 +224,63 @@ export class OAuthTokenManager {
       data.device_code,
       data.interval,
       data.expires_in,
+      codeVerifier,
     ).finally(() => this.activeDeviceFlows.delete(providerId))
 
     return {
       userCode: data.user_code,
-      verificationUri: data.verification_uri,
+      verificationUri: data.verification_uri_complete ?? data.verification_uri,
       expiresIn: data.expires_in,
     }
   }
 
   private async pollDeviceCode(
     providerId: string,
-    provider: ReturnType<typeof getOAuthProvider> & {},
+    provider: OAuthProviderConfig,
     deviceCode: string,
     initialInterval: number,
     expiresIn: number,
+    codeVerifier?: string,
   ): Promise<void> {
     let interval = initialInterval
     const deadline = Date.now() + expiresIn * 1000
+    const useForm = provider.deviceCodeContentType === 'form'
 
     while (Date.now() < deadline) {
-      // Wait before polling (interval + safety margin per OpenCode pattern)
       await sleep(interval * 1000 + TIMEOUTS.DEVICE_CODE_POLL_SAFETY_MARGIN)
 
       try {
+        const params: Record<string, string> = {
+          client_id: provider.clientId,
+          device_code: deviceCode,
+          grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+        }
+        if (codeVerifier) params.code_verifier = codeVerifier
+
         const response = await fetch(provider.tokenEndpoint, {
           method: 'POST',
           headers: {
             Accept: 'application/json',
-            'Content-Type': 'application/json',
+            'Content-Type': useForm
+              ? 'application/x-www-form-urlencoded'
+              : 'application/json',
           },
-          body: JSON.stringify({
-            client_id: provider.clientId,
-            device_code: deviceCode,
-            grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-          }),
+          body: useForm
+            ? new URLSearchParams(params).toString()
+            : JSON.stringify(params),
         })
 
-        const data = (await response.json()) as GitHubTokenPollResponse
+        // Parse response — some providers return errors as HTTP 400
+        const data = (await response.json()) as DeviceCodeTokenPollResponse
 
-        // Token received — store it and return
+        // Token received — store and return
         if (data.access_token) {
           const tokens: StoredOAuthTokens = {
             accessToken: data.access_token,
-            refreshToken: '',
-            expiresAt: 0,
+            refreshToken: data.refresh_token ?? '',
+            expiresAt: data.expires_in
+              ? Date.now() + data.expires_in * 1000
+              : 0,
             email: undefined,
             accountId: undefined,
           }
@@ -291,7 +320,7 @@ export class OAuthTokenManager {
     logger.warn('Device code flow timed out', { provider: providerId })
   }
 
-  // --- Token refresh (PKCE providers only) ---
+  // --- Token refresh ---
 
   async refreshIfExpired(provider: string): Promise<StoredOAuthTokens | null> {
     const tokens = this.store.getTokens(this.browserosId, provider)
