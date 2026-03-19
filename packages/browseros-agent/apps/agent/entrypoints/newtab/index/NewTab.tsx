@@ -537,9 +537,11 @@ export const NewTab = () => {
                     >
                       <Button
                         variant="ghost"
+                        size="icon"
+                        title={selectedProvider.name}
                         className={cn(
-                          'flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
-                          'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                          'h-8 w-8 rounded-lg transition-all',
+                          'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
@@ -551,8 +553,6 @@ export const NewTab = () => {
                             size={16}
                           />
                         )}
-                        <span>{selectedProvider.name}</span>
-                        <ChevronDown className="h-3 w-3" />
                       </Button>
                     </ChatProviderSelector>
                   )}
@@ -561,16 +561,16 @@ export const NewTab = () => {
                     <WorkspaceSelector>
                       <Button
                         variant="ghost"
+                        size="icon"
                         onClick={() => track(NEWTAB_WORKSPACE_OPENED_EVENT)}
+                        title={selectedFolder?.name || 'Add workspace'}
                         className={cn(
-                          'flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
-                          'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                          'h-8 w-8 rounded-lg transition-all',
+                          'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
                         <Folder className="h-4 w-4" />
-                        <span>{selectedFolder?.name || 'Add workspace'}</span>
-                        <ChevronDown className="h-3 w-3" />
                       </Button>
                     </WorkspaceSelector>
                   )}
@@ -582,17 +582,23 @@ export const NewTab = () => {
                       onToggleTab={toggleTab}
                     >
                       <Button
+                        variant="ghost"
+                        size="icon"
                         onClick={() => track(NEWTAB_TABS_OPENED_EVENT)}
+                        title={
+                          selectedTabs.length > 0
+                            ? `${selectedTabs.length} tab${selectedTabs.length > 1 ? 's' : ''} attached`
+                            : 'Attach tabs'
+                        }
                         className={cn(
-                          'flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
+                          'h-8 w-8 rounded-lg transition-all',
                           selectedTabs.length > 0
                             ? 'bg-[var(--accent-orange)]! text-white shadow-sm'
-                            : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
                         <Layers className="h-4 w-4" />
-                        <span>Tabs</span>
                       </Button>
                     </TabPickerPopover>
                   </div>
