@@ -85,7 +85,7 @@ async function resolveGitHubCopilotConfig(
 
   return {
     ...config,
-    model: config.model || 'gpt-4o',
+    model: config.model || 'gpt-5-mini',
     apiKey: tokens.accessToken,
   }
 }
