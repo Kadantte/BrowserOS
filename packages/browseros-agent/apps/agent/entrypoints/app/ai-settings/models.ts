@@ -103,14 +103,14 @@ export const MODELS_DATA: ModelsData = {
     { modelId: 'gpt-5.1', contextLength: 200000 },
   ],
   'github-copilot': [
-    { modelId: 'gpt-4o', contextLength: 128000 },
-    { modelId: 'gpt-4.1', contextLength: 128000 },
-    { modelId: 'gpt-5-mini', contextLength: 200000 },
-    { modelId: 'claude-haiku-4.5', contextLength: 200000 },
-    { modelId: 'grok-code-fast-1', contextLength: 128000 },
-    { modelId: 'claude-sonnet-4.5', contextLength: 200000 },
-    { modelId: 'claude-opus-4.5', contextLength: 200000 },
-    { modelId: 'gemini-2.5-pro', contextLength: 1048576 },
+    { modelId: 'gpt-4o', contextLength: 64000 },
+    { modelId: 'gpt-4.1', contextLength: 64000 },
+    { modelId: 'gpt-5-mini', contextLength: 64000 },
+    { modelId: 'claude-haiku-4.5', contextLength: 64000 },
+    { modelId: 'grok-code-fast-1', contextLength: 64000 },
+    { modelId: 'claude-sonnet-4.5', contextLength: 64000 },
+    { modelId: 'claude-opus-4.5', contextLength: 64000 },
+    { modelId: 'gemini-2.5-pro', contextLength: 64000 },
   ],
 }
 

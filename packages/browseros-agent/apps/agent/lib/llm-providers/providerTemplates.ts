@@ -35,7 +35,7 @@ export const providerTemplates: ProviderTemplate[] = [
     defaultBaseUrl: 'https://api.githubcopilot.com',
     defaultModelId: 'gpt-4o',
     supportsImages: true,
-    contextWindow: 128000,
+    contextWindow: 64000,
     setupGuideUrl: 'https://docs.browseros.com/features/github-copilot-oauth',
   },
   {
