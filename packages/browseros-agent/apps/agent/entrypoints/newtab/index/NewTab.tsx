@@ -565,15 +565,14 @@ export const NewTab = () => {
                         variant="ghost"
                         onClick={() => track(NEWTAB_WORKSPACE_OPENED_EVENT)}
                         className={cn(
-                          'group h-8 rounded-lg px-2 transition-all',
-                          'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                          'flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
+                          'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
-                        <Folder className="h-4 w-4 shrink-0" />
-                        <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium text-sm transition-all duration-200 ease-out group-hover:max-w-40 group-hover:pl-2">
-                          {selectedFolder?.name || 'Add workspace'}
-                        </span>
+                        <Folder className="h-4 w-4" />
+                        <span>{selectedFolder?.name || 'Add workspace'}</span>
+                        <ChevronDown className="h-3 w-3" />
                       </Button>
                     </WorkspaceSelector>
                   )}
@@ -585,20 +584,17 @@ export const NewTab = () => {
                       onToggleTab={toggleTab}
                     >
                       <Button
-                        variant="ghost"
                         onClick={() => track(NEWTAB_TABS_OPENED_EVENT)}
                         className={cn(
-                          'group h-8 rounded-lg px-2 transition-all',
+                          'flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
                           selectedTabs.length > 0
                             ? 'bg-[var(--accent-orange)]! text-white shadow-sm'
-                            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+                            : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
                           'data-[state=open]:bg-accent',
                         )}
                       >
-                        <Layers className="h-4 w-4 shrink-0" />
-                        <span className="max-w-0 overflow-hidden whitespace-nowrap font-medium text-sm transition-all duration-200 ease-out group-hover:max-w-24 group-hover:pl-2">
-                          Tabs
-                        </span>
+                        <Layers className="h-4 w-4" />
+                        <span>Tabs</span>
                       </Button>
                     </TabPickerPopover>
                   </div>
