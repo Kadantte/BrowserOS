@@ -85,10 +85,9 @@ async function resizeDataUrl(dataUrl: string): Promise<string | null> {
   const metadata = await image.metadata()
   if (!metadata.width || !metadata.height) return null
 
-  let { width, height } = metadata
-
-  // Skip if already small enough
-  if (width <= MAX_SHORT_SIDE && height <= MAX_SHORT_SIDE) return null
+  const { width: origW, height: origH } = metadata
+  let width = origW
+  let height = origH
 
   // Step 1: scale longest side to 2048
   if (width > MAX_LONG_SIDE || height > MAX_LONG_SIDE) {
@@ -105,7 +104,9 @@ async function resizeDataUrl(dataUrl: string): Promise<string | null> {
     height = Math.round(height * scale)
   }
 
-  // Re-encode as JPEG for smaller size
+  // Skip if no resize was needed
+  if (width === origW && height === origH) return null
+
   const resizedBuffer = await sharp(buffer)
     .resize(width, height, { fit: 'inside' })
     .jpeg({ quality: 75 })

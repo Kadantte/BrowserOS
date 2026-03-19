@@ -168,10 +168,8 @@ export class OAuthTokenManager {
     const provider = getOAuthProvider(providerId)
     if (!provider) throw new Error(`Unknown OAuth provider: ${providerId}`)
 
-    // Prevent concurrent flows for the same provider
-    if (this.activeDeviceFlows.has(providerId)) {
-      throw new Error(`Device code flow already in progress for ${providerId}`)
-    }
+    // Cancel any existing flow — user may be retrying
+    this.activeDeviceFlows.delete(providerId)
 
     // Request a device code from GitHub
     const response = await fetch(provider.authEndpoint, {
@@ -282,11 +280,11 @@ export class OAuthTokenManager {
         })
         return
       } catch (err) {
-        logger.error('Device code poll request failed', {
+        // Transient network error — loop continues to retry
+        logger.warn('Device code poll request failed, retrying', {
           provider: providerId,
           error: err instanceof Error ? err.message : String(err),
         })
-        return
       }
     }
 
