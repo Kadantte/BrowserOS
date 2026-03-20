@@ -1,15 +1,45 @@
 name: Tests
 
-on: []
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths:
+      - .github/workflows/test.yml
+      - packages/browseros-agent/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write
+
+env:
+  BROWSEROS_APPIMAGE_URL: https://files.browseros.com/download/BrowserOS.AppImage
 
 jobs:
   test:
-    name: Run Tests
-    runs-on: macos-latest
-    timeout-minutes: 10
+    name: Tests / ${{ matrix.suite }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     defaults:
       run:
         working-directory: packages/browseros-agent
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: tools
+            test_path: tests/tools
+            junit_path: test-results/tools.xml
+          - suite: integration
+            test_path: tests/server.integration.test.ts
+            junit_path: test-results/integration.xml
+          - suite: sdk
+            test_path: tests/sdk
+            junit_path: test-results/sdk.xml
 
     steps:
       - name: Checkout code
@@ -21,7 +51,68 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
-      - name: Run all tests
-        run: bun test:all
+      - name: Download BrowserOS
+        run: |
+          mkdir -p .ci/bin
+          curl -fsSL "$BROWSEROS_APPIMAGE_URL" -o .ci/bin/BrowserOS.AppImage
+          chmod +x .ci/bin/BrowserOS.AppImage
+          cat > .ci/bin/browseros <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          exec "$(dirname "$0")/BrowserOS.AppImage" "$@"
+          EOF
+          chmod +x .ci/bin/browseros
+
+      - name: Run ${{ matrix.suite }} tests
+        id: test
         env:
-          PUPPETEER_EXECUTABLE_PATH: /Applications/Google Chrome.app/Contents/MacOS/Google Chrome
+          BROWSEROS_BINARY: ${{ github.workspace }}/packages/browseros-agent/.ci/bin/browseros
+          BROWSEROS_TEST_HEADLESS: "true"
+        run: |
+          set +e
+          mkdir -p test-results
+          cd apps/server
+          bun run test:cleanup
+          bun --env-file=.env.development test "${{ matrix.test_path }}" --reporter=junit --reporter-outfile="../../${{ matrix.junit_path }}"
+          exit_code=$?
+          cd ../..
+          if [ ! -f "${{ matrix.junit_path }}" ]; then
+            cat > "${{ matrix.junit_path }}" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <testsuites tests="1" failures="1">
+            <testsuite name="${{ matrix.suite }}" tests="1" failures="1">
+              <testcase classname="workflow" name="${{ matrix.suite }} setup">
+                <failure message="Test run failed before JUnit output was written">See workflow logs for details.</failure>
+              </testcase>
+            </testsuite>
+          </testsuites>
+          EOF
+          fi
+          echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
+
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.suite }}
+          path: packages/browseros-agent/${{ matrix.junit_path }}
+
+      - name: Publish test report
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: packages/browseros-agent/${{ matrix.junit_path }}
+          check_name: Tests / ${{ matrix.suite }}
+          fail_on_failure: false
+
+      - name: Summarize suite result
+        if: always()
+        run: |
+          if [ "${{ steps.test.outputs.exit_code }}" = "0" ]; then
+            echo "### ${{ matrix.suite }} suite passed" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "### ${{ matrix.suite }} suite failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+            echo "See the \`Tests / ${{ matrix.suite }}\` check and uploaded JUnit artifact for details." >> "$GITHUB_STEP_SUMMARY"
+          fi
