@@ -10,7 +10,7 @@ import { getProviderTemplate } from './providerTemplates'
 import type { LlmProviderConfig, ProviderType } from './types'
 import { useOAuthStatus } from './useOAuthStatus'
 
-interface OAuthProviderFlowConfig {
+export interface OAuthProviderFlowConfig {
   providerType: ProviderType
   displayName: string
   startedEvent: string

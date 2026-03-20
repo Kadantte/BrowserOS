@@ -30,9 +30,12 @@ import { useGraphqlMutation } from '@/lib/graphql/useGraphqlMutation'
 import { useGraphqlQuery } from '@/lib/graphql/useGraphqlQuery'
 import type { ProviderTemplate } from '@/lib/llm-providers/providerTemplates'
 import { testProvider } from '@/lib/llm-providers/testProvider'
-import type { LlmProviderConfig, ProviderType } from '@/lib/llm-providers/types'
+import type { LlmProviderConfig } from '@/lib/llm-providers/types'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
-import { useOAuthProviderFlow } from '@/lib/llm-providers/useOAuthProviderFlow'
+import {
+  type OAuthProviderFlowConfig,
+  useOAuthProviderFlow,
+} from '@/lib/llm-providers/useOAuthProviderFlow'
 import { track } from '@/lib/metrics/track'
 import { ConfiguredProvidersList } from './ConfiguredProvidersList'
 import {
@@ -46,16 +49,7 @@ import { NewProviderDialog } from './NewProviderDialog'
 import { ProviderTemplatesSection } from './ProviderTemplatesSection'
 
 // All OAuth providers share the same flow via useOAuthProviderFlow
-const OAUTH_PROVIDERS_CONFIG: Record<
-  string,
-  {
-    providerType: ProviderType
-    displayName: string
-    startedEvent: string
-    completedEvent: string
-    disconnectedEvent: string
-  }
-> = {
+const OAUTH_PROVIDERS_CONFIG: Record<string, OAuthProviderFlowConfig> = {
   'chatgpt-pro': {
     providerType: 'chatgpt-pro',
     displayName: 'ChatGPT Plus/Pro',
@@ -213,7 +207,7 @@ export const AISettingsPage: FC = () => {
     // OAuth providers: trigger OAuth flow
     const oauthFlow = oauthFlows[template.id]
     if (oauthFlow) {
-      oauthFlow.startOAuthFlow(agentServerUrl)
+      oauthFlow.startOAuthFlow(agentServerUrl ?? undefined)
       return
     }
 
