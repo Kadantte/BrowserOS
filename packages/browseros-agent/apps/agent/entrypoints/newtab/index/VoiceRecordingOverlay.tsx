@@ -25,6 +25,19 @@ export const VoiceRecordingOverlay: FC<VoiceRecordingOverlayProps> = ({
   const processingRef = useRef(false)
   const cancelledRef = useRef(false)
 
+  const callbacksRef = useRef({
+    onTranscriptionComplete,
+    onClose,
+    onTranscriptionError,
+  })
+  useEffect(() => {
+    callbacksRef.current = {
+      onTranscriptionComplete,
+      onClose,
+      onTranscriptionError,
+    }
+  })
+
   const recorderControls = useVoiceVisualizer({
     onStartRecording: () => {
       onRecordingStarted?.()
@@ -61,14 +74,14 @@ export const VoiceRecordingOverlay: FC<VoiceRecordingOverlayProps> = ({
           ? 'No microphone found'
           : recorderError.message
     setError(msg)
-    onTranscriptionError?.(msg)
-  }, [recorderError, onTranscriptionError])
+    callbacksRef.current.onTranscriptionError?.(msg)
+  }, [recorderError])
 
   // Handle recorded blob → transcription
   useEffect(() => {
     if (!recordedBlob || processingRef.current) return
     if (cancelledRef.current) {
-      onClose()
+      callbacksRef.current.onClose()
       return
     }
     processingRef.current = true
@@ -77,28 +90,29 @@ export const VoiceRecordingOverlay: FC<VoiceRecordingOverlayProps> = ({
     transcribeAudio(recordedBlob)
       .then((text) => {
         if (text.trim()) {
-          onTranscriptionComplete(text.trim())
+          callbacksRef.current.onTranscriptionComplete(text.trim())
         } else {
           setError('No speech detected')
-          onTranscriptionError?.('No speech detected')
+          callbacksRef.current.onTranscriptionError?.('No speech detected')
         }
       })
       .catch((err) => {
         const msg = err instanceof Error ? err.message : 'Transcription failed'
         setError(msg)
-        onTranscriptionError?.(msg)
+        callbacksRef.current.onTranscriptionError?.(msg)
+        processingRef.current = false
       })
       .finally(() => {
         setIsTranscribing(false)
       })
-  }, [recordedBlob, onTranscriptionComplete, onTranscriptionError, onClose])
+  }, [recordedBlob])
 
   // Auto-dismiss on error after a delay
   useEffect(() => {
     if (!error) return
-    const timer = setTimeout(onClose, 3000)
+    const timer = setTimeout(() => callbacksRef.current.onClose(), 3000)
     return () => clearTimeout(timer)
-  }, [error, onClose])
+  }, [error])
 
   return (
     <AnimatePresence>
