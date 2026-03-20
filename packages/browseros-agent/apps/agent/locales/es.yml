@@ -1,0 +1,134 @@
+extName: Asistente BrowserOS
+extActionTitle: Pregunta a BrowserOS
+chat:
+  input:
+    placeholderAgent: ¿Qué debo hacer?
+    placeholderChat: Pregunta sobre esta página...
+    placeholderTranscribing: Transcribiendo...
+    send: Enviar
+    stop: Detener
+    stopRecording: Detener grabación
+    transcribing: Transcribiendo
+    voiceInput: Entrada de voz
+  mode:
+    agent: Modo Agente ON
+    chat: Modo Chat ON
+    agentTooltip: La IA puede navegar e interactuar
+    chatTooltip: Solo lectura, sin interacción
+  empty:
+    agentTitle: Agente a su servicio
+    agentSubtitle: Deja que la IA automatice y navegue por ti
+    chatTitle: Chatea con esta página
+    chatSubtitle: Pregunta sobre la página actual o cualquier tema
+  header:
+    changeProvider: Cambiar proveedor de IA
+    newConversation: Nueva conversación
+    chatHistory: Historial
+    starOnGithub: Star en GitHub
+    settings: Ajustes
+  error:
+    dailyLimitTitle: Límite diario alcanzado
+    connectionFailedTitle: Conexión fallida
+    genericTitle: Algo salió mal
+    connectionMessage: No se pudo conectar al agente. Sigue las instrucciones.
+    rateLimitMessage: Añade tu clave API para uso ilimitado.
+    troubleshootingLink: Ver guía de solución
+    kimiApiKeyLink: Cómo obtener clave API de Kimi
+    getApiKey: obtener tu clave API
+    tryAgain: Reintentar
+  actions:
+    copy: Copiar
+    copyToClipboard: Copiar al portapapeles
+    feedbackSubmitted: Feedback enviado
+    like: Me gusta
+    likeTooltip: Me gusta esta respuesta
+    dislike: No me gusta
+    dislikeTooltip: No me gusta esta respuesta
+    feedbackTitle: ¿Qué salió mal?
+    feedbackDescription: Cuéntanos qué salió mal para mejorar.
+    feedbackPlaceholder: Añade un comentario (opcional)
+  schedule:
+    title: ¿Ejecutar automáticamente?
+    dailyAt: diariamente a las $1
+    everyHour: cada hora
+    scheduleButton: Programar tarea
+    maybeLater: Más tarde
+  connectApp:
+    connecting: Conectando...
+    connectButton: Conectar $1
+    authorizeTitle: Autoriza $1 en la pestaña abierta
+    authorizeDescription: Completa el inicio de sesión y haz clic abajo.
+    authorizedButton: He autorizado $1, continuar
+    skipButton: Omitir, hacer manualmente
+    suggested: $1 sugerido
+    connected: $1 conectado
+    continuedWithout: Continuando sin $1
+    connectForBetter: Conecta $1 para mejores resultados
+    doItManually: Hacerlo manualmente
+    connectedSuccess: $1 conectado con éxito
+    connectFailed: Error al conectar $1
+footer:
+  attachTabs: Adjuntar pestañas (@)
+  selectWorkspace: Seleccionar carpeta
+  connectApps: Conectar apps
+selectedText:
+  removeTitle: Eliminar texto seleccionado
+attachedTabs:
+  removeTab: Quitar pestaña
+newtab:
+  search:
+    placeholder: Pregunta a BrowserOS o busca $1...
+  branding:
+    alt: BrowserOS
+  selectedTab: Pestaña
+  appsNew: ¡Nuevo!
+  appsTooltip: Las apps conectadas ofrecen respuestas más precisas y rápidas
+  addWorkspace: Añadir espacio de trabajo
+  tip:
+    label: "Consejo:"
+    nextTip: Siguiente consejo
+    dismiss: Descartar
+  signIn:
+    title: Sincroniza tus datos
+    description: Inicia sesión para sincronizar el historial en la nube.
+    dontAskAgain: No preguntar de nuevo
+    signInButton: Iniciar sesión
+  importData:
+    title: Importar tus datos
+    description: Importa marcadores, historial y contraseñas de Chrome.
+    dontShowAgain: No mostrar de nuevo
+    openSettings: Abrir ajustes de importación
+  shortcuts:
+    title: Atajos de teclado
+    description: Usa estos atajos para navegar más rápido
+    moreComingSoon: Más atajos pronto
+sidebar:
+  nav:
+    home: Inicio
+    connectApps: Conectar Apps
+    scheduledTasks: Tareas programadas
+    workflows: Flujos
+    skills: Habilidades
+    memory: Memoria
+    soul: Alma
+    settings: Ajustes
+  footer:
+    about: Acerca de BrowserOS
+    shortcuts: Atajos
+  branding:
+    alt: BrowserOS
+    personal: Personal
+    updateProfile: Actualizar perfil
+    signOut: Cerrar sesión
+    signIn: Iniciar sesión
+common:
+  cancel: Cancelar
+  submit: Enviar
+  save: Guardar
+  delete: Eliminar
+  edit: Editar
+  close: Cerrar
+  loading: Cargando...
+  error: Algo salió mal
+  apps: Apps
+  tabs: Pestañas

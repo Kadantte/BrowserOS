@@ -1,0 +1,134 @@
+extName: BrowserOS アシスタント
+extActionTitle: BrowserOS に質問
+chat:
+  input:
+    placeholderAgent: 何をしますか？
+    placeholderChat: このページについて...
+    placeholderTranscribing: 文字起こし中...
+    send: 送信
+    stop: 停止
+    stopRecording: 録音停止
+    transcribing: 文字起こし中
+    voiceInput: 音声入力
+  mode:
+    agent: エージェントモードON
+    chat: チャットモードON
+    agentTooltip: 閲覧・クリック・ナビゲート可能
+    chatTooltip: 閲覧のみ、クリック・ナビゲート不可
+  empty:
+    agentTitle: エージェントが対応します
+    agentSubtitle: AIにタスク自動化と閲覧をお任せ
+    chatTitle: このページとチャット
+    chatSubtitle: 現在のページやトピックについて質問
+  header:
+    changeProvider: AIプロバイダー変更
+    newConversation: 新規会話
+    chatHistory: 履歴
+    starOnGithub: GitHubでスター
+    settings: 設定
+  error:
+    dailyLimitTitle: 1日の制限に達しました
+    connectionFailedTitle: 接続失敗
+    genericTitle: エラーが発生しました
+    connectionMessage: BrowserOSエージェントに接続できません。以下の手順に従ってください。
+    rateLimitMessage: 無制限利用にはAPIキーを追加してください。
+    troubleshootingLink: トラブルシューティングを見る
+    kimiApiKeyLink: Kimi APIキーの取得方法
+    getApiKey: APIキーを取得
+    tryAgain: 再試行
+  actions:
+    copy: コピー
+    copyToClipboard: クリップボードにコピー
+    feedbackSubmitted: フィードバック送信済み
+    like: いいね
+    likeTooltip: この回答にいいね
+    dislike: よくないね
+    dislikeTooltip: この回答に不満
+    feedbackTitle: 何が問題でしたか？
+    feedbackDescription: 回答の問題点を教えてください
+    feedbackPlaceholder: コメントを追加（任意）
+  schedule:
+    title: 自動実行しますか？
+    dailyAt: 毎日 $1
+    everyHour: 毎時間
+    scheduleButton: タスクを予約
+    maybeLater: 後で
+  connectApp:
+    connecting: 接続中...
+    connectButton: $1 に接続
+    authorizeTitle: 開いたタブで $1 を承認
+    authorizeDescription: サインインを完了し、下のボタンをクリックしてください。
+    authorizedButton: $1 の承認完了、続ける
+    skipButton: スキップして手動で実行
+    suggested: $1 を推奨
+    connected: $1 に接続済み
+    continuedWithout: $1 なしで続行
+    connectForBetter: より良い結果のため $1 に接続
+    doItManually: 手動で実行
+    connectedSuccess: $1 の接続に成功
+    connectFailed: $1 の接続に失敗
+footer:
+  attachTabs: タブを添付(@)
+  selectWorkspace: ワークスペースフォルダを選択
+  connectApps: アプリを接続
+selectedText:
+  removeTitle: 選択テキストを削除
+attachedTabs:
+  removeTab: タブを削除
+newtab:
+  search:
+    placeholder: BrowserOSに質問、または$1を検索...
+  branding:
+    alt: BrowserOS
+  selectedTab: タブ
+  appsNew: 新着！
+  appsTooltip: 直接接続したアプリはより正確・高速な回答を提供します！
+  addWorkspace: ワークスペースを追加
+  tip:
+    label: ヒント：
+    nextTip: 次のヒント
+    dismiss: 閉じる
+  signIn:
+    title: データを同期
+    description: 会話履歴をクラウドに同期するにはサインインしてください。
+    dontAskAgain: 今後表示しない
+    signInButton: サインイン
+  importData:
+    title: データをインポート
+    description: Chromeからブックマーク、履歴、パスワードを取り込みます。
+    dontShowAgain: 今後表示しない
+    openSettings: インポート設定を開く
+  shortcuts:
+    title: キーボードショートカット
+    description: BrowserOSをより速く操作するためのショートカット
+    moreComingSoon: さらにショートカットを追加予定
+sidebar:
+  nav:
+    home: ホーム
+    connectApps: アプリ接続
+    scheduledTasks: 予定タスク
+    workflows: ワークフロー
+    skills: スキル
+    memory: メモリ
+    soul: ソウル
+    settings: 設定
+  footer:
+    about: BrowserOSについて
+    shortcuts: ショートカット
+  branding:
+    alt: BrowserOS
+    personal: 個人
+    updateProfile: プロフィール更新
+    signOut: サインアウト
+    signIn: サインイン
+common:
+  cancel: キャンセル
+  submit: 送信
+  save: 保存
+  delete: 削除
+  edit: 編集
+  close: 閉じる
+  loading: 読み込み中...
+  error: エラーが発生しました
+  apps: アプリ
+  tabs: タブ

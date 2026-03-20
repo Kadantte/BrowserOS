@@ -1,0 +1,134 @@
+extName: BrowserOS-Assistent
+extActionTitle: BrowserOS fragen
+chat:
+  input:
+    placeholderAgent: Was soll ich tun?
+    placeholderChat: Frage zu dieser Seite...
+    placeholderTranscribing: Transkribieren...
+    send: Senden
+    stop: Stop
+    stopRecording: Aufnahme stoppen
+    transcribing: Transkribieren
+    voiceInput: Spracheingabe
+  mode:
+    agent: Agent-Modus AN
+    chat: Chat-Modus AN
+    agentTooltip: KI kann browsen, klicken und navigieren
+    chatTooltip: KI kann nur lesen, nicht klicken oder navigieren
+  empty:
+    agentTitle: Agent zu Ihren Diensten
+    agentSubtitle: KI automatisiert Aufgaben und browset für Sie
+    chatTitle: Mit dieser Seite chatten
+    chatSubtitle: Fragen zur aktuellen Seite oder einem beliebigen Thema stellen
+  header:
+    changeProvider: KI-Anbieter wechseln
+    newConversation: Neues Gespräch
+    chatHistory: Chat-Verlauf
+    starOnGithub: Auf Github starren
+    settings: Einstellungen
+  error:
+    dailyLimitTitle: Tageslimit erreicht
+    connectionFailedTitle: Verbindung fehlgeschlagen
+    genericTitle: Fehler aufgetreten
+    connectionMessage: Verbindung zu BrowserOS-Agent nicht möglich. Folgen Sie den Anweisungen unten.
+    rateLimitMessage: Eigenen API-Key hinzufügen für unbegrenzte Nutzung.
+    troubleshootingLink: Fehlerbehebung anzeigen
+    kimiApiKeyLink: Anleitung zum Kimi API-Key
+    getApiKey: API-Key erhalten
+    tryAgain: Erneut versuchen
+  actions:
+    copy: Kopieren
+    copyToClipboard: In Zwischenablage kopieren
+    feedbackSubmitted: Feedback gesendet
+    like: Gefällt mir
+    likeTooltip: Antwort gefällt mir
+    dislike: Gefällt nicht
+    dislikeTooltip: Antwort gefällt nicht
+    feedbackTitle: Was ist schiefgelaufen?
+    feedbackDescription: Teilen Sie uns mit, was an dieser Antwort nicht stimmte.
+    feedbackPlaceholder: Kommentar (optional)
+  schedule:
+    title: Automatisch ausführen?
+    dailyAt: täglich um $1
+    everyHour: jede Stunde
+    scheduleButton: Aufgabe planen
+    maybeLater: Später vielleicht
+  connectApp:
+    connecting: Verbinden...
+    connectButton: $1 verbinden
+    authorizeTitle: $1 im geöffneten Tab autorisieren
+    authorizeDescription: Anmeldung abschließen, dann Button klicken.
+    authorizedButton: $1 autorisiert, weiter
+    skipButton: Überspringen, manuell
+    suggested: $1 vorgeschlagen
+    connected: $1 verbunden
+    continuedWithout: Ohne $1 fortfahren
+    connectForBetter: $1 für bessere Ergebnisse verbinden
+    doItManually: Manuell erledigen
+    connectedSuccess: $1 erfolgreich verbunden
+    connectFailed: Verbindung zu $1 fehlgeschlagen
+footer:
+  attachTabs: Tabs anhängen (@)
+  selectWorkspace: Arbeitsbereich wählen
+  connectApps: Apps verbinden
+selectedText:
+  removeTitle: Textauswahl entfernen
+attachedTabs:
+  removeTab: Tab entfernen
+newtab:
+  search:
+    placeholder: BrowserOS fragen oder $1 suchen...
+  branding:
+    alt: BrowserOS
+  selectedTab: Tab
+  appsNew: Neu!
+  appsTooltip: Direkt verbundene Apps liefern genauere und schnellere Antworten!
+  addWorkspace: Arbeitsbereich hinzufügen
+  tip:
+    label: "Tipp:"
+    nextTip: Nächster Tipp
+    dismiss: Schließen
+  signIn:
+    title: Daten synchronisieren
+    description: Anmelden zum Synchronisieren des Chat-Verlaufs.
+    dontAskAgain: Nicht wieder fragen
+    signInButton: Anmelden
+  importData:
+    title: Daten importieren
+    description: Lesezeichen, Verlauf und Passwörter aus Chrome importieren.
+    dontShowAgain: Nicht mehr anzeigen
+    openSettings: Importeinstellungen öffnen
+  shortcuts:
+    title: Tastenkürzel
+    description: Diese Kürzel für schnellere Navigation in BrowserOS
+    moreComingSoon: Weitere Kürzel folgen
+sidebar:
+  nav:
+    home: Start
+    connectApps: Apps verbinden
+    scheduledTasks: Geplante Aufgaben
+    workflows: Workflows
+    skills: Skills
+    memory: Speicher
+    soul: Seele
+    settings: Einstellungen
+  footer:
+    about: Über BrowserOS
+    shortcuts: Kürzel
+  branding:
+    alt: BrowserOS
+    personal: Persönlich
+    updateProfile: Profil aktualisieren
+    signOut: Abmelden
+    signIn: Anmelden
+common:
+  cancel: Abbrechen
+  submit: Absenden
+  save: Speichern
+  delete: Löschen
+  edit: Bearbeiten
+  close: Schließen
+  loading: Laden...
+  error: Fehler aufgetreten
+  apps: Apps
+  tabs: Tabs

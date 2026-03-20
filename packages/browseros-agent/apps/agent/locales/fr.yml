@@ -1,0 +1,134 @@
+extName: Assistant BrowserOS
+extActionTitle: Demander à BrowserOS
+chat:
+  input:
+    placeholderAgent: Que dois-je faire ?
+    placeholderChat: Demandez sur cette page...
+    placeholderTranscribing: Transcription...
+    send: Envoyer
+    stop: Arrêter
+    stopRecording: Arrêter l'enregistrement
+    transcribing: Transcription
+    voiceInput: Saisie vocale
+  mode:
+    agent: Mode agent activé
+    chat: Mode chat activé
+    agentTooltip: L'IA peut naviguer, cliquer et se déplacer
+    chatTooltip: L'IA peut lire mais pas cliquer ni naviguer
+  empty:
+    agentTitle: Agent à votre service
+    agentSubtitle: Laissez l'IA automatiser et naviguer pour vous
+    chatTitle: Discuter avec cette page
+    chatSubtitle: Posez des questions sur cette page ou tout sujet
+  header:
+    changeProvider: Changer fournisseur IA
+    newConversation: Nouvelle conversation
+    chatHistory: Historique
+    starOnGithub: Étoiler sur Github
+    settings: Paramètres
+  error:
+    dailyLimitTitle: Limite quotidienne atteinte
+    connectionFailedTitle: Connexion échouée
+    genericTitle: Une erreur s'est produite
+    connectionMessage: Impossible de connecter l'agent BrowserOS. Suivez les instructions ci-dessous.
+    rateLimitMessage: Ajoutez votre propre clé API pour un usage illimité.
+    troubleshootingLink: Voir le guide de dépannage
+    kimiApiKeyLink: Comment obtenir une clé API Kimi
+    getApiKey: obtenir votre clé API
+    tryAgain: Réessayer
+  actions:
+    copy: Copier
+    copyToClipboard: Copier dans le presse-papiers
+    feedbackSubmitted: Feedback envoyé
+    like: Utile
+    likeTooltip: Cette réponse est utile
+    dislike: Inutile
+    dislikeTooltip: Cette réponse est inutile
+    feedbackTitle: Quel est le problème ?
+    feedbackDescription: Aidez-nous à nous améliorer en indiquant le problème.
+    feedbackPlaceholder: Commentaire (facultatif)
+  schedule:
+    title: Exécuter automatiquement ?
+    dailyAt: tous les jours à $1
+    everyHour: toutes les heures
+    scheduleButton: Planifier cette tâche
+    maybeLater: Plus tard
+  connectApp:
+    connecting: Connexion...
+    connectButton: Connecter $1
+    authorizeTitle: Autoriser $1 dans l'onglet ouvert
+    authorizeDescription: Terminez la connexion, puis cliquez ci-dessous.
+    authorizedButton: J'ai autorisé $1, continuer
+    skipButton: Passer, faire manuellement
+    suggested: $1 suggéré
+    connected: $1 connecté
+    continuedWithout: Continuer sans $1
+    connectForBetter: Connectez $1 pour de meilleurs résultats
+    doItManually: Faire manuellement
+    connectedSuccess: $1 connecté avec succès
+    connectFailed: Impossible de connecter $1
+footer:
+  attachTabs: Joindre onglets (@)
+  selectWorkspace: Choisir l'espace de travail
+  connectApps: Connecter apps
+selectedText:
+  removeTitle: Supprimer le texte sélectionné
+attachedTabs:
+  removeTab: Supprimer l'onglet
+newtab:
+  search:
+    placeholder: Demandez à BrowserOS ou cherchez $1...
+  branding:
+    alt: BrowserOS
+  selectedTab: Onglet
+  appsNew: Nouveau !
+  appsTooltip: Les apps connectées directement offrent des réponses plus précises et rapides !
+  addWorkspace: Ajouter un espace de travail
+  tip:
+    label: "Astuce :"
+    nextTip: Astuce suivante
+    dismiss: Ignorer
+  signIn:
+    title: Synchroniser vos données
+    description: Connectez-vous pour synchroniser l'historique dans le cloud.
+    dontAskAgain: Ne plus demander
+    signInButton: Se connecter
+  importData:
+    title: Importer vos données
+    description: Importez marque-pages, historique et mots de passe depuis Chrome.
+    dontShowAgain: Ne plus afficher
+    openSettings: Ouvrir les paramètres d'importation
+  shortcuts:
+    title: Raccourcis clavier
+    description: Utilisez ces raccourcis pour naviguer plus vite dans BrowserOS
+    moreComingSoon: Plus de raccourcis bientôt
+sidebar:
+  nav:
+    home: Accueil
+    connectApps: Apps connectées
+    scheduledTasks: Tâches planifiées
+    workflows: Workflows
+    skills: Compétences
+    memory: Mémoire
+    soul: Âme
+    settings: Paramètres
+  footer:
+    about: À propos de BrowserOS
+    shortcuts: Raccourcis
+  branding:
+    alt: BrowserOS
+    personal: Personnel
+    updateProfile: Mettre à jour le profil
+    signOut: Déconnexion
+    signIn: Connexion
+common:
+  cancel: Annuler
+  submit: Valider
+  save: Enregistrer
+  delete: Supprimer
+  edit: Modifier
+  close: Fermer
+  loading: Chargement...
+  error: Une erreur s'est produite
+  apps: Apps
+  tabs: Onglets

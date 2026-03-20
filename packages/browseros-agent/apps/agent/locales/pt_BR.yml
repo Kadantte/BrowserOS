@@ -1,0 +1,134 @@
+extName: Assistente BrowserOS
+extActionTitle: Pergunte ao BrowserOS
+chat:
+  input:
+    placeholderAgent: O que devo fazer?
+    placeholderChat: Pergunte sobre esta página...
+    placeholderTranscribing: Transcrevendo...
+    send: Enviar
+    stop: Parar
+    stopRecording: Parar gravação
+    transcribing: Transcrevendo
+    voiceInput: Entrada de voz
+  mode:
+    agent: Modo Agente ATIVO
+    chat: Modo Chat ATIVO
+    agentTooltip: A IA pode navegar, clicar e acessar sites
+    chatTooltip: A IA só lê, não pode clicar ou navegar
+  empty:
+    agentTitle: Agente à sua disposição
+    agentSubtitle: Deixe a IA automatizar tarefas e navegar por você
+    chatTitle: Converse com esta página
+    chatSubtitle: Faça perguntas sobre a página atual ou qualquer tópico
+  header:
+    changeProvider: Mudar provedor de IA
+    newConversation: Nova conversa
+    chatHistory: Histórico de chat
+    starOnGithub: Estrelar no GitHub
+    settings: Configurações
+  error:
+    dailyLimitTitle: Limite diário atingido
+    connectionFailedTitle: Falha na conexão
+    genericTitle: Algo deu errado
+    connectionMessage: Não foi possível conectar ao agente BrowserOS. Siga as instruções abaixo.
+    rateLimitMessage: Adicione sua própria chave de API para uso ilimitado.
+    troubleshootingLink: Ver guia de solução de problemas
+    kimiApiKeyLink: Saiba como obter uma chave de API Kimi
+    getApiKey: obtenha sua chave de API
+    tryAgain: Tentar novamente
+  actions:
+    copy: Copiar
+    copyToClipboard: Copiar para a área de transferência
+    feedbackSubmitted: Feedback enviado
+    like: Curtir
+    likeTooltip: Curtir esta resposta
+    dislike: Descurtir
+    dislikeTooltip: Não curtir esta resposta
+    feedbackTitle: O que deu errado?
+    feedbackDescription: Ajude-nos a melhorar informando o que estava errado.
+    feedbackPlaceholder: Adicione um comentário (opcional)
+  schedule:
+    title: Executar isso automaticamente?
+    dailyAt: diariamente às $1
+    everyHour: a cada hora
+    scheduleButton: Agendar esta tarefa
+    maybeLater: Talvez depois
+  connectApp:
+    connecting: Conectando...
+    connectButton: Conectar $1
+    authorizeTitle: Autorize $1 na aba aberta
+    authorizeDescription: Complete o fluxo de login, depois clique no botão abaixo.
+    authorizedButton: Autorizei $1, continuar
+    skipButton: Pular, fazer manualmente
+    suggested: $1 sugerido
+    connected: $1 conectado
+    continuedWithout: Continuando sem $1
+    connectForBetter: Conecte $1 para melhores resultados
+    doItManually: Fazer manualmente
+    connectedSuccess: $1 conectado com sucesso
+    connectFailed: Falha ao conectar $1
+footer:
+  attachTabs: Anexar abas (@)
+  selectWorkspace: Selecionar workspace
+  connectApps: Conectar apps
+selectedText:
+  removeTitle: Remover texto selecionado
+attachedTabs:
+  removeTab: Remover aba
+newtab:
+  search:
+    placeholder: Pergunte ao BrowserOS ou pesquise em $1...
+  branding:
+    alt: BrowserOS
+  selectedTab: Aba
+  appsNew: Novo!
+  appsTooltip: Apps conectados diretamente oferecem respostas mais precisas e rápidas!
+  addWorkspace: Adicionar workspace
+  tip:
+    label: "Dica:"
+    nextTip: Próxima dica
+    dismiss: Fechar
+  signIn:
+    title: Sincronize seus dados
+    description: Entre para sincronizar o histórico de conversas na nuvem.
+    dontAskAgain: Não perguntar novamente
+    signInButton: Entrar
+  importData:
+    title: Importe seus dados
+    description: Traga favoritos, histórico e senhas do Chrome.
+    dontShowAgain: Não mostrar novamente
+    openSettings: Abrir Configurações de Importação
+  shortcuts:
+    title: Atalhos de Teclado
+    description: Use atalhos para navegar mais rápido no BrowserOS
+    moreComingSoon: Mais atalhos em breve
+sidebar:
+  nav:
+    home: Início
+    connectApps: Conectar Apps
+    scheduledTasks: Tarefas Agendadas
+    workflows: Fluxos de trabalho
+    skills: Habilidades
+    memory: Memória
+    soul: Alma
+    settings: Configurações
+  footer:
+    about: Sobre o BrowserOS
+    shortcuts: Atalhos
+  branding:
+    alt: BrowserOS
+    personal: Pessoal
+    updateProfile: Atualizar Perfil
+    signOut: Sair
+    signIn: Entrar
+common:
+  cancel: Cancelar
+  submit: Enviar
+  save: Salvar
+  delete: Excluir
+  edit: Editar
+  close: Fechar
+  loading: Carregando...
+  error: Algo deu errado
+  apps: Apps
+  tabs: Abas

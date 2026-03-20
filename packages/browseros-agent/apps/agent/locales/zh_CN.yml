@@ -1,0 +1,134 @@
+extName: BrowserOS 助手
+extActionTitle: 询问 BrowserOS
+chat:
+  input:
+    placeholderAgent: 需要做什么？
+    placeholderChat: 询问此页面...
+    placeholderTranscribing: 正在转录...
+    send: 发送
+    stop: 停止
+    stopRecording: 停止录音
+    transcribing: 转录中
+    voiceInput: 语音输入
+  mode:
+    agent: Agent 模式开启
+    chat: 聊天模式开启
+    agentTooltip: AI 可浏览、点击、导航
+    chatTooltip: AI 仅可阅读，不可点击导航
+  empty:
+    agentTitle: Agent 为您服务
+    agentSubtitle: 让 AI 自动执行任务、代为浏览
+    chatTitle: 与此页对话
+    chatSubtitle: 询问当前页面或任意话题
+  header:
+    changeProvider: 切换 AI 提供商
+    newConversation: 新建对话
+    chatHistory: 对话历史
+    starOnGithub: 在 GitHub 标星
+    settings: 设置
+  error:
+    dailyLimitTitle: 已达每日上限
+    connectionFailedTitle: 连接失败
+    genericTitle: 出错了
+    connectionMessage: 无法连接 BrowserOS Agent，请按以下步骤操作。
+    rateLimitMessage: 添加个人 API 密钥以解除限制。
+    troubleshootingLink: 查看排查指南
+    kimiApiKeyLink: 了解如何获取 Kimi API 密钥
+    getApiKey: 获取 API 密钥
+    tryAgain: 重试
+  actions:
+    copy: 复制
+    copyToClipboard: 复制到剪贴板
+    feedbackSubmitted: 反馈已提交
+    like: 点赞
+    likeTooltip: 为此回复点赞
+    dislike: 点踩
+    dislikeTooltip: 为此回复点踩
+    feedbackTitle: 出了什么问题？
+    feedbackDescription: 分享此回复的问题，助我们改进。
+    feedbackPlaceholder: 添加评论（可选）
+  schedule:
+    title: 自动运行此任务？
+    dailyAt: 每天 $1
+    everyHour: 每小时
+    scheduleButton: 安排此任务
+    maybeLater: 稍后
+  connectApp:
+    connecting: 连接中...
+    connectButton: 连接 $1
+    authorizeTitle: 在已打开的标签页中授权 $1
+    authorizeDescription: 完成登录后点击下方按钮。
+    authorizedButton: 已授权 $1，继续
+    skipButton: 跳过，手动操作
+    suggested: 建议使用 $1
+    connected: 已连接 $1
+    continuedWithout: 继续，不使用 $1
+    connectForBetter: 连接 $1 以获得更好结果
+    doItManually: 手动操作
+    connectedSuccess: $1 连接成功
+    connectFailed: $1 连接失败
+footer:
+  attachTabs: 附加标签 (@)
+  selectWorkspace: 选择工作区文件夹
+  connectApps: 连接应用
+selectedText:
+  removeTitle: 移除选中文本
+attachedTabs:
+  removeTab: 移除标签
+newtab:
+  search:
+    placeholder: 询问 BrowserOS 或搜索 $1...
+  branding:
+    alt: BrowserOS
+  selectedTab: 标签
+  appsNew: 新！
+  appsTooltip: 直接连接的应用回复更准确、更快速！
+  addWorkspace: 添加工作区
+  tip:
+    label: 提示：
+    nextTip: 下一条提示
+    dismiss: 忽略
+  signIn:
+    title: 同步数据
+    description: 登录以同步对话历史至云端。
+    dontAskAgain: 不再询问
+    signInButton: 登录
+  importData:
+    title: 导入数据
+    description: 从 Chrome 导入书签、历史和密码。
+    dontShowAgain: 不再显示
+    openSettings: 打开导入设置
+  shortcuts:
+    title: 快捷键
+    description: 使用快捷键更快操作 BrowserOS
+    moreComingSoon: 更多快捷键即将推出
+sidebar:
+  nav:
+    home: 首页
+    connectApps: 连接应用
+    scheduledTasks: 定时任务
+    workflows: 工作流
+    skills: 技能
+    memory: 记忆
+    soul: 灵魂
+    settings: 设置
+  footer:
+    about: 关于 BrowserOS
+    shortcuts: 快捷键
+  branding:
+    alt: BrowserOS
+    personal: 个人版
+    updateProfile: 更新资料
+    signOut: 退出
+    signIn: 登录
+common:
+  cancel: 取消
+  submit: 提交
+  save: 保存
+  delete: 删除
+  edit: 编辑
+  close: 关闭
+  loading: 加载中...
+  error: 出错了
+  apps: 应用
+  tabs: 标签

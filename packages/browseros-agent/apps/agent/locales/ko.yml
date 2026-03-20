@@ -1,0 +1,134 @@
+extName: BrowserOS Assistant
+extActionTitle: BrowserOS에게 물어보기
+chat:
+  input:
+    placeholderAgent: 무엇을 할까요?
+    placeholderChat: 이 페이지에 대해 질문...
+    placeholderTranscribing: 전사 중...
+    send: 전송
+    stop: 중지
+    stopRecording: 녹음 중지
+    transcribing: 전사 중
+    voiceInput: 음성 입력
+  mode:
+    agent: 에이전트 모드 ON
+    chat: 채팅 모드 ON
+    agentTooltip: AI가 탐색, 클릭, 이동 가능
+    chatTooltip: AI는 읽기만 가능, 클릭/이동 불가
+  empty:
+    agentTitle: 에이전트가 대기 중
+    agentSubtitle: AI가 작업을 자동화하고 탐색합니다
+    chatTitle: 이 페이지와 채팅
+    chatSubtitle: 현재 페이지나 주제에 대해 질문하세요
+  header:
+    changeProvider: AI 제공자 변경
+    newConversation: 새 대화
+    chatHistory: 대화 기록
+    starOnGithub: Github에서 Star
+    settings: 설정
+  error:
+    dailyLimitTitle: 일일 한도 도달
+    connectionFailedTitle: 연결 실패
+    genericTitle: 문제가 발생했습니다
+    connectionMessage: BrowserOS 에이전트에 연결할 수 없습니다. 아래 안내를 따르세요.
+    rateLimitMessage: 무제한 사용을 위해 API 키를 추가하세요.
+    troubleshootingLink: 문제 해결 가이드 보기
+    kimiApiKeyLink: Kimi API 키 얻는 방법 알아보기
+    getApiKey: API 키 받기
+    tryAgain: 다시 시도
+  actions:
+    copy: 복사
+    copyToClipboard: 클립보드에 복사
+    feedbackSubmitted: 피드백 전송됨
+    like: 좋아요
+    likeTooltip: 이 응답이 좋아요
+    dislike: 싫어요
+    dislikeTooltip: 이 응답이 싫어요
+    feedbackTitle: 무엇이 잘못되었나요?
+    feedbackDescription: 이 응답의 문제를 공유하여 개선을 도와주세요.
+    feedbackPlaceholder: 댓글 추가 (선택사항)
+  schedule:
+    title: 자동으로 실행할까요?
+    dailyAt: 매일 $1
+    everyHour: 매시간
+    scheduleButton: 작업 예약
+    maybeLater: 나중에
+  connectApp:
+    connecting: 연결 중...
+    connectButton: $1 연결
+    authorizeTitle: 열린 탭에서 $1 인증
+    authorizeDescription: 로그인을 완료한 후 아래 버튼을 클릭하세요.
+    authorizedButton: $1 인증 완료, 계속하기
+    skipButton: 건너뛰기, 수동으로 실행
+    suggested: $1 추천
+    connected: $1 연결됨
+    continuedWithout: $1 없이 계속
+    connectForBetter: 더 나은 결과를 위해 $1 연결
+    doItManually: 수동으로 실행
+    connectedSuccess: $1 연결 성공
+    connectFailed: $1 연결 실패
+footer:
+  attachTabs: 탭 첨부 (@)
+  selectWorkspace: 작업 폴더 선택
+  connectApps: 앱 연결
+selectedText:
+  removeTitle: 선택한 텍스트 제거
+attachedTabs:
+  removeTab: 탭 제거
+newtab:
+  search:
+    placeholder: BrowserOS에게 묻거나 $1 검색...
+  branding:
+    alt: BrowserOS
+  selectedTab: 탭
+  appsNew: 신규!
+  appsTooltip: 직접 연결된 앱은 더 정확하고 빠른 응답을 제공합니다!
+  addWorkspace: 작업 공간 추가
+  tip:
+    label: "팁:"
+    nextTip: 다음 팁
+    dismiss: 닫기
+  signIn:
+    title: 데이터 동기화
+    description: 대화 기록을 클라우드에 동기화하려면 로그인하세요.
+    dontAskAgain: 다시 묻지 않기
+    signInButton: 로그인
+  importData:
+    title: 데이터 가져오기
+    description: Chrome에서 북마크, 기록, 비밀번호를 가져옵니다.
+    dontShowAgain: 다시 표시하지 않기
+    openSettings: 가져오기 설정 열기
+  shortcuts:
+    title: 키보드 단축키
+    description: BrowserOS를 더 빠르게 탐색하려면 이 단축키를 사용하세요.
+    moreComingSoon: 더 많은 단축키가 곧 제공됩니다
+sidebar:
+  nav:
+    home: 홈
+    connectApps: 앱 연결
+    scheduledTasks: 예약된 작업
+    workflows: 워크플로우
+    skills: 스킬
+    memory: 메모리
+    soul: 소울
+    settings: 설정
+  footer:
+    about: BrowserOS 정보
+    shortcuts: 단축키
+  branding:
+    alt: BrowserOS
+    personal: 개인
+    updateProfile: 프로필 업데이트
+    signOut: 로그아웃
+    signIn: 로그인
+common:
+  cancel: 취소
+  submit: 제출
+  save: 저장
+  delete: 삭제
+  edit: 편집
+  close: 닫기
+  loading: 로딩 중...
+  error: 문제가 발생했습니다
+  apps: 앱
+  tabs: 탭
