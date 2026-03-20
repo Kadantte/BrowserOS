@@ -28,6 +28,16 @@ const MCP_URL = `http://127.0.0.1:${EVAL_PORTS.server}/mcp`
 
 let currentServerPid: number | null = null
 
+interface TextContentItem {
+  type: string
+  text?: string
+}
+
+interface McpToolResult {
+  isError?: boolean
+  content?: TextContentItem[]
+}
+
 // ============================================================================
 // Utility Functions (same as parallel-executor)
 // ============================================================================
@@ -193,7 +203,7 @@ async function callMcpTool(
   name: string,
   args: Record<string, unknown> = {},
   timeoutMs = 60000,
-): Promise<{ success: boolean; result?: any; error?: string }> {
+): Promise<{ success: boolean; result?: McpToolResult; error?: string }> {
   const client = new Client({ name: 'lifecycle-test', version: '1.0.0' })
   const transport = new StreamableHTTPClientTransport(new URL(MCP_URL))
 
@@ -206,12 +216,14 @@ async function callMcpTool(
         timeoutMs,
       ),
     )
-    const result = await Promise.race([toolPromise, timeoutPromise])
+    const result = (await Promise.race([
+      toolPromise,
+      timeoutPromise,
+    ])) as McpToolResult
 
-    if ((result as any).isError) {
+    if (result.isError) {
       const errorText =
-        (result as any).content?.find((c: any) => c.type === 'text')?.text ||
-        'Unknown error'
+        result.content?.find((c) => c.type === 'text')?.text || 'Unknown error'
       return { success: false, error: errorText }
     }
     return { success: true, result }

@@ -125,7 +125,7 @@ export class BrowserService {
           tabId: createdPage.tabId,
           windowId: createdPage.windowId ?? windowId,
         }
-      } catch {
+      } catch (error) {
         const fallbackPage = await this.getFallbackPage()
         if (fallbackPage) {
           await this.browser.goto(fallbackPage.pageId, url)
@@ -134,6 +134,13 @@ export class BrowserService {
             windowId: fallbackPage.windowId ?? 0,
           }
         }
+        throw error instanceof SdkError
+          ? error
+          : new SdkError(
+              error instanceof Error
+                ? error.message
+                : 'Failed to navigate in specified window',
+            )
       }
     }
 

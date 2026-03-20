@@ -16,6 +16,22 @@ interface TestResult {
   error?: string
 }
 
+interface TextContentItem {
+  type: string
+  text?: string
+}
+
+interface StructuredWindowResult {
+  windowId?: number
+  tabId?: number
+}
+
+interface McpToolResult {
+  isError?: boolean
+  content?: TextContentItem[]
+  structuredContent?: StructuredWindowResult
+}
+
 const results: TestResult[] = []
 
 async function checkHealth(): Promise<boolean> {
@@ -67,13 +83,15 @@ async function callMcpTool(
       ),
     )
 
-    const result = await Promise.race([toolPromise, timeoutPromise])
+    const result = (await Promise.race([
+      toolPromise,
+      timeoutPromise,
+    ])) as McpToolResult
     const duration = Date.now() - start
 
-    if ((result as any).isError) {
+    if (result.isError) {
       const errorText =
-        (result as any).content?.find((c: any) => c.type === 'text')?.text ||
-        'Unknown error'
+        result.content?.find((c) => c.type === 'text')?.text || 'Unknown error'
       return { success: false, error: errorText, duration }
     }
 
@@ -161,15 +179,16 @@ async function main() {
     })
     if (!res.success) throw new Error(res.error)
 
-    const structured = (res.result as any)?.structuredContent
+    const structured = res.result as StructuredWindowResult | undefined
     windowId = structured?.windowId
     tabId = structured?.tabId
 
     if (!windowId || !tabId) {
       // Try parsing from text
       const text =
-        (res.result as any)?.content?.find((c: any) => c.type === 'text')
-          ?.text || ''
+        (res.result as McpToolResult | undefined)?.content?.find(
+          (c) => c.type === 'text',
+        )?.text || ''
       const windowMatch = text.match(/window\s+(\d+)/i)
       const tabMatch = text.match(/tab\s+(?:ID:\s*)?(\d+)/i)
       if (windowMatch) windowId = parseInt(windowMatch[1], 10)
