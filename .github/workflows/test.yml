@@ -51,11 +51,37 @@ jobs:
       - name: Install dependencies
         run: bun ci
 
+      - name: Resolve BrowserOS cache key
+        id: browseros-cache-key
+        run: |
+          set -euo pipefail
+          headers="$(curl -fsSI "$BROWSEROS_APPIMAGE_URL")"
+          etag="$(printf '%s\n' "$headers" | awk 'BEGIN{IGNORECASE=1} /^etag:/ {sub(/\r$/, "", $2); gsub(/"/, "", $2); print $2; exit}')"
+          last_modified="$(printf '%s\n' "$headers" | awk 'BEGIN{IGNORECASE=1} /^last-modified:/ {$1=""; sub(/^ /, ""); sub(/\r$/, ""); print; exit}')"
+          raw_key="${etag:-$last_modified}"
+          if [ -z "$raw_key" ]; then
+            raw_key="$BROWSEROS_APPIMAGE_URL"
+          fi
+          cache_key="$(printf '%s' "$raw_key" | shasum -a 256 | awk '{print $1}')"
+          echo "key=browseros-appimage-${{ runner.os }}-$cache_key" >> "$GITHUB_OUTPUT"
+
+      - name: Restore BrowserOS cache
+        id: browseros-cache
+        uses: actions/cache@v4
+        with:
+          path: packages/browseros-agent/.ci/bin/BrowserOS.AppImage
+          key: ${{ steps.browseros-cache-key.outputs.key }}
+
       - name: Download BrowserOS
+        if: steps.browseros-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .ci/bin
           curl -fsSL "$BROWSEROS_APPIMAGE_URL" -o .ci/bin/BrowserOS.AppImage
           chmod +x .ci/bin/BrowserOS.AppImage
+
+      - name: Prepare BrowserOS wrapper
+        run: |
+          mkdir -p .ci/bin
           cat > .ci/bin/browseros <<'EOF'
           #!/usr/bin/env bash
           set -euo pipefail
@@ -63,6 +89,10 @@ jobs:
           exec "$(dirname "$0")/BrowserOS.AppImage" "$@"
           EOF
           chmod +x .ci/bin/browseros
+
+      - name: Create server env file
+        working-directory: packages/browseros-agent/apps/server
+        run: cp .env.example .env.development
 
       - name: Run ${{ matrix.suite }} tests
         id: test
