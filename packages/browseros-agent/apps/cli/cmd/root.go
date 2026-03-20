@@ -185,6 +185,14 @@ func defaultServerURL() string {
 	return ""
 }
 
+type serverDiscoveryConfig struct {
+	ServerPort       int    `json:"server_port"`
+	URL              string `json:"url"`
+	ServerVersion    string `json:"server_version"`
+	BrowserOSVersion string `json:"browseros_version,omitempty"`
+	ChromiumVersion  string `json:"chromium_version,omitempty"`
+}
+
 func loadBrowserosServerURL() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
@@ -196,9 +204,7 @@ func loadBrowserosServerURL() string {
 		return ""
 	}
 
-	var sc struct {
-		URL string `json:"url"`
-	}
+	var sc serverDiscoveryConfig
 	if err := json.Unmarshal(data, &sc); err != nil {
 		return ""
 	}

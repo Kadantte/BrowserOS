@@ -115,7 +115,13 @@ export class Application {
     }
 
     try {
-      await writeServerConfig(this.config.serverPort)
+      await writeServerConfig({
+        server_port: this.config.serverPort,
+        url: `http://127.0.0.1:${this.config.serverPort}`,
+        server_version: VERSION,
+        browseros_version: this.config.instanceBrowserosVersion,
+        chromium_version: this.config.instanceChromiumVersion,
+      })
     } catch (error) {
       logger.warn('Failed to write server config for auto-discovery', {
         error: error instanceof Error ? error.message : String(error),
