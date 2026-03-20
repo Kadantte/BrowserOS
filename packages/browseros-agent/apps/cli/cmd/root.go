@@ -209,7 +209,7 @@ func loadBrowserosServerURL() string {
 		return ""
 	}
 
-	return sc.URL
+	return normalizeServerURL(sc.URL)
 }
 
 func normalizeServerURL(raw string) string {
