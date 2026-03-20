@@ -17,7 +17,6 @@
 export const DEFAULT_PORTS = {
   cdp: 9000,
   server: 9100,
-  extension: 9300,
 } as const
 
 /**
@@ -27,7 +26,6 @@ export const DEFAULT_PORTS = {
 export const TEST_PORTS = {
   cdp: 9005,
   server: 9105,
-  extension: 9305,
 } as const
 
 /**
@@ -37,7 +35,6 @@ export const TEST_PORTS = {
 export const DEV_PORTS = {
   cdp: 9010,
   server: 9110,
-  extension: 9310,
 } as const
 
 // OAuth callback port — must match the redirect_uri registered with OpenAI's Codex client ID

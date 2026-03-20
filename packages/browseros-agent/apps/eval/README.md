@@ -90,7 +90,6 @@ The orchestrator works with **any LLM provider**. Pick whichever you have access
     "server_url": "http://127.0.0.1:9110",
     "base_cdp_port": 9010,
     "base_server_port": 9110,
-    "base_extension_port": 9310,
     "headless": true
   },
   "grader_api_key_env": "OPENROUTER_API_KEY",
@@ -171,13 +170,11 @@ The `apiKey` field supports two formats:
   "server_url": "http://127.0.0.1:9110",
   "base_cdp_port": 9010,
   "base_server_port": 9110,
-  "base_extension_port": 9310,
-  "load_extensions": false,
   "headless": true
 }
 ```
 
-Each worker gets its own Chrome instance. Worker N uses `base_port + N` for CDP, server, and extension ports.
+Each worker gets its own Chrome instance. Worker N uses `base_port + N` for CDP and server ports.
 
 ### Execution settings
 

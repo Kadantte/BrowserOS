@@ -342,10 +342,6 @@
             <label>Base Server Port</label>
             <input type="number" id="cfg-server-port" value="9110">
           </div>
-          <div class="config-field">
-            <label>Base Ext Port</label>
-            <input type="number" id="cfg-ext-port" value="9310">
-          </div>
         </div>
         <div class="config-row">
           <div class="config-field">
@@ -361,10 +357,6 @@
           <div class="config-field-inline">
             <input type="checkbox" id="cfg-headless">
             <label for="cfg-headless">Headless</label>
-          </div>
-          <div class="config-field-inline">
-            <input type="checkbox" id="cfg-extensions">
-            <label for="cfg-extensions">Load Extensions</label>
           </div>
           <div class="config-field-inline">
             <input type="checkbox" id="cfg-restart">
@@ -772,9 +764,7 @@ function fillForm(cfg) {
   setVal('cfg-server-url', bos.server_url);
   setVal('cfg-cdp-port', bos.base_cdp_port);
   setVal('cfg-server-port', bos.base_server_port);
-  setVal('cfg-ext-port', bos.base_extension_port);
   document.getElementById('cfg-headless').checked = bos.headless || false;
-  document.getElementById('cfg-extensions').checked = bos.load_extensions || false;
   document.getElementById('cfg-restart').checked = cfg.restart_server_per_task || false;
 
   // Dataset — try to match a dropdown option, fall back to custom
@@ -882,8 +872,6 @@ function buildConfigFromForm() {
       server_url: getVal('cfg-server-url') || 'http://127.0.0.1:9110',
       base_cdp_port: parseInt(getVal('cfg-cdp-port'), 10) || 9010,
       base_server_port: parseInt(getVal('cfg-server-port'), 10) || 9110,
-      base_extension_port: parseInt(getVal('cfg-ext-port'), 10) || 9310,
-      load_extensions: document.getElementById('cfg-extensions').checked,
       headless: document.getElementById('cfg-headless').checked,
     },
     restart_server_per_task: document.getElementById('cfg-restart').checked,

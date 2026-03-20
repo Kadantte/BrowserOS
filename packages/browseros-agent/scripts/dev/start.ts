@@ -7,12 +7,11 @@ import { fileURLToPath } from 'node:url'
 import { spawn, spawnSync } from 'bun'
 import pc from 'picocolors'
 
-type Ports = { cdp: number; server: number; extension: number }
+type Ports = { cdp: number; server: number }
 type Mode = 'watch' | 'manual'
 
 const MONOREPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
 const BROWSEROS_BINARY = '/Applications/BrowserOS.app/Contents/MacOS/BrowserOS'
-const CONTROLLER_EXT_DIR = join(MONOREPO_ROOT, 'apps/controller-ext/dist')
 const AGENT_EXT_DIR = join(MONOREPO_ROOT, 'apps/agent/dist/chrome-mv3-dev')
 let USER_DATA_DIR = '/tmp/browseros-dev'
 
@@ -65,7 +64,6 @@ function loadEnvPorts(): Ports {
   return {
     cdp: Number(env.BROWSEROS_CDP_PORT) || 9005,
     server: Number(env.BROWSEROS_SERVER_PORT) || 9105,
-    extension: Number(env.BROWSEROS_EXTENSION_PORT) || 9305,
   }
 }
 
@@ -76,13 +74,9 @@ function killPort(port: number): void {
 }
 
 function killPorts(ports: Ports): void {
-  log(
-    'info',
-    `Killing processes on ports ${ports.cdp}, ${ports.server}, ${ports.extension}...`,
-  )
+  log('info', `Killing processes on ports ${ports.cdp}, ${ports.server}...`)
   killPort(ports.cdp)
   killPort(ports.server)
-  killPort(ports.extension)
   log('info', 'Ports cleared')
 }
 
@@ -110,7 +104,6 @@ async function findAvailablePorts(base: Ports): Promise<Ports> {
   return {
     cdp: await findAvailablePort(base.cdp),
     server: await findAvailablePort(base.server),
-    extension: await findAvailablePort(base.extension),
   }
 }
 
@@ -150,7 +143,6 @@ function createEnv(ports: Ports): NodeJS.ProcessEnv {
     NODE_ENV: 'development',
     BROWSEROS_CDP_PORT: String(ports.cdp),
     BROWSEROS_SERVER_PORT: String(ports.server),
-    BROWSEROS_EXTENSION_PORT: String(ports.extension),
     VITE_BROWSEROS_SERVER_PORT: String(ports.server),
   }
 }
@@ -199,9 +191,8 @@ function startManualBrowser(ports: Ports): ReturnType<typeof spawn> {
     // TODO: replace with --browseros-cdp-port once we fix the browseros bug
     `--remote-debugging-port=${ports.cdp}`,
     `--browseros-mcp-port=${ports.server}`,
-    `--browseros-extension-port=${ports.extension}`,
     `--user-data-dir=${USER_DATA_DIR}`,
-    `--load-extension=${CONTROLLER_EXT_DIR},${AGENT_EXT_DIR}`,
+    `--load-extension=${AGENT_EXT_DIR}`,
     'chrome://newtab',
   ]
 
@@ -240,10 +231,7 @@ async function main() {
   if (args.isNew) {
     log('info', 'Finding available ports...')
     ports = await findAvailablePorts(ports)
-    log(
-      'info',
-      `Ports: CDP=${ports.cdp} Server=${ports.server} Extension=${ports.extension}`,
-    )
+    log('info', `Ports: CDP=${ports.cdp} Server=${ports.server}`)
     USER_DATA_DIR = mkdtempSync(join(tmpdir(), 'browseros-dev-'))
     log('info', `Created fresh profile: ${USER_DATA_DIR}`)
   } else {
@@ -252,18 +240,13 @@ async function main() {
 
   console.log()
   log('info', `Mode: ${args.mode}`)
-  log(
-    'info',
-    `Ports: CDP=${ports.cdp} Server=${ports.server} Extension=${ports.extension}`,
-  )
+  log('info', `Ports: CDP=${ports.cdp} Server=${ports.server}`)
   log('info', `Profile: ${USER_DATA_DIR}`)
   console.log()
 
   const env = createEnv(ports)
   const procs: ReturnType<typeof spawn>[] = []
   const streams: Promise<void>[] = []
-
-  buildExtension('controller-ext', 'build:ext')
 
   if (args.mode === 'manual') {
     buildExtension('agent', 'build:agent:dev')

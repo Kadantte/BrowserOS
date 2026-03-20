@@ -13,14 +13,14 @@ const MCP_URL = `${SERVER_URL}/mcp`
 const NUM_TURNS = 60
 const SCREENSHOT_EVERY_N_TURNS = 1
 
-async function checkExtension(): Promise<boolean> {
+async function checkRuntime(): Promise<boolean> {
   try {
-    const res = await fetch(`${SERVER_URL}/extension-status`, {
+    const res = await fetch(`${SERVER_URL}/status`, {
       signal: AbortSignal.timeout(5000),
     })
     if (!res.ok) return false
-    const data = (await res.json()) as { extensionConnected?: boolean }
-    return data.extensionConnected === true
+    const data = (await res.json()) as { cdpConnected?: boolean }
+    return data.cdpConnected === true
   } catch {
     return false
   }
@@ -156,7 +156,7 @@ async function main() {
   let screenshotFail = 0
   let toolSuccess = 0
   let toolFail = 0
-  let extensionDisconnects = 0
+  let runtimeDisconnects = 0
 
   const startTime = Date.now()
 
@@ -201,18 +201,17 @@ async function main() {
       }
     }
 
-    // Check extension status
-    const extConnected = await checkExtension()
+    const extConnected = await checkRuntime()
     if (!extConnected) {
-      extensionDisconnects++
-      console.log(`  Turn ${turn}: ⚠️ Extension disconnected!`)
+      runtimeDisconnects++
+      console.log(`  Turn ${turn}: ⚠️ Runtime disconnected!`)
     }
 
     // Progress
     if (turn % 10 === 0) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1)
       console.log(
-        `Turn ${turn}/${NUM_TURNS} - Screenshots: ${screenshotSuccess}/${turn}, Tools: ${toolSuccess}/${turn}, Disconnects: ${extensionDisconnects}, Elapsed: ${elapsed}s`,
+        `Turn ${turn}/${NUM_TURNS} - Screenshots: ${screenshotSuccess}/${turn}, Tools: ${toolSuccess}/${turn}, Disconnects: ${runtimeDisconnects}, Elapsed: ${elapsed}s`,
       )
     }
 
@@ -237,9 +236,9 @@ async function main() {
   console.log(
     `Tool calls: ${toolSuccess}/${NUM_TURNS} (${((toolSuccess / NUM_TURNS) * 100).toFixed(1)}%)`,
   )
-  console.log(`Extension disconnects: ${extensionDisconnects}`)
+  console.log(`Runtime disconnects: ${runtimeDisconnects}`)
 
-  if (screenshotFail > 0 || toolFail > 0 || extensionDisconnects > 0) {
+  if (screenshotFail > 0 || toolFail > 0 || runtimeDisconnects > 0) {
     console.log('\n⚠️ Issues detected during long run!')
   } else {
     console.log('\n✅ All operations completed successfully!')

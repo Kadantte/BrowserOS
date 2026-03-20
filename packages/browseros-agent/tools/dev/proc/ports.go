@@ -11,15 +11,13 @@ import (
 )
 
 type Ports struct {
-	CDP       int
-	Server    int
-	Extension int
+	CDP    int
+	Server int
 }
 
 type PortReservations struct {
-	CDP       net.Listener
-	Server    net.Listener
-	Extension net.Listener
+	CDP    net.Listener
+	Server net.Listener
 }
 
 const (
@@ -27,14 +25,14 @@ const (
 	randomPortMax = 9999
 )
 
-var defaultLocalPorts = Ports{CDP: 9005, Server: 9105, Extension: 9305}
+var defaultLocalPorts = Ports{CDP: 9005, Server: 9105}
 
 func DefaultLocalPorts() Ports {
 	return defaultLocalPorts
 }
 
 func ResolveWatchPorts(useRandom bool) (Ports, *PortReservations, error) {
-	reserved := make(map[int]struct{}, 3)
+	reserved := make(map[int]struct{}, 2)
 	reservations := &PortReservations{}
 	if useRandom {
 		rng := rand.New(rand.NewSource(time.Now().UnixNano()))
@@ -50,13 +48,7 @@ func ResolveWatchPorts(useRandom bool) (Ports, *PortReservations, error) {
 			return Ports{}, nil, err
 		}
 		reservations.Server = serverListener
-		extension, extensionListener, err := selectRandomPort(rng, reserved)
-		if err != nil {
-			reservations.ReleaseAll()
-			return Ports{}, nil, err
-		}
-		reservations.Extension = extensionListener
-		return Ports{CDP: cdp, Server: server, Extension: extension}, reservations, nil
+		return Ports{CDP: cdp, Server: server}, reservations, nil
 	}
 
 	defaultPorts := DefaultLocalPorts()
@@ -72,13 +64,7 @@ func ResolveWatchPorts(useRandom bool) (Ports, *PortReservations, error) {
 		return Ports{}, nil, err
 	}
 	reservations.Server = serverListener
-	extension, extensionListener, err := selectPreferredPort(defaultPorts.Extension, reserved)
-	if err != nil {
-		reservations.ReleaseAll()
-		return Ports{}, nil, err
-	}
-	reservations.Extension = extensionListener
-	return Ports{CDP: cdp, Server: server, Extension: extension}, reservations, nil
+	return Ports{CDP: cdp, Server: server}, reservations, nil
 }
 
 func IsPortAvailable(port int) bool {
@@ -93,7 +79,6 @@ func IsPortAvailable(port int) bool {
 func KillPorts(p Ports) {
 	KillPort(p.CDP)
 	KillPort(p.Server)
-	KillPort(p.Extension)
 }
 
 func (r *PortReservations) ReleaseCDP() {
@@ -112,21 +97,12 @@ func (r *PortReservations) ReleaseServer() {
 	r.Server = nil
 }
 
-func (r *PortReservations) ReleaseExtension() {
-	if r == nil || r.Extension == nil {
-		return
-	}
-	r.Extension.Close()
-	r.Extension = nil
-}
-
 func (r *PortReservations) ReleaseAll() {
 	if r == nil {
 		return
 	}
 	r.ReleaseCDP()
 	r.ReleaseServer()
-	r.ReleaseExtension()
 }
 
 func KillPort(port int) {
@@ -138,7 +114,6 @@ func BuildEnv(p Ports, nodeEnv string) []string {
 	env = append(env,
 		fmt.Sprintf("BROWSEROS_CDP_PORT=%d", p.CDP),
 		fmt.Sprintf("BROWSEROS_SERVER_PORT=%d", p.Server),
-		fmt.Sprintf("BROWSEROS_EXTENSION_PORT=%d", p.Extension),
 		fmt.Sprintf("VITE_BROWSEROS_SERVER_PORT=%d", p.Server),
 		fmt.Sprintf("NODE_ENV=%s", nodeEnv),
 	)

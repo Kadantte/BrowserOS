@@ -78,14 +78,12 @@ bun run typecheck                # TypeScript build check
 
 # Build
 bun run dev:server               # Build server for development
-bun run dev:ext                  # Build extension for development
 bun run dist:server              # Build server for production (all targets)
-bun run dist:ext                 # Build extension for production
 ```
 
 ## Architecture
 
-This is a monorepo with three packages in `apps/`:
+This is a monorepo with several apps under `apps/`, primarily `server`, `agent`, `eval`, and `cli`.
 
 ### Server (`apps/server`)
 The main MCP server that exposes browser automation tools via HTTP/SSE.
@@ -93,22 +91,15 @@ The main MCP server that exposes browser automation tools via HTTP/SSE.
 **Entry point:** `apps/server/src/index.ts` → `apps/server/src/main.ts`
 
 **Key components:**
-- `src/tools/` - MCP tool definitions, split into:
-  - `cdp-based/` - Tools using Chrome DevTools Protocol (network, console, emulation, input, etc.)
-  - `controller-based/` - Tools using the browser extension (navigation, clicks, screenshots, tabs, history, bookmarks)
-- `src/controller-server/` - WebSocket server that bridges to the browser extension
-  - `ControllerBridge` handles WebSocket connections with extension clients
-  - `ControllerContext` wraps the bridge for tool handlers
+- `src/tools/` - MCP tool definitions for browser automation and local utilities
 - `src/common/` - Shared utilities (McpContext, PageCollector, browser connection, identity, db)
 - `src/agent/` - AI agent functionality (Gemini adapter, rate limiting, session management)
 - `src/http/` - Hono HTTP server with MCP, health, and provider routes
 
-**Tool types:**
-- CDP tools require a direct CDP connection (`--cdp-port`)
-- Controller tools work via the browser extension over WebSocket
+Browser operations are CDP-backed and require a direct CDP connection (`--cdp-port`).
 
 ### Shared (`packages/shared`)
-Shared constants, types, and configuration used by both server and extension. Avoids magic numbers.
+Shared constants, types, and configuration used across the monorepo. Avoids magic numbers.
 
 **Structure:**
 - `src/constants/` - Configuration values (ports, timeouts, limits, urls, paths)
@@ -116,22 +107,12 @@ Shared constants, types, and configuration used by both server and extension. Av
 
 **Exports:** `@browseros/shared/constants/*`, `@browseros/shared/types/*`
 
-### Controller Extension (`apps/controller-ext`)
-Chrome extension that receives commands from the server via WebSocket.
-
-**Entry point:** `src/background/index.ts` → `BrowserOSController`
-
-**Structure:**
-- `src/actions/` - Action handlers organized by domain (browser/, tab/, bookmark/, history/)
-- `src/adapters/` - Chrome API adapters (TabAdapter, BookmarkAdapter, HistoryAdapter)
-- `src/websocket/` - WebSocket client that connects to the server
-
 ### Communication Flow
 
 ```
 AI Agent/MCP Client → HTTP Server (Hono) → Tool Handler
                                               ↓
-                        CDP (direct) ←── or ──→ WebSocket → Extension → Chrome APIs
+                                   CDP (direct) → BrowserOS
 ```
 
 ## Creating Packages

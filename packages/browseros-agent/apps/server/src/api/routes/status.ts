@@ -5,19 +5,19 @@
  */
 
 import { Hono } from 'hono'
-import type { ControllerBackend } from '../../browser/backends/controller'
+import type { Browser } from '../../browser/browser'
 
 interface StatusDeps {
-  controller: ControllerBackend
+  browser: Browser
 }
 
 export function createStatusRoute(deps: StatusDeps) {
-  const { controller } = deps
+  const { browser } = deps
 
   return new Hono().get('/', (c) =>
     c.json({
       status: 'ok',
-      extensionConnected: controller.isConnected(),
+      cdpConnected: browser.isCdpConnected(),
     }),
   )
 }

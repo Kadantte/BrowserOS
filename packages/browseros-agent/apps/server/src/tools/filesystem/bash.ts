@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process'
 import { resolve } from 'node:path'
 import { tool } from 'ai'
 import { z } from 'zod'
@@ -31,27 +32,41 @@ export function createBashTool(cwd: string) {
         const [shell, flag] = getShellArgs()
         const timeoutMs = (params.timeout || DEFAULT_BASH_TIMEOUT) * 1000
         const resolvedCwd = resolve(cwd)
-
-        const proc = Bun.spawn([shell, flag, params.command], {
+        const proc = spawn(shell, [flag, params.command], {
           cwd: resolvedCwd,
-          stdout: 'pipe',
-          stderr: 'pipe',
           env: { ...process.env },
+          stdio: ['ignore', 'pipe', 'pipe'],
+          detached: process.platform !== 'win32',
         })
 
         let timedOut = false
+        let stdoutText = ''
+        let stderrText = ''
+
+        proc.stdout?.on('data', (chunk) => {
+          stdoutText += chunk.toString()
+        })
+        proc.stderr?.on('data', (chunk) => {
+          stderrText += chunk.toString()
+        })
+
         const timer = setTimeout(() => {
           timedOut = true
-          proc.kill()
+          if (process.platform !== 'win32' && proc.pid) {
+            try {
+              process.kill(-proc.pid, 'SIGKILL')
+              return
+            } catch {}
+          }
+          proc.kill('SIGKILL')
         }, timeoutMs)
 
-        const [stdoutText, stderrText] = await Promise.all([
-          new Response(proc.stdout).text(),
-          new Response(proc.stderr).text(),
-        ])
-
-        const exitCode = await proc.exited
-        clearTimeout(timer)
+        const exitCode = await new Promise<number | null>((resolve, reject) => {
+          proc.once('error', reject)
+          proc.once('close', (code) => resolve(code))
+        }).finally(() => {
+          clearTimeout(timer)
+        })
 
         if (timedOut) {
           let output = stdoutText

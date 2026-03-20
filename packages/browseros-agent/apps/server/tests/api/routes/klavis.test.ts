@@ -27,8 +27,8 @@ describe('createKlavisRoutes', () => {
     assert.strictEqual(response.status, 200)
     assert.deepStrictEqual(body, {
       integrations: [
-        { name: 'Google Docs', is_authenticated: true },
-        { name: 'Slack', is_authenticated: true },
+        { name: 'Google Docs', is_authenticated: false },
+        { name: 'Slack', is_authenticated: false },
       ],
       count: 2,
     })

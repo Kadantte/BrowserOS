@@ -5,16 +5,15 @@
  * Mirrors scripts/dev/start.ts --manual mode with per-worker isolation:
  *
  *   1. Kill ports
- *   2. Build extensions (once, shared across workers)
- *   3. Launch Chrome directly with per-worker user-data-dir and ports
- *   4. Wait for CDP
- *   5. Start server with port env vars
- *   6. Wait for server health
+ *   2. Launch Chrome directly with per-worker user-data-dir and ports
+ *   3. Wait for CDP
+ *   4. Start server with port env vars
+ *   5. Wait for server health
  *
  * Each worker gets isolated ports: base + workerIndex offset.
  */
 
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Subprocess, spawn, spawnSync } from 'bun'
@@ -33,36 +32,25 @@ const MONOREPO_ROOT = join(
 const BROWSEROS_BINARY =
   process.env.BROWSEROS_BINARY ||
   '/Applications/BrowserOS.app/Contents/MacOS/BrowserOS'
-
-const CONTROLLER_EXT_DIR = join(MONOREPO_ROOT, 'apps/controller-ext/dist')
-const CAPTCHA_EXT_DIR = join(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../extensions/nopecha',
-)
-
 export class BrowserOSAppManager {
   private ports: EvalPorts
   private chromeProc: Subprocess | null = null
   private serverProc: Subprocess | null = null
   private tempDir: string | null = null
   private readonly workerIndex: number
-  private readonly loadExtensions: boolean
   private readonly headless: boolean
 
   constructor(
     workerIndex: number = 0,
     basePorts?: EvalPorts,
-    loadExtensions: boolean = false,
     headless: boolean = false,
   ) {
     this.workerIndex = workerIndex
-    this.loadExtensions = loadExtensions
     this.headless = headless
-    const base = basePorts ?? { cdp: 9010, server: 9110, extension: 9310 }
+    const base = basePorts ?? { cdp: 9010, server: 9110 }
     this.ports = {
       cdp: base.cdp + workerIndex,
       server: base.server + workerIndex,
-      extension: base.extension + workerIndex,
     }
   }
 
@@ -72,24 +60,6 @@ export class BrowserOSAppManager {
 
   getPorts(): EvalPorts {
     return this.ports
-  }
-
-  /**
-   * Build extensions (call once before starting workers).
-   * Builds controller-ext — same as start.ts buildExtension('controller-ext', 'build:ext')
-   */
-  static buildExtensions(): void {
-    console.log(`[BROWSEROS] Building controller extension...`)
-    const result = spawnSync({
-      cmd: ['bun', 'run', 'build:ext'],
-      cwd: MONOREPO_ROOT,
-      stdout: 'inherit',
-      stderr: 'inherit',
-    })
-    if (result.exitCode !== 0) {
-      throw new Error('Failed to build controller extension')
-    }
-    console.log(`[BROWSEROS] Controller extension built`)
   }
 
   /**
@@ -127,18 +97,16 @@ export class BrowserOSAppManager {
    *   --no-first-run, --no-default-browser-check, --use-mock-keychain
    *   --disable-browseros-server  (we run our own server)
    *   --disable-browseros-extensions  (we load them explicitly if needed)
-   *   --remote-debugging-port, --browseros-mcp-port, --browseros-extension-port
-   *   --user-data-dir (unique per worker)
-   *   --load-extension (optional, controller-ext)
+   *   --remote-debugging-port, --browseros-mcp-port, --user-data-dir
    */
   private async startAll(): Promise<void> {
-    const { cdp, server, extension } = this.ports
+    const { cdp, server } = this.ports
 
     // Unique temp dir per worker per restart
     this.tempDir = mkdtempSync('/tmp/browseros-eval-')
 
     console.log(
-      `  [W${this.workerIndex}] Ports: CDP=${cdp} Server=${server} Extension=${extension}${this.headless ? ' (headless)' : ''}`,
+      `  [W${this.workerIndex}] Ports: CDP=${cdp} Server=${server}${this.headless ? ' (headless)' : ''}`,
     )
     console.log(`  [W${this.workerIndex}] Profile: ${this.tempDir}`)
 
@@ -154,20 +122,8 @@ export class BrowserOSAppManager {
       '--window-size=1440,900',
       `--remote-debugging-port=${cdp}`,
       `--browseros-mcp-port=${server}`,
-      `--browseros-extension-port=${extension}`,
       `--user-data-dir=${this.tempDir}`,
     ]
-
-    const extensions: string[] = []
-    if (this.loadExtensions && existsSync(CONTROLLER_EXT_DIR)) {
-      extensions.push(CONTROLLER_EXT_DIR)
-    }
-    if (existsSync(CAPTCHA_EXT_DIR)) {
-      extensions.push(CAPTCHA_EXT_DIR)
-    }
-    if (extensions.length > 0) {
-      chromeArgs.push(`--load-extension=${extensions.join(',')}`)
-    }
 
     chromeArgs.push('about:blank')
 
@@ -192,7 +148,6 @@ export class BrowserOSAppManager {
       NODE_ENV: 'development',
       BROWSEROS_CDP_PORT: String(cdp),
       BROWSEROS_SERVER_PORT: String(server),
-      BROWSEROS_EXTENSION_PORT: String(extension),
       VITE_BROWSEROS_SERVER_PORT: String(server),
     }
 
@@ -265,11 +220,7 @@ export class BrowserOSAppManager {
 
     // Force kill anything still on our ports
     if (this.isAppRunning()) {
-      for (const port of [
-        this.ports.cdp,
-        this.ports.server,
-        this.ports.extension,
-      ]) {
+      for (const port of [this.ports.cdp, this.ports.server]) {
         spawnSync({
           cmd: [
             'sh',

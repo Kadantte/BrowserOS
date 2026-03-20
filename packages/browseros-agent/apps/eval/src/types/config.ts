@@ -62,8 +62,6 @@ export const EvalConfigSchema = z.object({
     server_url: z.string().url(),
     base_cdp_port: z.number().int().optional().default(9010),
     base_server_port: z.number().int().optional().default(9110),
-    base_extension_port: z.number().int().optional().default(9310),
-    load_extensions: z.boolean().optional().default(false),
     headless: z.boolean().optional().default(false),
   }),
   graders: z.array(z.string()).optional(),

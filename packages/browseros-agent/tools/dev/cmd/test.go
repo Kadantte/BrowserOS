@@ -25,13 +25,11 @@ var testCobraCmd = &cobra.Command{
 }
 
 var (
-	testCDPOnly  bool
 	testKeep     bool
 	testHeadless bool
 )
 
 func init() {
-	testCobraCmd.Flags().BoolVar(&testCDPOnly, "cdp-only", false, "Skip waiting for extension connection")
 	testCobraCmd.Flags().BoolVar(&testKeep, "keep", false, "Don't clean up after tests (for debugging)")
 	testCobraCmd.Flags().BoolVar(&testHeadless, "headless", false, "Run BrowserOS headless")
 	rootCmd.AddCommand(testCobraCmd)
@@ -54,10 +52,7 @@ func runTest(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println()
-	proc.LogMsgf(proc.TagInfo, "Ports: CDP=%d Server=%d Extension=%d", p.CDP, p.Server, p.Extension)
-	if testCDPOnly {
-		proc.LogMsg(proc.TagInfo, "Mode: CDP-only (skipping extension)")
-	}
+	proc.LogMsgf(proc.TagInfo, "Ports: CDP=%d Server=%d", p.CDP, p.Server)
 	if testHeadless {
 		proc.LogMsg(proc.TagInfo, "Mode: headless")
 	}
@@ -108,28 +103,6 @@ func runTest(cmd *cobra.Command, args []string) error {
 	env := proc.BuildEnv(p, "test")
 	serverDir := filepath.Join(root, "apps/server")
 
-	// Start server
-	proc.LogMsg(proc.TagServer, "Starting server...")
-	procs = append(procs, proc.StartManaged(ctx, &wg, proc.ProcConfig{
-		Tag:     proc.TagServer,
-		Dir:     root,
-		Env:     env,
-		Restart: false,
-		Cmd: []string{
-			"bun", filepath.Join(serverDir, "src/index.ts"),
-			"--cdp-port", fmt.Sprintf("%d", p.CDP),
-			"--server-port", fmt.Sprintf("%d", p.Server),
-			"--extension-port", fmt.Sprintf("%d", p.Extension),
-		},
-	}))
-
-	proc.LogMsg(proc.TagServer, "Waiting for server health...")
-	if !server.WaitForHealth(ctx, p.Server, 30) {
-		cleanup()
-		return fmt.Errorf("server failed to start on port %d", p.Server)
-	}
-	proc.LogMsg(proc.TagServer, "Server ready")
-
 	// Start browser with temp profile
 	tempDir, err = os.MkdirTemp("", "browseros-test-")
 	if err != nil {
@@ -159,15 +132,26 @@ func runTest(cmd *cobra.Command, args []string) error {
 	}
 	proc.LogMsg(proc.TagBrowser, "CDP ready")
 
-	// Wait for extension (unless --cdp-only)
-	if !testCDPOnly {
-		proc.LogMsg(proc.TagInfo, "Waiting for extension connection...")
-		if !server.WaitForExtension(ctx, p.Server, 60) {
-			cleanup()
-			return fmt.Errorf("extension failed to connect within timeout")
-		}
-		proc.LogMsg(proc.TagInfo, "Extension connected")
+	// Start server after CDP is available.
+	proc.LogMsg(proc.TagServer, "Starting server...")
+	procs = append(procs, proc.StartManaged(ctx, &wg, proc.ProcConfig{
+		Tag:     proc.TagServer,
+		Dir:     root,
+		Env:     env,
+		Restart: false,
+		Cmd: []string{
+			"bun", filepath.Join(serverDir, "src/index.ts"),
+			"--cdp-port", fmt.Sprintf("%d", p.CDP),
+			"--server-port", fmt.Sprintf("%d", p.Server),
+		},
+	}))
+
+	proc.LogMsg(proc.TagServer, "Waiting for server health...")
+	if !server.WaitForHealth(ctx, p.Server, 30) {
+		cleanup()
+		return fmt.Errorf("server failed to start on port %d", p.Server)
 	}
+	proc.LogMsg(proc.TagServer, "Server ready")
 
 	fmt.Println()
 	proc.LogMsg(proc.TagInfo, proc.BoldColor.Sprint("Test environment ready"))

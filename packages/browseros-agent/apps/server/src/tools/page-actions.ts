@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, rename, rm } from 'node:fs/promises'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { z } from 'zod'
 import { defineTool, resolveWorkingPath } from './framework'
 
@@ -28,6 +28,7 @@ export const save_pdf = defineTool({
   }),
   handler: async (args, ctx, response) => {
     const resolvedPath = resolveWorkingPath(ctx, args.path, args.cwd)
+    await mkdir(dirname(resolvedPath), { recursive: true })
     const { data } = await ctx.browser.printToPDF(args.page)
     await Bun.write(resolvedPath, Buffer.from(data, 'base64'))
     response.text(`Saved PDF to ${resolvedPath}`)
@@ -78,6 +79,7 @@ export const save_screenshot = defineTool({
   }),
   handler: async (args, ctx, response) => {
     const resolvedPath = resolveWorkingPath(ctx, args.path, args.cwd)
+    await mkdir(dirname(resolvedPath), { recursive: true })
     const { data } = await ctx.browser.screenshot(args.page, {
       format: args.format,
       quality: args.quality,
@@ -121,10 +123,10 @@ export const download_file = defineTool({
   }),
   handler: async (args, ctx, response) => {
     const resolvedDir = resolveWorkingPath(ctx, args.path, args.cwd)
-    await mkdir(ctx.directories.workingDir, { recursive: true })
-    const tempDir = await mkdtemp(
-      join(ctx.directories.workingDir, 'browseros-dl-'),
-    )
+    const workingDir = ctx.directories.workingDir
+    await mkdir(workingDir, { recursive: true })
+    await mkdir(resolvedDir, { recursive: true })
+    const tempDir = await mkdtemp(join(workingDir, 'browseros-dl-'))
 
     try {
       const { filePath, suggestedFilename } =

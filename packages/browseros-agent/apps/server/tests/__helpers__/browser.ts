@@ -12,7 +12,6 @@ import { rmSync } from 'node:fs'
 export interface BrowserConfig {
   cdpPort: number
   serverPort: number
-  extensionPort: number
   binaryPath: string
   userDataDir: string
   headless: boolean
@@ -86,7 +85,6 @@ export async function spawnBrowser(
       // TODO: replace with --browseros-cdp-port once we fix the browseros bug
       `--remote-debugging-port=${config.cdpPort}`,
       `--browseros-mcp-port=${config.serverPort}`,
-      `--browseros-extension-port=${config.extensionPort}`,
       '--disable-browseros-server',
     ],
     {

@@ -19,6 +19,25 @@ import { SdkError } from './types'
 export class BrowserService {
   constructor(private browser: Browser) {}
 
+  private async getFallbackPage() {
+    const activePage = await this.browser.getActivePage()
+    if (activePage) {
+      return activePage
+    }
+
+    const pages = await this.browser.listPages()
+    return pages.find((page) => !page.isHidden) ?? pages[0] ?? null
+  }
+
+  private async getPageInfo(pageId: number) {
+    const pages = await this.browser.listPages()
+    const page = pages.find((candidate) => candidate.pageId === pageId)
+    if (!page) {
+      throw new SdkError(`Page ${pageId} not found`, 404)
+    }
+    return page
+  }
+
   private async getPageIdForTab(tabId: number): Promise<number> {
     const resolved = await this.browser.resolveTabIds([tabId])
     const pageId = resolved.get(tabId)
@@ -32,7 +51,9 @@ export class BrowserService {
     if (windowId !== undefined) {
       // Find the active tab in the specified window
       const pages = await this.browser.listPages()
-      const page = pages.find((p) => p.windowId === windowId && p.isActive)
+      const page =
+        pages.find((p) => p.windowId === windowId && p.isActive) ??
+        (await this.getFallbackPage())
       if (!page) {
         throw new SdkError('No active tab found in specified window')
       }
@@ -44,7 +65,7 @@ export class BrowserService {
       }
     }
 
-    const page = await this.browser.getActivePage()
+    const page = await this.getFallbackPage()
     if (!page) {
       throw new SdkError('No active tab found')
     }
@@ -92,21 +113,44 @@ export class BrowserService {
     if (windowId !== undefined) {
       const pages = await this.browser.listPages()
       const page = pages.find((p) => p.windowId === windowId && p.isActive)
-      if (!page) {
-        throw new SdkError('No active tab in specified window')
+      if (page) {
+        await this.browser.goto(page.pageId, url)
+        return { tabId: page.tabId, windowId }
       }
-      await this.browser.goto(page.pageId, url)
-      return { tabId: page.tabId, windowId }
+
+      try {
+        const pageId = await this.browser.newPage(url, { windowId })
+        const createdPage = await this.getPageInfo(pageId)
+        return {
+          tabId: createdPage.tabId,
+          windowId: createdPage.windowId ?? windowId,
+        }
+      } catch {
+        const fallbackPage = await this.getFallbackPage()
+        if (fallbackPage) {
+          await this.browser.goto(fallbackPage.pageId, url)
+          return {
+            tabId: fallbackPage.tabId,
+            windowId: fallbackPage.windowId ?? 0,
+          }
+        }
+      }
     }
 
-    const activePage = await this.browser.getActivePage()
-    if (!activePage) {
-      throw new SdkError('No active tab to navigate')
+    const activePage = await this.getFallbackPage()
+    if (activePage) {
+      await this.browser.goto(activePage.pageId, url)
+      return {
+        tabId: activePage.tabId,
+        windowId: activePage.windowId ?? 0,
+      }
     }
-    await this.browser.goto(activePage.pageId, url)
+
+    const pageId = await this.browser.newPage(url)
+    const createdPage = await this.getPageInfo(pageId)
     return {
-      tabId: activePage.tabId,
-      windowId: activePage.windowId ?? 0,
+      tabId: createdPage.tabId,
+      windowId: createdPage.windowId ?? 0,
     }
   }
 

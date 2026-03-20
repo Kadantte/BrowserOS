@@ -12,7 +12,6 @@ const PORT_SCAN_RANGE = 100
 export interface RuntimePorts {
   cdp: number
   server: number
-  extension: number
 }
 
 export interface TestRuntimePlan {
@@ -77,14 +76,8 @@ async function findAvailablePort(
 }
 
 function resolveFixedPort(
-  testEnvName:
-    | 'BROWSEROS_TEST_CDP_PORT'
-    | 'BROWSEROS_TEST_SERVER_PORT'
-    | 'BROWSEROS_TEST_EXTENSION_PORT',
-  baseEnvName:
-    | 'BROWSEROS_CDP_PORT'
-    | 'BROWSEROS_SERVER_PORT'
-    | 'BROWSEROS_EXTENSION_PORT',
+  testEnvName: 'BROWSEROS_TEST_CDP_PORT' | 'BROWSEROS_TEST_SERVER_PORT',
+  baseEnvName: 'BROWSEROS_CDP_PORT' | 'BROWSEROS_SERVER_PORT',
 ): number | undefined {
   const testPort = parsePort(process.env[testEnvName], testEnvName)
   if (testPort !== undefined) {
@@ -97,10 +90,10 @@ function resolveFixedPort(
 }
 
 function assertUniquePorts(ports: RuntimePorts): void {
-  const values = new Set([ports.cdp, ports.server, ports.extension])
-  if (values.size !== 3) {
+  const values = new Set([ports.cdp, ports.server])
+  if (values.size !== 2) {
     throw new Error(
-      `Port conflict detected: cdp=${ports.cdp} server=${ports.server} extension=${ports.extension}`,
+      `Port conflict detected: cdp=${ports.cdp} server=${ports.server}`,
     )
   }
 }
@@ -117,30 +110,18 @@ export async function resolveRuntimePorts(): Promise<{
     'BROWSEROS_TEST_SERVER_PORT',
     'BROWSEROS_SERVER_PORT',
   )
-  const extensionOverride = resolveFixedPort(
-    'BROWSEROS_TEST_EXTENSION_PORT',
-    'BROWSEROS_EXTENSION_PORT',
-  )
 
   const reserved = new Set<number>()
   const cdp = cdpOverride ?? (await findAvailablePort(TEST_PORTS.cdp, reserved))
   reserved.add(cdp)
   const server =
     serverOverride ?? (await findAvailablePort(TEST_PORTS.server, reserved))
-  reserved.add(server)
-  const extension =
-    extensionOverride ??
-    (await findAvailablePort(TEST_PORTS.extension, reserved))
-
-  const ports = { cdp, server, extension }
+  const ports = { cdp, server }
   assertUniquePorts(ports)
 
   return {
     ports,
-    usesFixedPorts:
-      cdpOverride !== undefined ||
-      serverOverride !== undefined ||
-      extensionOverride !== undefined,
+    usesFixedPorts: cdpOverride !== undefined || serverOverride !== undefined,
   }
 }
 

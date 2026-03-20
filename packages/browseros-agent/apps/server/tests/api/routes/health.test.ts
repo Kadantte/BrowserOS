@@ -15,6 +15,6 @@ describe('createHealthRoute', () => {
 
     assert.strictEqual(response.status, 200)
     const body = await response.json()
-    assert.deepStrictEqual(body, { status: 'ok' })
+    assert.deepStrictEqual(body, { status: 'ok', cdpConnected: true })
   })
 })

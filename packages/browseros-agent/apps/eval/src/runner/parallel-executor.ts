@@ -5,7 +5,7 @@
  *   - BrowserOSAppManager (Chrome + Server on unique ports)
  *   - TaskExecutor (uses that worker's server URL)
  *
- * Port allocation: Worker N → CDP=base+N, Server=base+N, Extension=base+N
+ * Port allocation: Worker N → CDP=base+N, Server=base+N
  */
 
 import type { EvalConfig, Task } from '../types'
@@ -87,12 +87,6 @@ export class ParallelExecutor {
 
     const cleanup = this.setupSignalHandlers()
 
-    // Build extensions once if needed (shared across workers)
-    const loadExtensions = this.config.config.browseros.load_extensions ?? false
-    if (loadExtensions) {
-      BrowserOSAppManager.buildExtensions()
-    }
-
     this.queue = new TaskQueue(tasks)
     const totalTasks = tasks.length
 
@@ -100,7 +94,7 @@ export class ParallelExecutor {
       const queue = this.queue
       // Launch N workers in parallel — each gets its own Chrome + Server
       const workers = Array.from({ length: this.numWorkers }, (_, i) =>
-        this.runWorker(i, queue, totalTasks, loadExtensions, onProgress),
+        this.runWorker(i, queue, totalTasks, onProgress),
       )
       await Promise.all(workers)
 
@@ -127,22 +121,15 @@ export class ParallelExecutor {
     workerIndex: number,
     queue: TaskQueue,
     totalTasks: number,
-    loadExtensions: boolean,
     onProgress?: ProgressCallback,
   ): Promise<void> {
     // Per-worker isolated ports
     const basePorts: EvalPorts = {
       cdp: this.config.config.browseros.base_cdp_port,
       server: this.config.config.browseros.base_server_port,
-      extension: this.config.config.browseros.base_extension_port,
     }
     const headless = this.config.config.browseros.headless ?? false
-    const appManager = new BrowserOSAppManager(
-      workerIndex,
-      basePorts,
-      loadExtensions,
-      headless,
-    )
+    const appManager = new BrowserOSAppManager(workerIndex, basePorts, headless)
     this.appManagers.set(workerIndex, appManager)
 
     // Per-worker executor pointing to this worker's server

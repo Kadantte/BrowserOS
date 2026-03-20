@@ -17,14 +17,12 @@ interface DevConfig {
     cdp: number
     http_mcp: number
     agent: number
-    extension: number
   }
 }
 
 export interface EvalPorts {
   cdp: number
   server: number
-  extension: number
 }
 
 export function getEvalPorts(): EvalPorts {
@@ -34,6 +32,5 @@ export function getEvalPorts(): EvalPorts {
   return {
     cdp: config.ports.cdp,
     server: config.ports.http_mcp,
-    extension: config.ports.extension,
   }
 }

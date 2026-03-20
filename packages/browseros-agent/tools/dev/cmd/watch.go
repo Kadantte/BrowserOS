@@ -18,7 +18,7 @@ import (
 var watchCmd = &cobra.Command{
 	Use:   "watch",
 	Short: "Start the dev environment with process supervision",
-	Long:  "Builds controller-ext, starts agent (WXT HMR or static), waits for CDP, then starts the server.",
+	Long:  "Starts agent (WXT HMR or static), waits for CDP, then starts the server.",
 	RunE:  runWatch,
 }
 
@@ -71,8 +71,8 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		}
 		if p != defaultPorts {
 			proc.LogMsgf(proc.TagInfo,
-				"Preferred ports unavailable, using fallback ports: CDP=%d Server=%d Extension=%d",
-				p.CDP, p.Server, p.Extension)
+				"Preferred ports unavailable, using fallback ports: CDP=%d Server=%d",
+				p.CDP, p.Server)
 		}
 	}
 	defer reservations.ReleaseAll()
@@ -83,7 +83,7 @@ func runWatch(cmd *cobra.Command, args []string) error {
 		mode = "manual"
 	}
 	proc.LogMsgf(proc.TagInfo, "Mode: %s", proc.BoldColor.Sprint(mode))
-	proc.LogMsgf(proc.TagInfo, "Ports: CDP=%d Server=%d Extension=%d", p.CDP, p.Server, p.Extension)
+	proc.LogMsgf(proc.TagInfo, "Ports: CDP=%d Server=%d", p.CDP, p.Server)
 	proc.LogMsgf(proc.TagInfo, "Profile: %s", userDataDir)
 	proc.LogMsg(proc.TagInfo, proc.DimColor.Sprint("Press Ctrl+C to stop, double Ctrl+C to force kill"))
 	fmt.Println()
@@ -99,13 +99,6 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 	var wg sync.WaitGroup
 	var procs []*proc.ManagedProc
-
-	// Pre-build controller-ext
-	proc.LogMsg(proc.TagBuild, "Building controller-ext...")
-	if err := proc.RunBlocking(ctx, root, proc.TagBuild, "bun", "--cwd", "apps/controller-ext", "build"); err != nil {
-		return fmt.Errorf("controller-ext build failed: %w", err)
-	}
-	proc.LogMsg(proc.TagBuild, "controller-ext built")
 
 	// Run agent codegen if generated files don't exist
 	agentDir := filepath.Join(root, "apps/agent")
@@ -159,7 +152,6 @@ func runWatch(cmd *cobra.Command, args []string) error {
 
 	// Start server
 	reservations.ReleaseServer()
-	reservations.ReleaseExtension()
 	procs = append(procs, proc.StartManaged(ctx, &wg, proc.ProcConfig{
 		Tag:     proc.TagServer,
 		Dir:     filepath.Join(root, "apps/server"),
