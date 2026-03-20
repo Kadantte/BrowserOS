@@ -5,6 +5,7 @@ import {
   Folder,
   Globe,
   Layers,
+  Mic,
   PlugZap,
   Search,
   X,
@@ -44,6 +45,10 @@ import {
   NEWTAB_TAB_REMOVED_EVENT,
   NEWTAB_TAB_TOGGLED_EVENT,
   NEWTAB_TABS_OPENED_EVENT,
+  NEWTAB_VOICE_ERROR_EVENT,
+  NEWTAB_VOICE_RECORDING_STARTED_EVENT,
+  NEWTAB_VOICE_RECORDING_STOPPED_EVENT,
+  NEWTAB_VOICE_TRANSCRIPTION_COMPLETED_EVENT,
   NEWTAB_WORKSPACE_OPENED_EVENT,
 } from '@/lib/constants/analyticsEvents'
 import { BrowserOSIcon, ProviderIcon } from '@/lib/llm-providers/providerIcons'
@@ -68,6 +73,7 @@ import { ShortcutsDialog } from './ShortcutsDialog'
 import { SignInHint } from './SignInHint'
 import { TopSites } from './TopSites'
 import { useActiveHint } from './useActiveHint'
+import { VoiceRecordingOverlay } from './VoiceRecordingOverlay'
 
 interface MentionState {
   isOpen: boolean
@@ -87,6 +93,7 @@ export const NewTab = () => {
   const tabsDropdownRef = useRef<HTMLDivElement>(null)
   const [selectedTabs, setSelectedTabs] = useState<chrome.tabs.Tab[]>([])
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
+  const [showVoiceOverlay, setShowVoiceOverlay] = useState(false)
   const [mentionState, setMentionState] = useState<MentionState>({
     isOpen: false,
     filterText: '',
@@ -447,13 +454,25 @@ export const NewTab = () => {
                 })}
               />
 
-              <Button
-                onClick={handleSend}
-                size="icon"
-                className="h-10 w-10 flex-shrink-0 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
-              >
-                <ArrowRight className="h-5 w-5" />
-              </Button>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowVoiceOverlay(true)}
+                  className="h-10 w-10 flex-shrink-0 rounded-xl text-muted-foreground transition-colors hover:text-foreground"
+                  title="Voice input"
+                >
+                  <Mic className="h-5 w-5" />
+                </Button>
+                <Button
+                  onClick={handleSend}
+                  size="icon"
+                  className="h-10 w-10 flex-shrink-0 rounded-xl bg-primary text-primary-foreground hover:bg-primary/90"
+                >
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+              </div>
             </div>
 
             <AnimatePresence>
@@ -694,6 +713,21 @@ export const NewTab = () => {
       )}
       {activeHint === 'signin' && <SignInHint />}
       {activeHint === 'import' && <ImportDataHint />}
+      {showVoiceOverlay && (
+        <VoiceRecordingOverlay
+          onTranscriptionComplete={(text) => {
+            track(NEWTAB_VOICE_TRANSCRIPTION_COMPLETED_EVENT)
+            setShowVoiceOverlay(false)
+            startInlineChat(text, 'agent')
+          }}
+          onClose={() => setShowVoiceOverlay(false)}
+          onRecordingStarted={() => track(NEWTAB_VOICE_RECORDING_STARTED_EVENT)}
+          onRecordingStopped={() => track(NEWTAB_VOICE_RECORDING_STOPPED_EVENT)}
+          onTranscriptionError={(error) =>
+            track(NEWTAB_VOICE_ERROR_EVENT, { error })
+          }
+        />
+      )}
     </div>
   )
 }
