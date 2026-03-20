@@ -30,13 +30,13 @@ function structuredOf<T>(result: { structuredContent?: unknown }): T {
 
 function createToolContext(
   browser: Browser,
-  executionDir: string,
+  workingDir: string,
   resourcesDir?: string,
 ): ToolContext {
   return {
     browser,
     directories: {
-      executionDir,
+      workingDir,
       resourcesDir,
     },
   }
