@@ -1,3 +1,5 @@
+/* biome-ignore-all lint/suspicious/noConsole: CLI script requires console output */
+/* biome-ignore-all lint/style/noProcessEnv: CLI script reads env vars directly */
 /**
  * Auto-translate locale files using Claude API.
  *
