@@ -14,7 +14,6 @@ on:
 
 permissions:
   contents: read
-  checks: write
 
 env:
   BROWSEROS_APPIMAGE_URL: https://files.browseros.com/download/BrowserOS.AppImage
@@ -129,21 +128,13 @@ jobs:
           name: junit-${{ matrix.suite }}
           path: packages/browseros-agent/${{ matrix.junit_path }}
 
-      - name: Publish test report
-        if: always()
-        uses: mikepenz/action-junit-report@v5
-        with:
-          report_paths: packages/browseros-agent/${{ matrix.junit_path }}
-          check_name: Test Report / ${{ matrix.suite }}
-          fail_on_failure: false
-
       - name: Summarize suite result
         if: always()
         run: |
           if [ "${{ steps.test.outputs.exit_code }}" = "0" ]; then
-            echo "### ${{ matrix.suite }} suite passed" >> "$GITHUB_STEP_SUMMARY"
+            echo "### :white_check_mark: ${{ matrix.suite }} suite passed" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### ${{ matrix.suite }} suite failed" >> "$GITHUB_STEP_SUMMARY"
+            echo "### :x: ${{ matrix.suite }} suite failed (exit code ${{ steps.test.outputs.exit_code }})" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
-            echo "See the \`Test Report / ${{ matrix.suite }}\` check and uploaded JUnit artifact for details." >> "$GITHUB_STEP_SUMMARY"
+            echo "See the uploaded \`junit-${{ matrix.suite }}\` artifact for details." >> "$GITHUB_STEP_SUMMARY"
           fi
