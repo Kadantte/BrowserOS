@@ -42,7 +42,12 @@ export async function executeShowcaseTask(
   task: Task,
   cdpPort: number,
   outputDir: string,
-  agentConfig: { model: string; provider: string; apiKey?: string },
+  agentConfig: {
+    model: string
+    provider: string
+    apiKey?: string
+    baseUrl?: string
+  },
   timeoutMs: number,
 ): Promise<ExecuteTaskResult> {
   const executionId = randomUUID()
@@ -56,7 +61,7 @@ export async function executeShowcaseTask(
 
   const pages = await browser.listPages()
   const activePage = pages[0]
-  const activePageId = activePage?.pageId ?? 1
+  let activePageId = activePage?.pageId ?? 1
 
   // Navigate to start URL
   if (task.start_url && task.start_url !== 'about:blank') {
@@ -70,6 +75,7 @@ export async function executeShowcaseTask(
     provider: agentConfig.provider as any,
     model: agentConfig.model,
     apiKey: agentConfig.apiKey,
+    baseUrl: agentConfig.baseUrl,
     workingDir: `/tmp/browseros-showcase-${conversationId}`,
     evalMode: true,
     supportsImages: true,
@@ -114,8 +120,10 @@ export async function executeShowcaseTask(
         experimental_onToolCallStart: async ({ toolCall }) => {
           try {
             const input = (toolCall.input ?? {}) as Record<string, unknown>
-            const pageId =
-              typeof input.page === 'number' ? input.page : activePageId
+            if (typeof input.page === 'number') {
+              activePageId = input.page
+            }
+            const pageId = activePageId
 
             const beforeResult = await browser.screenshot(pageId, {
               format: 'png',

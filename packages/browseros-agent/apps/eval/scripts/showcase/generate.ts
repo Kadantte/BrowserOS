@@ -14,9 +14,9 @@ const { values } = parseArgs({
   options: {
     tasks: { type: 'string', short: 't' },
     output: { type: 'string', short: 'o', default: './showcase-output' },
-    model: { type: 'string', short: 'm', default: 'gpt-4o' },
-    provider: { type: 'string', short: 'p', default: 'openai' },
-    'api-key-env': { type: 'string', default: 'OPENAI_API_KEY' },
+    model: { type: 'string', short: 'm' },
+    provider: { type: 'string', short: 'p' },
+    'base-url': { type: 'string' },
     'cdp-port': { type: 'string' },
     timeout: { type: 'string', default: '300000' },
     upload: { type: 'boolean', default: false },
@@ -37,9 +37,9 @@ Usage:
 Options:
   -t, --tasks <path>       JSONL task file (required)
   -o, --output <dir>       Output directory (default: ./showcase-output)
-  -m, --model <model>      LLM model (default: gpt-4o)
-  -p, --provider <name>    LLM provider (default: openai)
-  --api-key-env <var>      Env var for API key (default: OPENAI_API_KEY)
+  -m, --model <model>      LLM model (env: SHOWCASE_MODEL, default: openai/gpt-4o)
+  -p, --provider <name>    LLM provider (env: SHOWCASE_PROVIDER, default: openrouter)
+  --base-url <url>         LLM base URL (env: SHOWCASE_BASE_URL)
   --cdp-port <port>        Connect to existing Chrome (skips BrowserOS launch)
   --timeout <ms>           Per-task timeout in ms (default: 300000)
   --upload                 Upload results to R2 after generation
@@ -51,17 +51,25 @@ Options:
 const config = {
   tasks: values.tasks as string,
   output: (values.output ?? './showcase-output') as string,
-  model: (values.model ?? 'gpt-4o') as string,
-  provider: (values.provider ?? 'openai') as string,
-  apiKeyEnv: (values['api-key-env'] ?? 'OPENAI_API_KEY') as string,
+  model: (values.model ??
+    process.env.SHOWCASE_MODEL ??
+    'openai/gpt-4o') as string,
+  provider: (values.provider ??
+    process.env.SHOWCASE_PROVIDER ??
+    'openrouter') as string,
+  baseUrl: (values['base-url'] ?? process.env.SHOWCASE_BASE_URL) as
+    | string
+    | undefined,
   cdpPort: values['cdp-port'] ? Number(values['cdp-port']) : undefined,
   timeout: Number(values.timeout ?? '300000'),
   upload: values.upload ?? false,
 }
 
-const apiKey = process.env[config.apiKeyEnv]
+const apiKey = process.env.OPENROUTER_API_KEY ?? process.env.OPENAI_API_KEY
 if (!apiKey) {
-  console.error(`Missing API key: set ${config.apiKeyEnv} environment variable`)
+  console.error(
+    'Missing API key: set OPENROUTER_API_KEY or OPENAI_API_KEY environment variable',
+  )
   process.exit(1)
 }
 
@@ -114,6 +122,7 @@ try {
           model: config.model,
           provider: config.provider,
           apiKey,
+          baseUrl: config.baseUrl,
         },
         config.timeout,
       )
