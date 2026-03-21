@@ -5,10 +5,11 @@ import { sentry } from '@/lib/sentry/sentry'
 import { createAlarmFromJob } from './createAlarmFromJob'
 import {
   CreateScheduledJobDocument,
+  DeleteScheduledJobDocument,
   GetScheduledJobsByProfileIdDocument,
   UpdateScheduledJobDocument,
 } from './graphql/syncSchedulesDocument'
-import { scheduledJobStorage } from './scheduleStorage'
+import { pendingDeletionStorage, scheduledJobStorage } from './scheduleStorage'
 import type { ScheduledJob } from './scheduleTypes'
 
 type RemoteScheduledJob = {
@@ -98,6 +99,27 @@ export async function syncSchedulesToBackend(
       remoteJobs.set(node.rowId, node as RemoteScheduledJob)
     }
   }
+
+  const pendingDeletions = new Set(
+    (await pendingDeletionStorage.getValue()) ?? [],
+  )
+
+  for (const rowId of pendingDeletions) {
+    if (remoteJobs.has(rowId)) {
+      try {
+        await execute(DeleteScheduledJobDocument, { rowId })
+        remoteJobs.delete(rowId)
+        pendingDeletions.delete(rowId)
+      } catch (error) {
+        sentry.captureException(error, {
+          extra: { jobId: rowId, context: 'sync-pending-deletion' },
+        })
+      }
+    } else {
+      pendingDeletions.delete(rowId)
+    }
+  }
+  await pendingDeletionStorage.setValue([...pendingDeletions])
 
   const localJobsMap = new Map(localJobs.map((j) => [j.id, j]))
   const jobsToAddLocally: ScheduledJob[] = []
