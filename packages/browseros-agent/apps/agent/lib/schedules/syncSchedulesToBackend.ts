@@ -103,23 +103,28 @@ export async function syncSchedulesToBackend(
   const pendingDeletions = new Set(
     (await pendingDeletionStorage.getValue()) ?? [],
   )
+  const resolvedDeletions = new Set<string>()
 
   for (const rowId of pendingDeletions) {
     if (remoteJobs.has(rowId)) {
       try {
         await execute(DeleteScheduledJobDocument, { rowId })
         remoteJobs.delete(rowId)
-        pendingDeletions.delete(rowId)
+        resolvedDeletions.add(rowId)
       } catch (error) {
         sentry.captureException(error, {
           extra: { jobId: rowId, context: 'sync-pending-deletion' },
         })
       }
     } else {
-      pendingDeletions.delete(rowId)
+      resolvedDeletions.add(rowId)
     }
   }
-  await pendingDeletionStorage.setValue([...pendingDeletions])
+
+  const latestPending = (await pendingDeletionStorage.getValue()) ?? []
+  await pendingDeletionStorage.setValue(
+    latestPending.filter((id) => !resolvedDeletions.has(id)),
+  )
 
   const localJobsMap = new Map(localJobs.map((j) => [j.id, j]))
   const jobsToAddLocally: ScheduledJob[] = []
