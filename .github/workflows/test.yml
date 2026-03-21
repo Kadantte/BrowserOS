@@ -137,4 +137,5 @@ jobs:
             echo "### :x: ${{ matrix.suite }} suite failed (exit code ${{ steps.test.outputs.exit_code }})" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "See the uploaded \`junit-${{ matrix.suite }}\` artifact for details." >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
