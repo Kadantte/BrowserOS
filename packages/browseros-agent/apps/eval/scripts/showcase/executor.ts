@@ -33,6 +33,16 @@ const CONTROLLER_STUB = {
   // biome-ignore lint/suspicious/noExplicitAny: ControllerBackend type not exported
 } as any
 
+async function resolvePageId(
+  browser: Browser,
+  requestedId: number,
+): Promise<number> {
+  const pages = await browser.listPages()
+  if (pages.some((p) => p.pageId === requestedId)) return requestedId
+  if (pages.length > 0) return pages[0].pageId
+  return requestedId
+}
+
 export interface ExecuteTaskResult {
   manifest: ShowcaseTaskManifest
   status: 'completed' | 'timeout' | 'failed'
@@ -123,7 +133,8 @@ export async function executeShowcaseTask(
             if (typeof input.page === 'number') {
               activePageId = input.page
             }
-            const pageId = activePageId
+            const pageId = await resolvePageId(browser, activePageId)
+            activePageId = pageId
 
             const beforeResult = await browser.screenshot(pageId, {
               format: 'png',
@@ -206,7 +217,9 @@ export async function executeShowcaseTask(
 
         experimental_onToolCallFinish: async ({ toolResult }) => {
           try {
-            const afterResult = await browser.screenshot(activePageId, {
+            const pageId = await resolvePageId(browser, activePageId)
+            activePageId = pageId
+            const afterResult = await browser.screenshot(pageId, {
               format: 'png',
               fullPage: false,
             })
