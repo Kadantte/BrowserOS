@@ -34,3 +34,19 @@ func TestTagFeatureCreatesAndUpdatesFeature(t *testing.T) {
 		}
 	}
 }
+
+func TestTagFeatureReturnsReadErrors(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "build", "features.yaml")
+	if err := os.MkdirAll(path, 0o755); err != nil {
+		t.Fatalf("mkdir features.yaml dir: %v", err)
+	}
+	err := TagFeature(TagFeatureOpts{
+		BrowserOSRepo: root,
+		FeatureName:   "server",
+		Paths:         []string{"chrome/foo.cc"},
+	})
+	if err == nil {
+		t.Fatal("expected TagFeature to fail when features.yaml is unreadable")
+	}
+}

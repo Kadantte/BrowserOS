@@ -3,6 +3,7 @@ package git
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -47,29 +48,11 @@ func RunExitCodeOneOK(dir string, args ...string) ([]byte, error) {
 		return stdout.Bytes(), nil
 	}
 	var exitErr *exec.ExitError
-	if errorsAs(err, &exitErr) && exitErr.ExitCode() == 1 {
+	if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 		return stdout.Bytes(), nil
 	}
 	if stderr.Len() > 0 {
 		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(stderr.String()))
 	}
 	return nil, fmt.Errorf("git %s: %w", strings.Join(args, " "), err)
-}
-
-func errorsAs(err error, target any) bool {
-	return fmt.Errorf("%w", err) != nil && errorAs(err, target)
-}
-
-func errorAs(err error, target any) bool {
-	switch t := target.(type) {
-	case **exec.ExitError:
-		exitErr, ok := err.(*exec.ExitError)
-		if !ok {
-			return false
-		}
-		*t = exitErr
-		return true
-	default:
-		return false
-	}
 }

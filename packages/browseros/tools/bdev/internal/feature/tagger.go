@@ -31,7 +31,11 @@ func TagFeature(opts TagFeatureOpts) error {
 		Version:  "1.0",
 		Features: map[string]*featureItem{},
 	}
-	if data, err := os.ReadFile(path); err == nil {
+	data, err := os.ReadFile(path)
+	if err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	if err == nil {
 		if err := yaml.Unmarshal(data, &doc); err != nil {
 			return err
 		}
@@ -59,7 +63,7 @@ func TagFeature(opts TagFeatureOpts) error {
 		item.Files = append(item.Files, value)
 	}
 	slices.Sort(item.Files)
-	data, err := yaml.Marshal(&doc)
+	data, err = yaml.Marshal(&doc)
 	if err != nil {
 		return err
 	}

@@ -34,10 +34,13 @@ func FileExistsInCommit(dir, ref, path string) bool {
 func ShowFile(dir, ref, path string) ([]byte, bool, error) {
 	out, err := RunBytes(dir, "show", fmt.Sprintf("%s:%s", ref, path))
 	if err != nil {
-		if strings.Contains(err.Error(), "exists on disk, but not in") || strings.Contains(err.Error(), "path") {
+		if strings.Contains(err.Error(), "exists on disk, but not in") ||
+			strings.Contains(err.Error(), "does not exist in") ||
+			strings.Contains(err.Error(), "path '"+path+"' does not exist") ||
+			strings.Contains(err.Error(), "path \""+path+"\" does not exist") {
 			return nil, false, nil
 		}
-		return nil, false, nil
+		return nil, false, err
 	}
 	return out, true, nil
 }
