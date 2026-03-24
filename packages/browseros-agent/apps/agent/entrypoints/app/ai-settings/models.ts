@@ -15,6 +15,7 @@ export interface ModelInfo {
 const CUSTOM_PROVIDER_MODELS: Partial<Record<ProviderType, ModelInfo[]>> = {
   browseros: [{ modelId: 'browseros-auto', contextLength: 200000 }],
   'openai-compatible': [],
+  ollama: [],
   'chatgpt-pro': [
     { modelId: 'gpt-5.4', contextLength: 400000 },
     { modelId: 'gpt-5.3-codex', contextLength: 400000 },
@@ -57,12 +58,4 @@ export function getModelContextLength(
   const models = getModelsForProvider(providerType)
   const model = models.find((m) => m.modelId === modelId)
   return model?.contextLength
-}
-
-export function isCustomModel(
-  providerType: ProviderType,
-  modelId: string,
-): boolean {
-  const models = getModelsForProvider(providerType)
-  return !models.some((m) => m.modelId === modelId)
 }

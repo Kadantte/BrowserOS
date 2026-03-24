@@ -67,7 +67,6 @@ const PROVIDER_MAP: Record<string, string> = {
   openrouter: 'openrouter',
   azure: 'azure',
   'amazon-bedrock': 'bedrock',
-  'ollama-cloud': 'ollama',
   lmstudio: 'lmstudio',
   moonshotai: 'moonshot',
   'github-copilot': 'github-copilot',

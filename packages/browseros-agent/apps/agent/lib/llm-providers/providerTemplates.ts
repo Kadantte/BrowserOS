@@ -108,20 +108,24 @@ export const providerTemplates: ProviderTemplate[] = [
     setupGuideUrl:
       'https://docs.browseros.com/features/bring-your-own-llm#gemini',
   }),
-  enrichTemplate('ollama', {
-    defaultModelId: 'llama3.2',
+  {
+    id: 'ollama',
+    name: 'Ollama',
     defaultBaseUrl: 'http://localhost:11434/v1',
+    defaultModelId: 'llama3.2',
+    supportsImages: false,
+    contextWindow: 128000,
     setupGuideUrl:
       'https://docs.browseros.com/features/bring-your-own-llm#ollama',
-  }),
+  },
   enrichTemplate('openrouter', {
-    defaultModelId: 'openai/gpt-4-turbo',
+    defaultModelId: 'anthropic/claude-sonnet-4.5',
     apiKeyUrl: 'https://openrouter.ai/keys',
     setupGuideUrl:
       'https://docs.browseros.com/features/bring-your-own-llm#openrouter',
   }),
   enrichTemplate('lmstudio', {
-    defaultModelId: 'local-model',
+    defaultModelId: 'openai/gpt-oss-20b',
     defaultBaseUrl: 'http://localhost:1234/v1',
     setupGuideUrl:
       'https://docs.browseros.com/features/bring-your-own-llm#lmstudio',
@@ -132,7 +136,7 @@ export const providerTemplates: ProviderTemplate[] = [
       'https://portal.azure.com/#view/Microsoft_Azure_ProjectOxford/CognitiveServicesHub/~/OpenAI',
   }),
   enrichTemplate('bedrock', {
-    defaultModelId: '',
+    defaultModelId: 'anthropic.claude-sonnet-4-6',
     setupGuideUrl:
       'https://docs.aws.amazon.com/bedrock/latest/userguide/getting-started.html',
   }),
