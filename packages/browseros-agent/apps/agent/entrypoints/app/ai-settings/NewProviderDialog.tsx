@@ -47,7 +47,8 @@ import {
 import { type TestResult, testProvider } from '@/lib/llm-providers/testProvider'
 import type { LlmProviderConfig, ProviderType } from '@/lib/llm-providers/types'
 import { track } from '@/lib/metrics/track'
-import { getModelContextLength, getModelOptions } from './models'
+import { cn } from '@/lib/utils'
+import { getModelContextLength, getModelsForProvider } from './models'
 
 const providerTypeEnum = z.enum([
   'moonshot',
@@ -163,6 +164,13 @@ export const providerFormSchema = z
  */
 export type ProviderFormValues = z.infer<typeof providerFormSchema>
 
+function formatContextWindow(tokens: number): string {
+  if (tokens >= 1000000)
+    return `${(tokens / 1000000).toFixed(tokens % 1000000 === 0 ? 0 : 1)}M`
+  if (tokens >= 1000) return `${Math.round(tokens / 1000)}K`
+  return `${tokens}`
+}
+
 /**
  * Props for NewProviderDialog
  * @public
@@ -188,7 +196,6 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
   initialValues,
   onSave,
 }) => {
-  const [isCustomModel, setIsCustomModel] = useState(false)
   const [isTesting, setIsTesting] = useState(false)
   const [testResult, setTestResult] = useState<TestResult | null>(null)
   const { supports } = useCapabilities()
@@ -261,8 +268,7 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
     watchedSessionToken,
   ])
 
-  // Get model options for current provider type
-  const modelOptions = getModelOptions(watchedType as ProviderType)
+  const modelInfoList = getModelsForProvider(watchedType as ProviderType)
 
   // Handle provider type change (user-initiated via Select)
   const handleTypeChange = (newType: ProviderType) => {
@@ -272,14 +278,13 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
       form.setValue('baseUrl', defaultUrl)
     }
     form.setValue('modelId', '')
-    setIsCustomModel(false)
   }
 
   // Auto-fill context window when model changes (only for new providers)
   useEffect(() => {
     if (initialValues?.id) return
 
-    if (watchedModelId && watchedModelId !== 'custom') {
+    if (watchedModelId) {
       const contextLength = getModelContextLength(
         watchedType as ProviderType,
         watchedModelId,
@@ -289,17 +294,6 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
       }
     }
   }, [watchedModelId, watchedType, form, initialValues?.id])
-
-  // Handle model selection (including custom option)
-  const handleModelChange = (value: string) => {
-    if (value === 'custom') {
-      setIsCustomModel(true)
-      form.setValue('modelId', '')
-    } else {
-      setIsCustomModel(false)
-      form.setValue('modelId', value)
-    }
-  }
 
   // Reset form when initialValues change
   useEffect(() => {
@@ -325,7 +319,6 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
         reasoningEffort: initialValues.reasoningEffort || 'high',
         reasoningSummary: initialValues.reasoningSummary || 'auto',
       })
-      setIsCustomModel(false)
     }
   }, [initialValues, form])
 
@@ -352,7 +345,6 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
         reasoningEffort: 'high',
         reasoningSummary: 'auto',
       })
-      setIsCustomModel(false)
     }
     // Clear test result when dialog opens/closes
     setTestResult(null)
@@ -811,53 +803,61 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
               control={form.control}
               name="modelId"
               render={({ field }) => (
-                <FormItem>
+                <FormItem className="flex flex-col">
                   <FormLabel>Model *</FormLabel>
-                  {isCustomModel || modelOptions.length === 1 ? (
-                    <>
-                      <FormControl>
-                        <Input
-                          placeholder={
-                            watchedType === 'azure'
-                              ? 'Enter your deployment name'
-                              : watchedType === 'bedrock'
-                                ? 'e.g., anthropic.claude-3-5-sonnet-20241022-v2:0'
-                                : 'Enter custom model ID'
-                          }
-                          {...field}
-                        />
-                      </FormControl>
-                      {modelOptions.length > 1 && (
-                        <Button
-                          type="button"
-                          variant="link"
-                          size="sm"
-                          className="h-auto p-0 text-xs"
-                          onClick={() => setIsCustomModel(false)}
-                        >
-                          ← Back to model list
-                        </Button>
-                      )}
-                    </>
-                  ) : (
-                    <Select
-                      onValueChange={handleModelChange}
-                      value={field.value}
-                    >
-                      <FormControl>
-                        <SelectTrigger className="w-full">
-                          <SelectValue placeholder="Select a model" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {modelOptions.map((modelId) => (
-                          <SelectItem key={modelId} value={modelId}>
-                            {modelId === 'custom' ? '+ Custom model' : modelId}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  )}
+                  <FormControl>
+                    <Input
+                      placeholder={
+                        watchedType === 'azure'
+                          ? 'Enter your deployment name'
+                          : watchedType === 'bedrock'
+                            ? 'e.g., anthropic.claude-3-5-sonnet-20241022-v2:0'
+                            : 'Enter or select a model ID'
+                      }
+                      {...field}
+                    />
+                  </FormControl>
+                  {modelInfoList.length > 0 &&
+                    (() => {
+                      const query = field.value?.toLowerCase() ?? ''
+                      const exactMatch = modelInfoList.some(
+                        (m) => m.modelId === field.value,
+                      )
+                      const filtered = exactMatch
+                        ? modelInfoList
+                        : modelInfoList.filter((m) =>
+                            m.modelId.toLowerCase().includes(query),
+                          )
+                      return filtered.length > 0 ? (
+                        <div className="rounded-md border">
+                          <div className="max-h-[200px] overflow-y-auto">
+                            {filtered.map((model) => {
+                              const isSelected = field.value === model.modelId
+                              return (
+                                <button
+                                  key={model.modelId}
+                                  type="button"
+                                  onClick={() => {
+                                    form.setValue('modelId', model.modelId)
+                                  }}
+                                  className={cn(
+                                    'flex w-full items-center justify-between px-3 py-2 text-left text-sm transition-colors hover:bg-accent',
+                                    isSelected && 'bg-accent font-medium',
+                                  )}
+                                >
+                                  <span className="truncate">
+                                    {model.modelId}
+                                  </span>
+                                  <span className="ml-2 shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                    {formatContextWindow(model.contextLength)}
+                                  </span>
+                                </button>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      ) : null
+                    })()}
                   <FormMessage />
                 </FormItem>
               )}
