@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 
 	"browseros-cli/output"
@@ -15,13 +16,16 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// macOS bundle identifier — verified from BrowserOS.app/Contents/Info.plist
+const browserOSBundleID = "com.browseros.BrowserOS"
+
 func init() {
 	cmd := &cobra.Command{
 		Use:   "launch",
 		Short: "Launch the BrowserOS application",
 		Long: `Find and launch the BrowserOS application.
 
-Searches common install locations for your platform, launches the app,
+Uses platform-native detection to find BrowserOS, launches it,
 and waits for the server to become ready.
 
 If BrowserOS is already running, reports the server URL.`,
@@ -32,21 +36,18 @@ If BrowserOS is already running, reports the server URL.`,
 			dim := color.New(color.Faint)
 			waitSecs, _ := cmd.Flags().GetInt("wait")
 
-			// Check if already running
 			if url := probeRunningServer(); url != "" {
 				green.Printf("BrowserOS is already running at %s\n", url)
 				return
 			}
 
-			// Find the application
-			appPath := findBrowserOS()
-			if appPath == "" {
+			if !isBrowserOSInstalled() {
 				output.Error("BrowserOS is not installed.\n\n"+
 					"  To install:  browseros-cli install", 1)
 			}
 
-			fmt.Printf("Launching %s...\n", filepath.Base(appPath))
-			if err := startBrowserOS(appPath); err != nil {
+			fmt.Println("Launching BrowserOS...")
+			if err := startBrowserOS(); err != nil {
 				output.Errorf(1, "failed to launch: %v", err)
 			}
 
@@ -70,26 +71,36 @@ If BrowserOS is already running, reports the server URL.`,
 	rootCmd.AddCommand(cmd)
 }
 
-// probeRunningServer checks server.json and common ports for a running server.
+// ---------------------------------------------------------------------------
+// Server probing
+// ---------------------------------------------------------------------------
+
+// probeRunningServer checks server.json, config, and common ports for a running server.
 func probeRunningServer() string {
-	// Check server.json first (most reliable)
-	if url := loadBrowserosServerURL(); url != "" {
-		if isHealthy(url) {
-			return url
+	check := func(baseURL string) bool {
+		client := &http.Client{Timeout: 2 * time.Second}
+		resp, err := client.Get(baseURL + "/health")
+		if err != nil {
+			return false
 		}
+		resp.Body.Close()
+		return resp.StatusCode == 200
 	}
 
-	// Check saved config
-	if url := defaultServerURL(); url != "" {
-		if isHealthy(url) {
-			return url
-		}
+	// 1. server.json — written by BrowserOS on startup with the actual port
+	if url := loadBrowserosServerURL(); url != "" && check(url) {
+		return url
 	}
 
-	// Probe common ports
+	// 2. Saved config / env var
+	if url := defaultServerURL(); url != "" && check(url) {
+		return url
+	}
+
+	// 3. Probe common BrowserOS ports as last resort
 	for _, port := range []int{9100, 9200, 9300} {
 		url := fmt.Sprintf("http://127.0.0.1:%d", port)
-		if isHealthy(url) {
+		if check(url) {
 			return url
 		}
 	}
@@ -97,87 +108,169 @@ func probeRunningServer() string {
 	return ""
 }
 
-// isHealthy checks if a server URL responds with HTTP 200 on /health.
-func isHealthy(baseURL string) bool {
-	client := &http.Client{Timeout: 2 * time.Second}
-	resp, err := client.Get(baseURL + "/health")
-	if err != nil {
+// ---------------------------------------------------------------------------
+// Platform-native installation detection
+// ---------------------------------------------------------------------------
+
+// isBrowserOSInstalled checks if BrowserOS is installed using platform-native methods.
+//
+// macOS:   `open -Ra "BrowserOS"` — queries Launch Services (finds apps anywhere)
+// Linux:   checks /usr/bin/browseros (.deb), browseros.desktop, or AppImage files
+// Windows: checks executable at %LOCALAPPDATA%\BrowserOS\Application\BrowserOS.exe
+//          and registry uninstall key (per-user Chromium install pattern)
+func isBrowserOSInstalled() bool {
+	switch runtime.GOOS {
+	case "darwin":
+		// open -Ra checks if Launch Services knows about the app without launching it.
+		// Works regardless of where the app is installed.
+		return exec.Command("open", "-Ra", "BrowserOS").Run() == nil
+
+	case "linux":
+		// .deb install puts `browseros` in /usr/bin/
+		if _, err := exec.LookPath("browseros"); err == nil {
+			return true
+		}
+		// .deb also creates browseros.desktop
+		for _, dir := range []string{
+			"/usr/share/applications",
+			filepath.Join(userHomeDir(), ".local/share/applications"),
+		} {
+			if _, err := os.Stat(filepath.Join(dir, "browseros.desktop")); err == nil {
+				return true
+			}
+		}
+		// AppImage — user may have it in ~/Downloads, ~/Applications, etc.
+		return findLinuxAppImage() != ""
+
+	case "windows":
+		// Chromium per-user install: %LOCALAPPDATA%\BrowserOS\Application\BrowserOS.exe
+		if exePath := windowsBrowserOSExe(); exePath != "" {
+			if _, err := os.Stat(exePath); err == nil {
+				return true
+			}
+		}
+		// Fallback: check uninstall registry (per-user install uses HKCU)
+		for _, root := range []string{"HKCU", "HKLM"} {
+			key := root + `\Software\Microsoft\Windows\CurrentVersion\Uninstall\BrowserOS`
+			if exec.Command("reg", "query", key, "/v", "DisplayName").Run() == nil {
+				return true
+			}
+		}
 		return false
 	}
-	resp.Body.Close()
-	return resp.StatusCode == 200
+
+	return false
 }
 
-// findBrowserOS returns the path to the BrowserOS application, or empty if not installed.
-func findBrowserOS() string {
+// ---------------------------------------------------------------------------
+// Platform-native launch
+// ---------------------------------------------------------------------------
+
+// startBrowserOS launches BrowserOS using platform-native methods.
+//
+// macOS:   `open -b com.browseros.BrowserOS` — launches by bundle ID
+// Linux:   runs `browseros` binary or AppImage directly
+// Windows: runs BrowserOS.exe from the known install path
+func startBrowserOS() error {
 	switch runtime.GOOS {
 	case "darwin":
-		for _, name := range []string{"BrowserOS.app", "BrowserOS copy.app"} {
-			p := filepath.Join("/Applications", name)
-			if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-				return p
-			}
-		}
-		if home, err := os.UserHomeDir(); err == nil {
-			p := filepath.Join(home, "Applications", "BrowserOS.app")
-			if fi, err := os.Stat(p); err == nil && fi.IsDir() {
-				return p
-			}
-		}
+		// Launch by bundle ID via Launch Services — no hardcoded paths needed.
+		return exec.Command("open", "-b", browserOSBundleID).Run()
 
 	case "linux":
+		// .deb install: browseros is in PATH
 		if p, err := exec.LookPath("browseros"); err == nil {
-			return p
+			return startDetached(p)
 		}
-		if home, err := os.UserHomeDir(); err == nil {
-			for _, dir := range []string{home, filepath.Join(home, "Applications"), filepath.Join(home, "Downloads")} {
-				entries, err := os.ReadDir(dir)
-				if err != nil {
-					continue
-				}
-				for _, e := range entries {
-					if matched, _ := filepath.Match("BrowserOS*.AppImage", e.Name()); matched {
-						return filepath.Join(dir, e.Name())
-					}
-				}
-			}
+		// AppImage: run it directly
+		if appImage := findLinuxAppImage(); appImage != "" {
+			return startDetached(appImage)
 		}
+		// .desktop file: use gtk-launch (not xdg-open, which opens by MIME type)
+		if _, err := exec.LookPath("gtk-launch"); err == nil {
+			return exec.Command("gtk-launch", "browseros").Run()
+		}
+		return fmt.Errorf("BrowserOS found but could not determine how to launch it")
 
 	case "windows":
-		if localAppData := os.Getenv("LOCALAPPDATA"); localAppData != "" {
-			p := filepath.Join(localAppData, "BrowserOS", "BrowserOS.exe")
-			if _, err := os.Stat(p); err == nil {
-				return p
+		if exePath := windowsBrowserOSExe(); exePath != "" {
+			if _, err := os.Stat(exePath); err == nil {
+				return startDetached(exePath)
 			}
 		}
-	}
+		return fmt.Errorf("BrowserOS.exe not found at expected location")
 
-	return ""
-}
-
-// startBrowserOS starts the BrowserOS application.
-func startBrowserOS(appPath string) error {
-	switch runtime.GOOS {
-	case "darwin":
-		return exec.Command("open", appPath).Run()
-	case "linux":
-		cmd := exec.Command(appPath)
-		cmd.Stdout = nil
-		cmd.Stderr = nil
-		return cmd.Start()
-	case "windows":
-		return exec.Command("cmd", "/c", "start", "", appPath).Run()
 	default:
 		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
 	}
 }
 
-// waitForServer polls until a server responds or timeout.
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+// startDetached starts a process in the background without inheriting stdio.
+func startDetached(path string, args ...string) error {
+	cmd := exec.Command(path, args...)
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.Stdin = nil
+	return cmd.Start()
+}
+
+// windowsBrowserOSExe returns the expected BrowserOS.exe path on Windows.
+// Chromium per-user installs go to %LOCALAPPDATA%\<base_app_name>\Application\<binary>.
+// base_app_name = "BrowserOS" (from chromium_install_modes.h)
+func windowsBrowserOSExe() string {
+	localAppData := os.Getenv("LOCALAPPDATA")
+	if localAppData == "" {
+		return ""
+	}
+	return filepath.Join(localAppData, "BrowserOS", "Application", "BrowserOS.exe")
+}
+
+// findLinuxAppImage searches common locations for a BrowserOS AppImage.
+func findLinuxAppImage() string {
+	home := userHomeDir()
+	if home == "" {
+		return ""
+	}
+	for _, dir := range []string{
+		home,
+		filepath.Join(home, "Applications"),
+		filepath.Join(home, "Downloads"),
+		"/opt",
+	} {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			name := e.Name()
+			if strings.HasPrefix(name, "BrowserOS") && strings.HasSuffix(name, ".AppImage") {
+				return filepath.Join(dir, name)
+			}
+		}
+	}
+	return ""
+}
+
+// userHomeDir returns the home directory or empty string.
+func userHomeDir() string {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	return home
+}
+
+// waitForServer polls until a BrowserOS server responds or timeout.
 func waitForServer(maxWait time.Duration) (string, bool) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	deadline := time.Now().Add(maxWait)
 
 	for time.Now().Before(deadline) {
+		// server.json is written by BrowserOS on startup with the actual port
 		if url := loadBrowserosServerURL(); url != "" {
 			resp, err := client.Get(url + "/health")
 			if err == nil {
