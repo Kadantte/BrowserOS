@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -139,11 +140,30 @@ func init() {
 func newClient() *mcp.Client {
 	baseURL, err := validateServerURL(serverURL)
 	if err != nil {
-		output.Error(err.Error(), 1)
+		// No URL configured at all — try to find and launch BrowserOS
+		url, launchErr := ensureRunning("")
+		if launchErr != nil {
+			output.Error(launchErr.Error(), 1)
+		}
+		baseURL = url
 	}
 
 	c := mcp.NewClient(baseURL, version, timeout)
 	c.Debug = debug
+
+	// Quick health check — if it fails, try to launch BrowserOS
+	httpClient := &http.Client{Timeout: 3 * time.Second}
+	resp, err := httpClient.Get(baseURL + "/health")
+	if err != nil {
+		url, launchErr := ensureRunning(baseURL)
+		if launchErr != nil {
+			output.Error(launchErr.Error(), 1)
+		}
+		c.BaseURL = url
+	} else {
+		resp.Body.Close()
+	}
+
 	return c
 }
 
@@ -167,19 +187,22 @@ func envBool(key string) bool {
 }
 
 func defaultServerURL() string {
+	// 1. Explicit env var always wins
 	if env := normalizeServerURL(os.Getenv("BROWSEROS_URL")); env != "" {
 		return env
 	}
 
+	// 2. Live discovery file from running BrowserOS (most current)
+	if url := loadBrowserosServerURL(); url != "" {
+		return url
+	}
+
+	// 3. Saved config (may be stale if port changed)
 	cfg, err := config.Load()
 	if err == nil {
 		if url := normalizeServerURL(cfg.ServerURL); url != "" {
 			return url
 		}
-	}
-
-	if url := loadBrowserosServerURL(); url != "" {
-		return url
 	}
 
 	return ""
@@ -225,6 +248,9 @@ func validateServerURL(raw string) (string, error) {
 	}
 
 	return "", fmt.Errorf(
-		"BrowserOS server URL is not configured.\n  Open BrowserOS -> Settings -> BrowserOS MCP and copy the Server URL.\n  Then run: browseros-cli init",
+		"BrowserOS server URL is not configured.\n\n" +
+			"  If BrowserOS is running:  browseros-cli init --auto\n" +
+			"  If BrowserOS is closed:   launch it, then run: browseros-cli init --auto\n" +
+			"  If not installed:         browseros-cli install",
 	)
 }
