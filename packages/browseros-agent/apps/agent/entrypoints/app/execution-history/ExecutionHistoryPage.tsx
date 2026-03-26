@@ -179,8 +179,7 @@ export const ExecutionHistoryPage: FC = () => {
                 </h1>
                 <p className="max-w-2xl text-muted-foreground text-sm">
                   Review what BrowserOS actually did for every task, including
-                  tool steps, approvals, denials, and failures, without
-                  cluttering the assistant while it is running.
+                  tool steps, approvals, denials, and failures.
                 </p>
               </div>
             </div>
