@@ -21,6 +21,24 @@ index 0000000000000..24fdd618e6a71
 +  ]
 +}
 +
++if (is_mac) {
++  source_set("keychain_recovery") {
++    sources = [
++      "browseros_keychain_recovery.h",
++      "browseros_keychain_recovery.mm",
++    ]
++
++    deps = [
++      "//base",
++    ]
++
++    frameworks = [
++      "Foundation.framework",
++      "Security.framework",
++    ]
++  }
++}
++
 +source_set("prefs") {
 +  sources = [
 +    "browseros_prefs.cc",

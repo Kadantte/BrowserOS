@@ -126,7 +126,9 @@ class MacOSSignModule(CommandModule):
         run_command(["xattr", "-cs", str(app_path)])
 
     def _sign_all_components(self, app_path: Path, certificate_name: str, ctx: Context) -> None:
-        if not sign_all_components(app_path, certificate_name, ctx.root_dir, ctx):
+        _, env_vars = check_environment(ctx.env)
+        team_id = env_vars.get("team_id", "")
+        if not sign_all_components(app_path, certificate_name, ctx.root_dir, ctx, team_id=team_id):
             raise RuntimeError("Failed to sign all components")
 
     def _verify_signature(self, app_path: Path) -> None:
@@ -413,6 +415,7 @@ def sign_all_components(
     certificate_name: str,
     root_dir: Path,
     ctx: Optional[Context] = None,
+    team_id: str = "",
 ) -> bool:
     """Sign all components in the correct order (bottom-up)"""
     log_info("🔍 Discovering components to sign...")
@@ -547,11 +550,23 @@ def sign_all_components(
 
     # 8. Finally sign the app bundle
     log_info("\n🔏 Signing application bundle...")
-    requirements = (
-        '=designated => identifier "com.browseros.BrowserOS" and '
-        "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and "
-        "certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */"
-    )
+    # Pin the designated requirement to the Team ID so that Keychain ACLs
+    # survive across builds with different binary hashes.
+    if team_id:
+        requirements = (
+            f'=designated => identifier "com.browseros.BrowserOS" and '
+            f"anchor apple generic and "
+            f"certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and "
+            f"certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and "
+            f'certificate leaf[subject.OU] = "{team_id}"'
+        )
+    else:
+        log_warning("No team_id provided — using wildcard designated requirement")
+        requirements = (
+            '=designated => identifier "com.browseros.BrowserOS" and '
+            "anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and "
+            "certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */"
+        )
 
     # Try multiple locations for app entitlements
     entitlements = None
@@ -798,7 +813,8 @@ def sign_app(ctx: Context, create_dmg: bool = True) -> bool:
 
         # Sign all components
         if not sign_all_components(
-            app_path, env_vars["certificate_name"], ctx.root_dir, ctx
+            app_path, env_vars["certificate_name"], ctx.root_dir, ctx,
+            team_id=env_vars.get("team_id", ""),
         ):
             return False
 

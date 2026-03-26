@@ -13,6 +13,9 @@ index 0000000000000..25c4843095e4f
 +#include <sys/mount.h>
 +#include <sys/stat.h>
 +
++#import <Security/Security.h>
++#import <Security/SecCode.h>
++
 +#include "base/apple/bundle_locations.h"
 +#include "base/command_line.h"
 +#include "base/logging.h"
@@ -254,6 +257,11 @@ index 0000000000000..25c4843095e4f
 +
 +- (void)showReadyToInstallAndRelaunch:(void (^)(SPUUserUpdateChoice))reply {
 +  VLOG(1) << "Sparkle: Ready to install and relaunch";
++
++  // Broaden keychain ACL before Sparkle replaces the app bundle,
++  // so the new binary can access the existing encryption key.
++  [self.glue broadenKeychainACLBeforeUpdate];
++
 +  self.installReplyBlock = reply;
 +  [self.glue setInternalStatus:SparkleStatusReadyToInstall];
 +}
@@ -533,6 +541,55 @@ index 0000000000000..25c4843095e4f
 +    if ([observer respondsToSelector:@selector(sparkleDidFailWithError:)]) {
 +      [observer sparkleDidFailWithError:errorMessage];
 +    }
++  }
++}
++
++#pragma mark - Keychain ACL Migration
++
++- (void)broadenKeychainACLBeforeUpdate {
++  // Before Sparkle replaces the app bundle, update the keychain item's
++  // access group so the new binary (signed by the same Team ID) can read it.
++  SecCodeRef code = NULL;
++  if (SecCodeCopySelf(kSecCSDefaultFlags, &code) != errSecSuccess || !code) {
++    LOG(WARNING) << "Sparkle: Could not get code identity for keychain migration";
++    return;
++  }
++  CFDictionaryRef info = NULL;
++  OSStatus status = SecCodeCopySigningInformation(code, kSecCSDefaultFlags, &info);
++  CFRelease(code);
++  if (status != errSecSuccess || !info) {
++    LOG(WARNING) << "Sparkle: Could not get signing info for keychain migration";
++    return;
++  }
++  NSString* teamID = [(__bridge NSDictionary*)info
++      objectForKey:(__bridge NSString*)kSecCodeInfoTeamIdentifier];
++  CFRelease(info);
++  if (!teamID || teamID.length == 0) {
++    LOG(WARNING) << "Sparkle: No Team ID found — skipping keychain migration";
++    return;
++  }
++
++  NSString* group = [NSString stringWithFormat:@"%@.com.browseros", teamID];
++
++  NSDictionary* query = @{
++    (__bridge id)kSecClass : (__bridge id)kSecClassGenericPassword,
++    (__bridge id)kSecAttrService : @"BrowserOS Safe Storage",
++    (__bridge id)kSecAttrAccount : @"BrowserOS",
++  };
++  NSDictionary* update = @{
++    (__bridge id)kSecAttrAccessGroup : group,
++  };
++
++  status = SecItemUpdate((__bridge CFDictionaryRef)query,
++                         (__bridge CFDictionaryRef)update);
++
++  if (status == errSecSuccess) {
++    VLOG(1) << "Sparkle: Keychain ACL updated with access group "
++            << base::SysNSStringToUTF8(group);
++  } else if (status == errSecItemNotFound) {
++    VLOG(1) << "Sparkle: No keychain item to migrate";
++  } else {
++    LOG(WARNING) << "Sparkle: Failed to update keychain ACL (status=" << status << ")";
 +  }
 +}
 +
