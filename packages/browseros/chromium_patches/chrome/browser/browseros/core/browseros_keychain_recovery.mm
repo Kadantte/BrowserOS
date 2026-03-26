@@ -97,19 +97,32 @@ index 0000000000000..0000000000001
 +    // errSecAuthFailed, errSecInteractionNotAllowed, etc.
 +    // The item exists but we can't access it — signing identity mismatch.
 +    LOG(WARNING) << "browseros: Keychain access denied (status=" << status
-+                 << "), attempting interactive recovery";
++                 << "), attempting interactive recovery via legacy API";
 +
-+    SecKeychainSetUserInteractionAllowed(TRUE);
++    // Use the legacy SecKeychainFindGenericPassword API for recovery because
++    // it triggers the macOS system dialog ("BrowserOS wants to use your
++    // keychain") which lets the user grant access and adds this binary to
++    // the item's ACL. The modern SecItemCopyMatching API does not prompt
++    // for ACL updates — it just fails silently on mismatch.
++    const char* serviceName = "BrowserOS Safe Storage";
++    const char* accountName = "BrowserOS";
++    UInt32 passwordLength = 0;
++    void* passwordData = NULL;
 +
-+    result = NULL;
-+    status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
++    status = SecKeychainFindGenericPassword(
++        NULL,  // default keychain
++        static_cast<UInt32>(strlen(serviceName)), serviceName,
++        static_cast<UInt32>(strlen(accountName)), accountName,
++        &passwordLength, &passwordData,
++        NULL);
 +
 +    if (status == errSecSuccess) {
 +      LOG(INFO) << "browseros: Keychain access recovered via user interaction";
-+      if (result) {
-+        CFRelease(result);
++      if (passwordData) {
++        SecKeychainItemFreeContent(NULL, passwordData);
 +      }
-+      // Migrate to access group now that we have access.
++      // Migrate to access group now that the binary is in the ACL.
++      // SecItemUpdate will work because the user just granted access.
 +      NSString* group = GetAccessGroup();
 +      if (group) {
 +        NSDictionary* updateQuery = @{
@@ -128,9 +141,6 @@ index 0000000000000..0000000000001
 +
 +    LOG(ERROR) << "browseros: Keychain recovery failed (status=" << status
 +               << "). User will lose encrypted data.";
-+    if (result) {
-+      CFRelease(result);
-+    }
 +  }
 +}
 +
