@@ -31,7 +31,7 @@ if (-not $Dir) { $Dir = if ($env:BROWSEROS_DIR) { $env:BROWSEROS_DIR } else { "$
 
 if (-not $Version) {
     Write-Host "Fetching latest version..."
-    $releases = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases"
+    $releases = Invoke-RestMethod "https://api.github.com/repos/$Repo/releases?per_page=100"
     $tag = ($releases `
         | Where-Object { $_.tag_name -match "^browseros-cli-v" -and $_.tag_name -notmatch "-rc" } `
         | Select-Object -First 1).tag_name
@@ -68,16 +68,35 @@ if (-not [Environment]::Is64BitOperatingSystem) {
 $Tag = "browseros-cli-v$Version"
 $Filename = "${Binary}_${Version}_windows_${Arch}.zip"
 $Url = "https://github.com/$Repo/releases/download/$Tag/$Filename"
-$TmpDir = Join-Path $env:TEMP "browseros-cli-install"
+$TmpDir = Join-Path $env:TEMP ("browseros-cli-install-" + [System.IO.Path]::GetRandomFileName())
 
 try {
-    if (Test-Path $TmpDir) { Remove-Item -Recurse -Force $TmpDir }
     New-Item -ItemType Directory -Path $TmpDir | Out-Null
 
     $ZipPath = Join-Path $TmpDir $Filename
 
     Write-Host "Downloading $Url..."
     Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
+
+    # Verify checksum
+    $ChecksumUrl = "https://github.com/$Repo/releases/download/$Tag/checksums.txt"
+    $ChecksumPath = Join-Path $TmpDir "checksums.txt"
+    try {
+        Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ChecksumPath -UseBasicParsing
+        $expected = (Get-Content $ChecksumPath | Where-Object { $_ -match [regex]::Escape($Filename) }) -split '\s+' | Select-Object -First 1
+        if ($expected) {
+            $actual = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLower()
+            if ($actual -ne $expected.ToLower()) {
+                Write-Error "Checksum mismatch (expected $expected, got $actual)"
+                exit 1
+            }
+            Write-Host "Checksum verified."
+        } else {
+            Write-Warning "Checksum not found in checksums.txt; skipping verification."
+        }
+    } catch {
+        Write-Warning "Could not verify checksum: $_"
+    }
 
     Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
 

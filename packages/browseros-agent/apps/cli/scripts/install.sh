@@ -92,7 +92,7 @@ curl -fSL --progress-bar -o "${TMPDIR_DL}/${FILENAME}" "$URL"
 
 # Verify checksum if sha256sum/shasum is available
 if curl -fsSL -o "${TMPDIR_DL}/checksums.txt" "$CHECKSUM_URL" 2>/dev/null; then
-  expected=$(grep "$FILENAME" "${TMPDIR_DL}/checksums.txt" | awk '{print $1}')
+  expected=$(grep -F "$FILENAME" "${TMPDIR_DL}/checksums.txt" | awk '{print $1}')
   if [[ -n "$expected" ]]; then
     if command -v sha256sum >/dev/null 2>&1; then
       actual=$(sha256sum "${TMPDIR_DL}/${FILENAME}" | awk '{print $1}')
@@ -100,13 +100,18 @@ if curl -fsSL -o "${TMPDIR_DL}/checksums.txt" "$CHECKSUM_URL" 2>/dev/null; then
       actual=$(shasum -a 256 "${TMPDIR_DL}/${FILENAME}" | awk '{print $1}')
     else
       actual=""
+      echo "Warning: no sha256sum/shasum found; skipping checksum verification." >&2
     fi
     if [[ -n "$actual" && "$actual" != "$expected" ]]; then
       echo "Error: checksum mismatch (expected ${expected}, got ${actual})" >&2
       exit 1
     fi
     [[ -n "$actual" ]] && echo "Checksum verified."
+  else
+    echo "Warning: checksum not found in checksums.txt; skipping verification." >&2
   fi
+else
+  echo "Warning: could not fetch checksums.txt; skipping checksum verification." >&2
 fi
 
 tar -xzf "${TMPDIR_DL}/${FILENAME}" -C "$TMPDIR_DL"
