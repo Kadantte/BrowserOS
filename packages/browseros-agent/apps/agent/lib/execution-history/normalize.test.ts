@@ -88,6 +88,54 @@ describe('normalizeExecutionSteps', () => {
     expect(completed.steps[0]?.startedAt).toBe(initialTimestamp)
     expect(completed.steps[0]?.completedAt).toBe(completedTimestamp)
   })
+
+  it('uses a compact preview for completed tool output', () => {
+    const normalized = normalizeExecutionSteps({
+      assistantMessage: createAssistantMessage([
+        asMessagePart({
+          type: 'tool-open',
+          toolCallId: 'tool-1',
+          state: 'output-available',
+          input: { ref_id: 'page-1' },
+          output: {
+            content: [
+              {
+                type: 'text',
+                text: 'Navigated to https://amazon.com. Additional context: page snapshot follows.',
+              },
+            ],
+          },
+        }),
+      ]),
+      nowIso: '2026-03-26T10:00:00.000Z',
+    })
+
+    expect(normalized.steps[0]?.previewText).toBe('Completed successfully')
+  })
+
+  it('surfaces ACL blocks as a compact issue label', () => {
+    const normalized = normalizeExecutionSteps({
+      assistantMessage: createAssistantMessage([
+        asMessagePart({
+          type: 'tool-click',
+          toolCallId: 'tool-1',
+          state: 'output-available',
+          input: { x: 10, y: 20 },
+          output: {
+            content: [
+              {
+                type: 'text',
+                text: "Action blocked by ACL rule: 'add to cart'. The element on this page is restricted.",
+              },
+            ],
+          },
+        }),
+      ]),
+      nowIso: '2026-03-26T10:00:00.000Z',
+    })
+
+    expect(normalized.steps[0]?.previewText).toBe('Blocked by ACL rule')
+  })
 })
 
 describe('execution history text helpers', () => {

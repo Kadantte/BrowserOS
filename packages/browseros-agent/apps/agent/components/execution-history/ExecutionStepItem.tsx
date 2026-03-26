@@ -63,7 +63,17 @@ const getStateIcon = (step: ExecutionStepRecord) => {
 }
 
 const isAclBlocked = (step: ExecutionStepRecord) =>
-  step.errorText?.includes('Action blocked by ACL rule') ?? false
+  Boolean(
+    step.errorText?.includes('Action blocked by ACL rule') ||
+      step.approval?.reason?.includes('Action blocked by ACL rule') ||
+      step.previewText === 'Blocked by ACL rule',
+  )
+
+const shouldShowPreview = (step: ExecutionStepRecord) =>
+  step.state === 'input-streaming' ||
+  step.state === 'input-available' ||
+  step.state === 'approval-requested' ||
+  step.state === 'approval-responded'
 
 export const ExecutionStepItem: FC<{
   step: ExecutionStepRecord
@@ -94,9 +104,11 @@ export const ExecutionStepItem: FC<{
                   <Badge variant="outline">ACL Blocked</Badge>
                 )}
               </div>
-              <p className="mt-1 text-muted-foreground text-xs">
-                {step.previewText}
-              </p>
+              {shouldShowPreview(step) && (
+                <p className="mt-1 text-muted-foreground text-xs">
+                  {step.previewText}
+                </p>
+              )}
             </div>
             <ChevronDown
               className={cn(

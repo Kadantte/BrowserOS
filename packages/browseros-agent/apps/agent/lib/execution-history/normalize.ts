@@ -30,6 +30,52 @@ function stringifyValue(value: unknown): string {
   }
 }
 
+function normalizeText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function getNestedText(value: unknown, depth = 0): string | undefined {
+  if (depth > 5 || value == null) return undefined
+
+  if (typeof value === 'string') {
+    const text = normalizeText(value)
+    return text || undefined
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const text = getNestedText(item, depth + 1)
+      if (text) return text
+    }
+    return undefined
+  }
+
+  if (typeof value !== 'object') return undefined
+
+  const record = value as Record<string, unknown>
+  for (const key of ['text', 'message', 'reason', 'content']) {
+    const text = getNestedText(record[key], depth + 1)
+    if (text) return text
+  }
+
+  for (const nestedValue of Object.values(record)) {
+    const text = getNestedText(nestedValue, depth + 1)
+    if (text) return text
+  }
+
+  return undefined
+}
+
+function getCompactIssueLabel(value?: string): string | undefined {
+  if (!value) return undefined
+
+  if (value.includes('Action blocked by ACL rule')) {
+    return 'Blocked by ACL rule'
+  }
+
+  return undefined
+}
+
 function getToolName(part: ToolLikePart): string {
   if (part.type === 'dynamic-tool') {
     return part.toolName
@@ -61,18 +107,18 @@ function getPreviewText(part: ToolLikePart): string {
   }
 
   if (part.state === 'output-denied') {
-    return part.approval?.reason
-      ? truncateText(part.approval.reason)
-      : 'Action denied'
+    return getCompactIssueLabel(part.approval?.reason) ?? 'Action denied'
   }
 
   if (part.state === 'output-error') {
-    return truncateText(part.errorText)
+    return getCompactIssueLabel(part.errorText) ?? 'Action failed'
   }
 
   if (part.state === 'output-available') {
-    const preview = stringifyValue(part.output)
-    return truncateText(preview || 'Completed successfully')
+    const preview =
+      getCompactIssueLabel(getNestedText(part.output)) ??
+      getCompactIssueLabel(stringifyValue(part.output))
+    return preview ?? 'Completed successfully'
   }
 
   if (part.state === 'input-available') {
