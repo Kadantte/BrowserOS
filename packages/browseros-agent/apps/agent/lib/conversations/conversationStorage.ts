@@ -70,11 +70,16 @@ export function useConversations() {
         messages,
         lastMessagedAt: Date.now(),
       }
-      let updated = [newConversation, ...current]
-      if (updated.length > MAX_CONVERSATIONS) {
-        updated = updated.slice(0, MAX_CONVERSATIONS)
-      }
-      await conversationStorage.setValue(updated)
+      const nextConversations = [newConversation, ...current]
+      const removedConversations = nextConversations.slice(MAX_CONVERSATIONS)
+      await conversationStorage.setValue(
+        nextConversations.slice(0, MAX_CONVERSATIONS),
+      )
+      await Promise.all(
+        removedConversations.map((conversation) =>
+          removeConversationExecutionHistory(conversation.id),
+        ),
+      )
     }
   }
 
