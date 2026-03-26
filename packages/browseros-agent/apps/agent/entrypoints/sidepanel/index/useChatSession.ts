@@ -27,6 +27,11 @@ import { declinedAppsStorage } from '@/lib/declined-apps/storage'
 import { useGraphqlQuery } from '@/lib/graphql/useGraphqlQuery'
 import { createDefaultBrowserOSProvider } from '@/lib/llm-providers/storage'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
+import {
+  type ApprovalResponseData,
+  buildChatRequestBody,
+  type ChatRequestBrowserContext,
+} from '@/lib/messaging/server/buildChatRequestBody'
 import { track } from '@/lib/metrics/track'
 import { searchActionsStorage } from '@/lib/search-actions/searchActionsStorage'
 import { selectedTextStorage } from '@/lib/selected-text/selectedTextStorage'
@@ -46,12 +51,6 @@ import { GetConversationWithMessagesDocument } from './graphql/chatSessionDocume
 import { useChatRefs } from './useChatRefs'
 import { useNotifyActiveTab } from './useNotifyActiveTab'
 import { useRemoteConversationSave } from './useRemoteConversationSave'
-
-interface ApprovalResponseData {
-  approvalId: string
-  approved: boolean
-  reason?: string
-}
 
 const extractApprovalResponses = (
   messages: UIMessage[],
@@ -85,6 +84,15 @@ const getLastMessageText = (messages: UIMessage[]) => {
     .join('')
 }
 
+const getLastUserMessageText = (messages: UIMessage[]) => {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    if (messages[i]?.role === 'user') {
+      return getLastMessageText([messages[i]])
+    }
+  }
+  return ''
+}
+
 export const getResponseAndQueryFromMessageId = (
   messages: UIMessage[],
   messageId: string,
@@ -116,6 +124,59 @@ export interface ChatSessionOptions {
 }
 
 const NEWTAB_SYSTEM_PROMPT = `IMPORTANT: The user is chatting from the New Tab page. When performing browser actions, ALWAYS open content in a NEW TAB rather than navigating the current tab. The user's new tab page should remain accessible.`
+
+const getUserSystemPrompt = (
+  origin: ChatOrigin | undefined,
+  personalization: string,
+) =>
+  origin === 'newtab'
+    ? [personalization, NEWTAB_SYSTEM_PROMPT].filter(Boolean).join('\n\n')
+    : personalization
+
+const buildRequestBrowserContext = ({
+  activeTab,
+  action,
+  enabledMcpServers,
+  customMcpServers,
+}: {
+  activeTab?: chrome.tabs.Tab
+  action?: ChatAction
+  enabledMcpServers: Array<string | undefined>
+  customMcpServers: {
+    name: string
+    url?: string
+  }[]
+}): ChatRequestBrowserContext | undefined => {
+  const browserContext: ChatRequestBrowserContext = {}
+
+  if (activeTab) {
+    browserContext.windowId = activeTab.windowId
+    browserContext.activeTab = {
+      id: activeTab.id,
+      url: activeTab.url,
+      title: activeTab.title,
+    }
+  }
+
+  if (action?.tabs?.length) {
+    browserContext.selectedTabs = action.tabs.map((tab) => ({
+      id: tab.id,
+      url: tab.url,
+      title: tab.title,
+    }))
+  }
+
+  const managedMcpServers = compact(enabledMcpServers)
+  if (managedMcpServers.length) {
+    browserContext.enabledMcpServers = managedMcpServers
+  }
+
+  if (customMcpServers.length) {
+    browserContext.customMcpServers = customMcpServers
+  }
+
+  return Object.keys(browserContext).length ? browserContext : undefined
+}
 
 export const useChatSession = (options?: ChatSessionOptions) => {
   const {
@@ -273,34 +334,9 @@ export const useChatSession = (options?: ChatSessionOptions) => {
     addToolApprovalResponse,
   } = useChat({
     transport: new DefaultChatTransport({
-      // Important: this chat logic is also used in apps/agent/lib/schedules/getChatServerResponse.ts for scheduled jobs. Make sure to keep them in sync for any future changes.
       prepareSendMessagesRequest: async ({ messages }) => {
         const provider =
           selectedLlmProviderRef.current ?? createDefaultBrowserOSProvider()
-
-        // Detect approval-triggered sends (last message is assistant, not user)
-        const approvalResponses = extractApprovalResponses(messages)
-        if (approvalResponses) {
-          return {
-            api: `${agentUrlRef.current}/chat`,
-            body: {
-              conversationId: conversationIdRef.current,
-              provider: provider?.type,
-              providerType: provider?.type,
-              providerName: provider?.name,
-              apiKey: provider?.apiKey,
-              baseUrl: provider?.baseUrl,
-              model: provider?.modelId ?? 'default',
-              resourceName: provider?.resourceName,
-              accessKeyId: provider?.accessKeyId,
-              secretAccessKey: provider?.secretAccessKey,
-              region: provider?.region,
-              sessionToken: provider?.sessionToken,
-              toolApprovalResponses: approvalResponses,
-            },
-          }
-        }
-
         const activeTabsList = await chrome.tabs.query({
           active: true,
           currentWindow: true,
@@ -309,63 +345,17 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         const activeTabSelection = activeTab?.id
           ? (selectionMapRef.current[String(activeTab.id)] ?? null)
           : null
-        const message = getLastMessageText(messages)
         const currentMode = modeRef.current
         const enabledMcpServers = enabledMcpServersRef.current
         const customMcpServers = enabledCustomServersRef.current
-
-        const getActionForMessage = (messageText: string) => {
-          return textToActionRef.current.get(messageText)
-        }
-
-        const action = getActionForMessage(message)
-
-        const browserContext: {
-          windowId?: number
-          activeTab?: {
-            id?: number
-            url?: string
-            title?: string
-          }
-          selectedTabs?: {
-            id?: number
-            url?: string
-            title?: string
-          }[]
-          enabledMcpServers?: string[]
-          customMcpServers?: {
-            name: string
-            url: string
-          }[]
-        } = {}
-
-        if (activeTab) {
-          browserContext.windowId = activeTab.windowId
-          browserContext.activeTab = {
-            id: activeTab.id,
-            url: activeTab.url,
-            title: activeTab.title,
-          }
-        }
-
-        if (action?.tabs?.length) {
-          browserContext.selectedTabs = action?.tabs?.map((tab) => ({
-            id: tab.id,
-            url: tab.url,
-            title: tab.title,
-          }))
-        }
-
-        if (enabledMcpServers.length) {
-          browserContext.enabledMcpServers = compact(enabledMcpServers)
-        }
-
-        if (customMcpServers.length) {
-          browserContext.customMcpServers = customMcpServers as {
-            name: string
-            url: string
-          }[]
-        }
+        const lastUserMessage = getLastUserMessageText(messages)
+        const action = textToActionRef.current.get(lastUserMessage)
+        const requestBrowserContext = buildRequestBrowserContext({
+          activeTab,
+          action,
+          enabledMcpServers,
+          customMcpServers,
+        })
 
         const declinedApps = await declinedAppsStorage.getValue()
         const allAclRules = await aclRulesStorage.getValue()
@@ -389,42 +379,46 @@ export const useChatSession = (options?: ChatSessionOptions) => {
             : history.map((m) => `${m.role}: ${m.content}`).join('\n')
           : undefined
 
+        const userSystemPrompt = getUserSystemPrompt(
+          options?.origin,
+          personalizationRef.current,
+        )
+
+        const approvalResponses = extractApprovalResponses(messages)
+        if (approvalResponses) {
+          return {
+            api: `${agentUrlRef.current}/chat`,
+            body: buildChatRequestBody({
+              conversationId: conversationIdRef.current,
+              provider,
+              mode: currentMode,
+              browserContext: requestBrowserContext,
+              userSystemPrompt,
+              userWorkingDir: workingDirRef.current,
+              previousConversation,
+              declinedApps,
+              aclRules: enabledAclRules,
+              toolApprovalConfig: approvalConfig,
+              toolApprovalResponses: approvalResponses,
+            }),
+          }
+        }
+
+        const message = getLastMessageText(messages)
+
         const result = {
           api: `${agentUrlRef.current}/chat`,
-          body: {
+          body: buildChatRequestBody({
             message,
-            provider: provider?.type,
-            providerType: provider?.type,
-            providerName: provider?.name,
-            apiKey: provider?.apiKey,
-            baseUrl: provider?.baseUrl,
             conversationId: conversationIdRef.current,
-            model: provider?.modelId ?? 'default',
+            provider,
             mode: currentMode,
-            contextWindowSize: provider?.contextWindow,
-            temperature: provider?.temperature,
-            // Azure-specific
-            resourceName: provider?.resourceName,
-            // Bedrock-specific
-            accessKeyId: provider?.accessKeyId,
-            secretAccessKey: provider?.secretAccessKey,
-            region: provider?.region,
-            sessionToken: provider?.sessionToken,
-            // ChatGPT Pro (Codex)
-            reasoningEffort: provider?.reasoningEffort,
-            reasoningSummary: provider?.reasoningSummary,
-            browserContext,
-            userSystemPrompt:
-              options?.origin === 'newtab'
-                ? [personalizationRef.current, NEWTAB_SYSTEM_PROMPT]
-                    .filter(Boolean)
-                    .join('\n\n')
-                : personalizationRef.current,
+            browserContext: requestBrowserContext,
+            userSystemPrompt,
             userWorkingDir: workingDirRef.current,
-            supportsImages: provider?.supportsImages,
             previousConversation,
-            declinedApps: declinedApps.length > 0 ? declinedApps : undefined,
-            aclRules: enabledAclRules.length > 0 ? enabledAclRules : undefined,
+            declinedApps,
+            aclRules: enabledAclRules,
             selectedText: activeTabSelection?.text,
             selectedTextSource: activeTabSelection
               ? {
@@ -432,12 +426,8 @@ export const useChatSession = (options?: ChatSessionOptions) => {
                   title: activeTabSelection.title,
                 }
               : undefined,
-            toolApprovalConfig: Object.values(approvalConfig.categories).some(
-              Boolean,
-            )
-              ? approvalConfig
-              : undefined,
-          },
+            toolApprovalConfig: approvalConfig,
+          }),
         }
 
         // Track which tab's selection was sent so we can clear it on success
