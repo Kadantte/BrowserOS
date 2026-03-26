@@ -82,6 +82,33 @@ export async function removeConversationExecutionHistory(
   await executionHistoryStorage.setValue(rest)
 }
 
+export async function removeConversationExecutionTask(args: {
+  conversationId: string
+  taskId: string
+}): Promise<void> {
+  const current = (await executionHistoryStorage.getValue()) ?? {}
+  const history = current[args.conversationId]
+  if (!history) return
+
+  const nextTasks = history.tasks.filter((task) => task.id !== args.taskId)
+  if (nextTasks.length === history.tasks.length) return
+
+  if (nextTasks.length === 0) {
+    const { [args.conversationId]: _removed, ...rest } = current
+    await executionHistoryStorage.setValue(rest)
+    return
+  }
+
+  await executionHistoryStorage.setValue({
+    ...current,
+    [args.conversationId]: {
+      ...history,
+      updatedAt: Date.now(),
+      tasks: nextTasks,
+    },
+  })
+}
+
 export function useConversationExecutionHistory(conversationId?: string) {
   const [history, setHistory] = useState<ConversationExecutionHistory | null>(
     null,

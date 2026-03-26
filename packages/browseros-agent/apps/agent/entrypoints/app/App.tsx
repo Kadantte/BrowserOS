@@ -97,6 +97,7 @@ export const App: FC = () => {
           <Route path="workflows" element={<WorkflowsPageWrapper />} />
           <Route path="scheduled" element={<ScheduledTasksPage />} />
           <Route path="admin" element={<AdminDashboardPage />} />
+          <Route path="audit" element={<ExecutionHistoryPage />} />
           <Route path="admin" element={<AdminDashboardPage />} />
           <Route path="audit" element={<ExecutionHistoryPage />} />
         </Route>
