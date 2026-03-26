@@ -27,6 +27,10 @@ export function matchesElement(
 ): boolean {
   if (!rule.selector && !rule.textMatch) return false
 
+  if (rule.selector && !selectorMatchesProps(rule.selector, props)) {
+    return false
+  }
+
   if (rule.textMatch) {
     const text = props.textContent.toLowerCase()
     const match = rule.textMatch.toLowerCase()
@@ -34,6 +38,24 @@ export function matchesElement(
   }
 
   return true
+}
+
+function selectorMatchesProps(
+  selector: string,
+  props: ElementProperties,
+): boolean {
+  const tag = props.tagName.toLowerCase()
+  const id = props.attributes.id
+  const classes = (props.attributes.class ?? '').split(/\s+/).filter(Boolean)
+
+  const parts = selector.split(',').map((s) => s.trim())
+  return parts.some((part) => {
+    if (part.startsWith('#') && id) return part === `#${id}`
+    if (part.startsWith('.')) return classes.some((c) => part === `.${c}`)
+    const tagMatch = part.match(/^(\w+)/)
+    if (tagMatch) return tagMatch[1].toLowerCase() === tag
+    return false
+  })
 }
 
 export function findMatchingRules(

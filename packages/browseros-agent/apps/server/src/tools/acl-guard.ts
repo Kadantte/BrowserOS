@@ -18,7 +18,6 @@ const GUARDED_TOOLS = new Set([
   'select_option',
   'press_key',
   'upload_file',
-  'scroll',
 ])
 
 export interface AclCheckResult {
