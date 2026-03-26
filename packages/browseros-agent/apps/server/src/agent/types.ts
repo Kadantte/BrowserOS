@@ -48,4 +48,6 @@ export interface ResolvedAgentConfig {
   declinedApps?: string[]
   /** BrowserOS installation ID for credit-based tracking. */
   browserosId?: string
+  /** Tool approval configuration — which categories require human approval. */
+  toolApprovalConfig?: { categories: Record<string, boolean> }
 }

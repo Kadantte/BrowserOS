@@ -31,6 +31,12 @@ import { track } from '@/lib/metrics/track'
 import { searchActionsStorage } from '@/lib/search-actions/searchActionsStorage'
 import { selectedTextStorage } from '@/lib/selected-text/selectedTextStorage'
 import { stopAgentStorage } from '@/lib/stop-agent/stop-agent-storage'
+import {
+  approvalResponsesStorage,
+  type PendingApproval,
+  pendingToolApprovalsStorage,
+} from '@/lib/tool-approvals/approval-sync-storage'
+import { toolApprovalConfigStorage } from '@/lib/tool-approvals/storage'
 import { selectedWorkspaceStorage } from '@/lib/workspace/workspace-storage'
 import type { ChatMode } from './chatTypes'
 import { GetConversationWithMessagesDocument } from './graphql/chatSessionDocument'
@@ -231,6 +237,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
     status,
     stop,
     error: chatError,
+    addToolApprovalResponse,
   } = useChat({
     transport: new DefaultChatTransport({
       // Important: this chat logic is also used in apps/agent/lib/schedules/getChatServerResponse.ts for scheduled jobs. Make sure to keep them in sync for any future changes.
@@ -306,6 +313,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         const declinedApps = await declinedAppsStorage.getValue()
         const allAclRules = await aclRulesStorage.getValue()
         const enabledAclRules = allAclRules.filter((r) => r.enabled)
+        const approvalConfig = await toolApprovalConfigStorage.getValue()
 
         const supportsArrayConversation = await Capabilities.supports(
           Feature.PREVIOUS_CONVERSATION_ARRAY,
@@ -364,6 +372,11 @@ export const useChatSession = (options?: ChatSessionOptions) => {
                   url: activeTabSelection.url,
                   title: activeTabSelection.title,
                 }
+              : undefined,
+            toolApprovalConfig: Object.values(approvalConfig.categories).some(
+              Boolean,
+            )
+              ? approvalConfig
               : undefined,
           },
         }
@@ -495,6 +508,56 @@ export const useChatSession = (options?: ChatSessionOptions) => {
     if (chatError) invalidateCredits()
   }, [chatError, invalidateCredits])
 
+  // Sync pending tool approvals to shared storage for the admin dashboard
+  // biome-ignore lint/correctness/useExhaustiveDependencies: sync on message changes only
+  useEffect(() => {
+    const pending: PendingApproval[] = []
+    for (const msg of messages) {
+      for (const part of msg.parts) {
+        const toolPart = part as {
+          type?: string
+          state?: string
+          toolCallId?: string
+          input?: Record<string, unknown>
+          approval?: { id: string }
+        }
+        if (
+          toolPart.state === 'approval-requested' &&
+          toolPart.approval?.id &&
+          toolPart.toolCallId
+        ) {
+          pending.push({
+            approvalId: toolPart.approval.id,
+            toolCallId: toolPart.toolCallId,
+            toolName: (toolPart.type ?? '').replace('tool-', ''),
+            input: toolPart.input ?? {},
+            conversationId: conversationIdRef.current,
+            timestamp: Date.now(),
+          })
+        }
+      }
+    }
+    pendingToolApprovalsStorage.setValue(pending)
+  }, [messages])
+
+  // Watch for approval responses from the admin dashboard
+  // biome-ignore lint/correctness/useExhaustiveDependencies: only set up once
+  useEffect(() => {
+    const unwatch = approvalResponsesStorage.watch((responses) => {
+      if (!responses?.length) return
+      for (const resp of responses) {
+        addToolApprovalResponse({
+          id: resp.approvalId,
+          approved: resp.approved,
+          reason: resp.reason,
+        })
+      }
+      approvalResponsesStorage.setValue([])
+      pendingToolApprovalsStorage.setValue([])
+    })
+    return () => unwatch()
+  }, [])
+
   const isIntegrationsSynced = options?.isIntegrationsSynced ?? true
   const isIntegrationsSyncedRef = useRef(isIntegrationsSynced)
   const pendingMessageRef = useRef<{
@@ -624,5 +687,6 @@ export const useChatSession = (options?: ChatSessionOptions) => {
     disliked,
     onClickDislike,
     conversationId,
+    addToolApprovalResponse,
   }
 }
