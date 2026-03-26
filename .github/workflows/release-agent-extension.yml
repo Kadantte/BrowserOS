@@ -32,12 +32,12 @@ jobs:
       - name: Build extension
         run: bun run build
         env:
-          VITE_PUBLIC_BROWSEROS_API: https://browseros-api.fly.dev
+          VITE_PUBLIC_BROWSEROS_API: https://api.browseros.com
 
       - name: Create extension zip
         run: bun run zip
         env:
-          VITE_PUBLIC_BROWSEROS_API: https://browseros-api.fly.dev
+          VITE_PUBLIC_BROWSEROS_API: https://api.browseros.com
 
       - name: Get version and zip path
         id: version
