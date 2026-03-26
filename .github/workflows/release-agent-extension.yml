@@ -30,7 +30,7 @@ jobs:
         working-directory: packages/browseros-agent
 
       - name: Build and zip extension
-        run: bun run zip
+        run: bun run codegen && bun run zip
         env:
           VITE_PUBLIC_BROWSEROS_API: https://api.browseros.com
 
