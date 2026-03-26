@@ -103,6 +103,7 @@ jobs:
           workdir: packages/browseros-agent/apps/cli
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GORELEASER_CURRENT_TAG: "cli/v${{ inputs.version }}"
 
       - name: Update CHANGELOG.md via PR
         env:
