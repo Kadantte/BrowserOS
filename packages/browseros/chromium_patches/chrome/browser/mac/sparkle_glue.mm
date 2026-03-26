@@ -116,6 +116,7 @@ index 0000000000000..25c4843095e4f
 +- (void)setInternalStatus:(SparkleStatus)status
 +             errorMessage:(nullable NSString*)errorMessage;
 +- (void)notifyProgress:(SparkleProgress*)progress;
++- (void)broadenKeychainACLBeforeUpdate;
 +@end
 +
 +#pragma mark - BrowserOSUserDriver

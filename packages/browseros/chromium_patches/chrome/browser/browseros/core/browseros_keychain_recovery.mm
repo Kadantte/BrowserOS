@@ -84,12 +84,12 @@ index 0000000000000..0000000000001
 +        SecItemUpdate((__bridge CFDictionaryRef)updateQuery,
 +                      (__bridge CFDictionaryRef)update);
 +      }
-+      LOG(INFO) << "browseros: Keychain access OK";
++      VLOG(1) << "browseros: Keychain access OK";
 +      return;
 +    }
 +
 +    if (status == errSecItemNotFound) {
-+      LOG(INFO)
++      VLOG(1)
 +          << "browseros: No keychain item found, will be created on first use";
 +      return;
 +    }
