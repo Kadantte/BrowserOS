@@ -38,21 +38,46 @@ jobs:
       - name: Run vet
         run: go vet ./...
 
-      - name: Save release SHA
-        id: version
-        run: echo "release_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-        working-directory: ${{ github.workspace }}
+      - name: Build all platforms
+        run: |
+          VERSION="${{ inputs.version }}"
+          LDFLAGS="-s -w -X main.version=${VERSION}"
+          DIST="dist"
+          mkdir -p "$DIST"
+
+          for pair in darwin/amd64 darwin/arm64 linux/amd64 linux/arm64 windows/amd64 windows/arm64; do
+            OS="${pair%/*}"
+            ARCH="${pair#*/}"
+            BIN="browseros-cli"
+            EXT=""
+            if [ "$OS" = "windows" ]; then EXT=".exe"; fi
+
+            echo "Building ${OS}/${ARCH}..."
+            GOOS=$OS GOARCH=$ARCH CGO_ENABLED=0 go build -trimpath -ldflags "$LDFLAGS" -o "${DIST}/${BIN}${EXT}" .
+
+            ARCHIVE="browseros-cli_${VERSION}_${OS}_${ARCH}"
+            if [ "$OS" = "windows" ]; then
+              (cd "$DIST" && zip "${ARCHIVE}.zip" "${BIN}${EXT}")
+            else
+              (cd "$DIST" && tar czf "${ARCHIVE}.tar.gz" "${BIN}")
+            fi
+            rm "${DIST}/${BIN}${EXT}"
+          done
+
+          (cd "$DIST" && sha256sum *.tar.gz *.zip > checksums.txt)
+          echo "=== Built artifacts ==="
+          ls -lh "$DIST"
 
       - name: Generate release notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           CLI_PATH="packages/browseros-agent/apps/cli"
-          CURRENT_TAG="browseros-cli-v${{ inputs.version }}"
-          PREV_TAG=$(git tag -l "browseros-cli-v*" --sort=-v:refname | grep -v "^${CURRENT_TAG}$" | head -n 1)
+          TAG="browseros-cli-v${{ inputs.version }}"
+          PREV_TAG=$(git tag -l "browseros-cli-v*" --sort=-v:refname | grep -v "^${TAG}$" | head -n 1)
 
           if [ -z "$PREV_TAG" ]; then
-            echo "Initial release" > /tmp/release-notes.md
+            echo "Initial release of browseros-cli." > /tmp/release-notes.md
           else
             COMMITS=$(git log "$PREV_TAG"..HEAD --pretty=format:"%H" -- "$CLI_PATH")
 
@@ -76,68 +101,21 @@ jobs:
           fi
         working-directory: ${{ github.workspace }}
 
-      - name: Create tag
-        run: |
-          TAG="browseros-cli-v${{ inputs.version }}"
-          RELEASE_SHA="${{ steps.version.outputs.release_sha }}"
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          if git rev-parse "$TAG" >/dev/null 2>&1; then
-            echo "Tag $TAG already exists, skipping"
-          else
-            git tag -a "$TAG" "$RELEASE_SHA" -m "browseros-cli v${{ inputs.version }}"
-          fi
-
-          if git ls-remote --tags origin "$TAG" | grep -q "$TAG"; then
-            echo "Tag $TAG already on remote, skipping push"
-          else
-            git push origin "$TAG"
-          fi
-        working-directory: ${{ github.workspace }}
-
-      - uses: goreleaser/goreleaser-action@v6
-        with:
-          version: "~> v2"
-          args: release --clean --release-notes /tmp/release-notes.md
-          workdir: packages/browseros-agent/apps/cli
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Update CHANGELOG.md via PR
+      - name: Create tag and release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION="${{ inputs.version }}"
-          DATE=$(date -u +"%Y-%m-%d")
-          BRANCH="docs/cli-changelog-v${VERSION}"
-          CHANGELOG="packages/browseros-agent/apps/cli/CHANGELOG.md"
-
-          git checkout main
-
-          {
-            head -n 1 "$CHANGELOG"
-            echo ""
-            echo "## v${VERSION} (${DATE})"
-            echo ""
-            cat /tmp/release-notes.md
-            echo ""
-            tail -n +2 "$CHANGELOG"
-          } > /tmp/new-changelog.md
-          mv /tmp/new-changelog.md "$CHANGELOG"
-
+          TAG="browseros-cli-v${{ inputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git checkout -b "$BRANCH"
-          git add "$CHANGELOG"
-          git commit -m "docs: update CLI changelog for v${VERSION}"
-          git push origin "$BRANCH"
 
-          gh pr create \
-            --title "docs: update CLI changelog for v${VERSION}" \
-            --body "Auto-generated changelog update for browseros-cli v${VERSION}." \
-            --base main \
-            --head "$BRANCH"
+          if ! git rev-parse "$TAG" >/dev/null 2>&1; then
+            git tag -a "$TAG" -m "browseros-cli v${{ inputs.version }}"
+            git push origin "$TAG"
+          fi
 
-          gh pr merge "$BRANCH" --squash --auto || true
+          gh release create "$TAG" \
+            --title "browseros-cli v${{ inputs.version }}" \
+            --notes-file /tmp/release-notes.md \
+            dist/*
         working-directory: ${{ github.workspace }}
