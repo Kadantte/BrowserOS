@@ -2,8 +2,9 @@ package engine
 
 import (
 	"context"
+	"fmt"
 
-	_jsii "github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 )
 
@@ -20,17 +21,24 @@ func Publish(ctx context.Context, repoInfo *repo.Info, remote string, message st
 	if message == "" {
 		message = "chore: update chromium patches"
 	}
-	if err := _jsii.AddPaths(ctx, repoInfo.Root, []string{"chromium_patches"}); err != nil {
-		return nil, err
-	}
-	if err := _jsii.Commit(ctx, repoInfo.Root, message); err != nil {
-		return nil, err
-	}
-	branch, err := _jsii.CurrentBranch(ctx, repoInfo.Root)
+	dirty, err := git.IsDirtyPaths(ctx, repoInfo.Root, []string{"chromium_patches"})
 	if err != nil {
 		return nil, err
 	}
-	if err := _jsii.Push(ctx, repoInfo.Root, remote, branch); err != nil {
+	if !dirty {
+		return nil, fmt.Errorf("nothing to publish: chromium_patches has no uncommitted changes")
+	}
+	if err := git.AddPaths(ctx, repoInfo.Root, []string{"chromium_patches"}); err != nil {
+		return nil, err
+	}
+	if err := git.Commit(ctx, repoInfo.Root, message); err != nil {
+		return nil, err
+	}
+	branch, err := git.CurrentBranch(ctx, repoInfo.Root)
+	if err != nil {
+		return nil, err
+	}
+	if err := git.Push(ctx, repoInfo.Root, remote, branch); err != nil {
 		return nil, err
 	}
 	return &PublishResult{Remote: remote, Branch: branch, Message: message}, nil

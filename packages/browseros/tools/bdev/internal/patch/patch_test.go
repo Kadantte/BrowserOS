@@ -1,7 +1,11 @@
 package patch
 
 import (
+	"context"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +80,67 @@ rename to chrome/new.cc
 func TestPathMatchesSkipsInternalState(t *testing.T) {
 	if PathMatches(".bdev/state.yaml", nil) {
 		t.Fatalf("expected internal state path to be ignored")
+	}
+}
+
+func TestBuildRangePatchSetUsesLatestBaseScopedPatch(t *testing.T) {
+	ctx := context.Background()
+	repoDir := t.TempDir()
+	runGit(t, repoDir, "init")
+	runGit(t, repoDir, "config", "user.name", "Test User")
+	runGit(t, repoDir, "config", "user.email", "test@example.com")
+
+	writeRepoFile(t, filepath.Join(repoDir, "chrome", "foo.txt"), "one\n")
+	runGit(t, repoDir, "add", "chrome/foo.txt")
+	runGit(t, repoDir, "commit", "-m", "base")
+	base := gitOutput(t, repoDir, "rev-parse", "HEAD")
+
+	writeRepoFile(t, filepath.Join(repoDir, "chrome", "foo.txt"), "two\n")
+	runGit(t, repoDir, "commit", "-am", "step one")
+	writeRepoFile(t, filepath.Join(repoDir, "chrome", "foo.txt"), "three\n")
+	runGit(t, repoDir, "commit", "-am", "step two")
+	end := gitOutput(t, repoDir, "rev-parse", "HEAD")
+
+	set, err := BuildRangePatchSet(ctx, repoDir, base, end, base, false, nil)
+	if err != nil {
+		t.Fatalf("BuildRangePatchSet: %v", err)
+	}
+	content := string(set["chrome/foo.txt"].Content)
+	if !strings.Contains(content, "+three") {
+		t.Fatalf("expected final patch content, got %q", content)
+	}
+	if strings.Contains(content, "+two") {
+		t.Fatalf("expected latest base-scoped patch, got %q", content)
+	}
+}
+
+func runGit(t *testing.T, dir string, args ...string) {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, string(output))
+	}
+}
+
+func gitOutput(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	cmd := exec.Command("git", args...)
+	cmd.Dir = dir
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %s: %v\n%s", strings.Join(args, " "), err, string(output))
+	}
+	return strings.TrimSpace(string(output))
+}
+
+func writeRepoFile(t *testing.T, path string, body string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
 	}
 }

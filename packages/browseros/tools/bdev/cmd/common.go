@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/workspace"
@@ -27,10 +26,6 @@ func splitWorkspaceAndFilters(cmd *cobra.Command, args []string) ([]string, []st
 		return args, nil
 	}
 	return args[:atDash], args[atDash:]
-}
-
-func trimPatchesPrefix(rel string) string {
-	return strings.TrimPrefix(rel, "chromium_patches/")
 }
 
 func ensureRepoConfigured(override string) error {

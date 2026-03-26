@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	_jsii "github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/patch"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/workspace"
@@ -46,7 +46,7 @@ func Extract(ctx context.Context, opts ExtractOptions) (*ExtractResult, error) {
 		set, err = patch.BuildCommitPatchSet(ctx, opts.Workspace.Path, opts.Commit, opts.Base, opts.Filters)
 		if err == nil {
 			if opts.Base != "" {
-				changes, err := _jsii.DiffTreeNameStatus(ctx, opts.Workspace.Path, opts.Commit, opts.Filters)
+				changes, err := git.DiffTreeNameStatus(ctx, opts.Workspace.Path, opts.Commit, opts.Filters)
 				if err != nil {
 					return nil, err
 				}
@@ -60,7 +60,7 @@ func Extract(ctx context.Context, opts ExtractOptions) (*ExtractResult, error) {
 		set, err = patch.BuildRangePatchSet(ctx, opts.Workspace.Path, opts.RangeStart, opts.RangeEnd, opts.Base, opts.Squash, opts.Filters)
 		if err == nil {
 			if opts.Base != "" || opts.Squash {
-				changes, err := _jsii.DiffNameStatusBetween(ctx, opts.Workspace.Path, opts.RangeStart, opts.RangeEnd, opts.Filters)
+				changes, err := git.DiffNameStatusBetween(ctx, opts.Workspace.Path, opts.RangeStart, opts.RangeEnd, opts.Filters)
 				if err != nil {
 					return nil, err
 				}
@@ -87,7 +87,7 @@ func Extract(ctx context.Context, opts ExtractOptions) (*ExtractResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	head, err := _jsii.HeadRev(ctx, opts.Workspace.Path)
+	head, err := git.HeadRev(ctx, opts.Workspace.Path)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +106,7 @@ func Extract(ctx context.Context, opts ExtractOptions) (*ExtractResult, error) {
 	}, nil
 }
 
-func changedScope(changes []_jsii.FileChange) []string {
+func changedScope(changes []git.FileChange) []string {
 	scope := make([]string, 0, len(changes))
 	for _, change := range changes {
 		rel := patch.NormalizeChromiumPath(change.Path)

@@ -10,7 +10,11 @@ build:
 install: build
 	mkdir -p $(PREFIX)
 	cp $(BINARY) $(PREFIX)/$(BINARY)
+ifneq ($(shell uname -s),Darwin)
+	@echo "Skipping codesign on non-macOS host"
+else
 	codesign --force --sign - $(PREFIX)/$(BINARY)
+endif
 	@echo "Installed $(BINARY) to $(PREFIX)/$(BINARY)"
 
 test:

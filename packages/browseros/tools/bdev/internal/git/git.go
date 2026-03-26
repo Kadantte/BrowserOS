@@ -9,12 +9,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
-)
-
-const (
-	DefaultTimeout = 120 * time.Second
-	ApplyTimeout   = 60 * time.Second
 )
 
 type Result struct {
@@ -87,7 +81,16 @@ func CurrentBranch(ctx context.Context, dir string) (string, error) {
 }
 
 func IsDirty(ctx context.Context, dir string) (bool, error) {
-	result, err := Run(ctx, dir, nil, "status", "--porcelain")
+	return IsDirtyPaths(ctx, dir, nil)
+}
+
+func IsDirtyPaths(ctx context.Context, dir string, pathspecs []string) (bool, error) {
+	args := []string{"status", "--porcelain"}
+	if len(pathspecs) > 0 {
+		args = append(args, "--")
+		args = append(args, pathspecs...)
+	}
+	result, err := Run(ctx, dir, nil, args...)
 	if err != nil {
 		return false, err
 	}

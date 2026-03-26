@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	_jsii "github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/workspace"
 )
@@ -32,21 +32,21 @@ func Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	if opts.Remote == "" {
 		opts.Remote = "origin"
 	}
-	dirty, err := _jsii.IsDirty(ctx, opts.Repo.Root)
+	dirty, err := git.IsDirty(ctx, opts.Repo.Root)
 	if err != nil {
 		return nil, err
 	}
 	if dirty {
 		return nil, fmt.Errorf("patches repo has uncommitted changes; commit or stash them before syncing")
 	}
-	branch, err := _jsii.CurrentBranch(ctx, opts.Repo.Root)
+	branch, err := git.CurrentBranch(ctx, opts.Repo.Root)
 	if err != nil {
 		return nil, err
 	}
-	if err := _jsii.PullRebase(ctx, opts.Repo.Root, opts.Remote, branch); err != nil {
+	if err := git.PullRebase(ctx, opts.Repo.Root, opts.Remote, branch); err != nil {
 		return nil, err
 	}
-	head, err := _jsii.HeadRev(ctx, opts.Repo.Root)
+	head, err := git.HeadRev(ctx, opts.Repo.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 	divergent := append([]string{}, status.NeedsUpdate...)
 	divergent = append(divergent, status.Orphaned...)
 	if len(divergent) > 0 {
-		stashRef, err := _jsii.StashPush(ctx, opts.Workspace.Path, "bdev sync stash", true, divergent)
+		stashRef, err := git.StashPush(ctx, opts.Workspace.Path, "bdev sync stash", true, divergent)
 		if err != nil {
 			return nil, err
 		}
@@ -96,10 +96,6 @@ func Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 			return result, nil
 		}
 	} else {
-		changes, err := _jsii.DiffNameStatusBetween(ctx, opts.Repo.Root, state.LastSyncRev, head, []string{"chromium_patches"})
-		if err != nil {
-			return nil, err
-		}
 		applyResult, err := Apply(ctx, ApplyOptions{
 			Workspace:  opts.Workspace,
 			Repo:       opts.Repo,
@@ -110,7 +106,6 @@ func Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 		if err != nil {
 			return nil, err
 		}
-		_ = changes
 		result.Applied = applyResult.Applied
 		if len(applyResult.Conflicts) > 0 {
 			for _, conflict := range applyResult.Conflicts {
@@ -120,7 +115,7 @@ func Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 		}
 	}
 	if opts.Rebase && result.StashRef != "" {
-		if err := _jsii.StashPop(ctx, opts.Workspace.Path, result.StashRef); err != nil {
+		if err := git.StashPop(ctx, opts.Workspace.Path, result.StashRef); err != nil {
 			return nil, err
 		}
 		state.PendingStash = ""

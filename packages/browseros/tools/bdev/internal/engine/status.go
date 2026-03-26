@@ -3,7 +3,7 @@ package engine
 import (
 	"context"
 
-	_jsii "github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/patch"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/resolve"
@@ -26,7 +26,7 @@ type WorkspaceStatus struct {
 }
 
 func InspectWorkspace(ctx context.Context, ws workspace.Entry, repoInfo *repo.Info) (*WorkspaceStatus, error) {
-	head, err := _jsii.HeadRev(ctx, repoInfo.Root)
+	head, err := git.HeadRev(ctx, repoInfo.Root)
 	if err != nil {
 		return nil, err
 	}

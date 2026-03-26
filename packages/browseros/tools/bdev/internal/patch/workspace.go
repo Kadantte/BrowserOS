@@ -7,11 +7,11 @@ import (
 	"slices"
 	"strings"
 
-	_jsii "github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 )
 
 func BuildWorkingTreePatchSet(ctx context.Context, workspacePath string, base string, filters []string) (PatchSet, error) {
-	diff, err := _jsii.DiffText(ctx, workspacePath, base)
+	diff, err := git.DiffText(ctx, workspacePath, base)
 	if err != nil {
 		return nil, err
 	}
@@ -19,12 +19,12 @@ func BuildWorkingTreePatchSet(ctx context.Context, workspacePath string, base st
 	if err != nil {
 		return nil, err
 	}
-	untracked, err := _jsii.ListUntracked(ctx, workspacePath, filters)
+	untracked, err := git.ListUntracked(ctx, workspacePath, filters)
 	if err != nil {
 		return nil, err
 	}
 	for _, rel := range untracked {
-		diffText, err := _jsii.DiffNoIndex(ctx, workspacePath, rel)
+		diffText, err := git.DiffNoIndex(ctx, workspacePath, rel)
 		if err != nil {
 			return nil, err
 		}
@@ -41,7 +41,7 @@ func BuildWorkingTreePatchSet(ctx context.Context, workspacePath string, base st
 
 func BuildCommitPatchSet(ctx context.Context, workspacePath string, ref string, base string, filters []string) (PatchSet, error) {
 	if base == "" {
-		diff, err := _jsii.DiffText(ctx, workspacePath, ref+"^.."+ref)
+		diff, err := git.DiffText(ctx, workspacePath, ref+"^.."+ref)
 		if err != nil {
 			return nil, err
 		}
@@ -51,7 +51,7 @@ func BuildCommitPatchSet(ctx context.Context, workspacePath string, ref string, 
 		}
 		return filterSet(set, filters), nil
 	}
-	changes, err := _jsii.DiffTreeNameStatus(ctx, workspacePath, ref, filters)
+	changes, err := git.DiffTreeNameStatus(ctx, workspacePath, ref, filters)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func BuildCommitPatchSet(ctx context.Context, workspacePath string, ref string, 
 func BuildRangePatchSet(ctx context.Context, workspacePath string, start string, end string, base string, squash bool, filters []string) (PatchSet, error) {
 	if squash {
 		if base == "" {
-			diff, err := _jsii.DiffText(ctx, workspacePath, start+".."+end)
+			diff, err := git.DiffText(ctx, workspacePath, start+".."+end)
 			if err != nil {
 				return nil, err
 			}
@@ -71,14 +71,14 @@ func BuildRangePatchSet(ctx context.Context, workspacePath string, start string,
 			}
 			return filterSet(set, filters), nil
 		}
-		changes, err := _jsii.DiffNameStatusBetween(ctx, workspacePath, start, end, filters)
+		changes, err := git.DiffNameStatusBetween(ctx, workspacePath, start, end, filters)
 		if err != nil {
 			return nil, err
 		}
 		return buildBaseScopedSet(ctx, workspacePath, end, base, changes)
 	}
 
-	commits, err := _jsii.RevListRange(ctx, workspacePath, start, end)
+	commits, err := git.RevListRange(ctx, workspacePath, start, end)
 	if err != nil {
 		return nil, err
 	}
@@ -87,7 +87,7 @@ func BuildRangePatchSet(ctx context.Context, workspacePath string, start string,
 	for _, commit := range commits {
 		var current PatchSet
 		if base == "" {
-			diff, err := _jsii.DiffText(ctx, workspacePath, commit+"^.."+commit)
+			diff, err := git.DiffText(ctx, workspacePath, commit+"^.."+commit)
 			if err != nil {
 				return nil, err
 			}
@@ -96,7 +96,7 @@ func BuildRangePatchSet(ctx context.Context, workspacePath string, start string,
 				return nil, err
 			}
 		} else {
-			changes, err := _jsii.DiffTreeNameStatus(ctx, workspacePath, commit, filters)
+			changes, err := git.DiffTreeNameStatus(ctx, workspacePath, commit, filters)
 			if err != nil {
 				return nil, err
 			}
@@ -106,6 +106,10 @@ func BuildRangePatchSet(ctx context.Context, workspacePath string, start string,
 			}
 		}
 		for rel, patchFile := range filterSet(current, filters) {
+			if base != "" {
+				set[rel] = patchFile
+				continue
+			}
 			if seen[rel] {
 				continue
 			}
@@ -116,11 +120,11 @@ func BuildRangePatchSet(ctx context.Context, workspacePath string, start string,
 	return set, nil
 }
 
-func buildBaseScopedSet(ctx context.Context, workspacePath string, ref string, base string, changes []_jsii.FileChange) (PatchSet, error) {
+func buildBaseScopedSet(ctx context.Context, workspacePath string, ref string, base string, changes []git.FileChange) (PatchSet, error) {
 	set := PatchSet{}
 	for _, change := range changes {
 		rel := NormalizeChromiumPath(change.Path)
-		diff, err := _jsii.DiffText(ctx, workspacePath, base, ref, "--", rel)
+		diff, err := git.DiffText(ctx, workspacePath, base, ref, "--", rel)
 		if err != nil {
 			return nil, err
 		}
@@ -134,7 +138,7 @@ func buildBaseScopedSet(ctx context.Context, workspacePath string, ref string, b
 				set[patchPath] = patchFile
 			}
 		case change.Status == "D":
-			exists, err := _jsii.FileExistsAtCommit(ctx, workspacePath, base, rel)
+			exists, err := git.FileExistsAtCommit(ctx, workspacePath, base, rel)
 			if err != nil {
 				return nil, err
 			}
@@ -142,7 +146,7 @@ func buildBaseScopedSet(ctx context.Context, workspacePath string, ref string, b
 				set[rel] = FilePatch{Path: rel, Op: OpDelete}
 			}
 		case change.Status == "A":
-			content, err := _jsii.ShowFile(ctx, workspacePath, ref, rel)
+			content, err := git.ShowFile(ctx, workspacePath, ref, rel)
 			if err != nil {
 				return nil, err
 			}

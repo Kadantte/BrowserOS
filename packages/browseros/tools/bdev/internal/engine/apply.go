@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	_jsii "github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/patch"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/resolve"
@@ -37,7 +37,7 @@ type ApplyResult struct {
 }
 
 func Apply(ctx context.Context, opts ApplyOptions) (*ApplyResult, error) {
-	repoRev, err := _jsii.HeadRev(ctx, opts.Repo.Root)
+	repoRev, err := git.HeadRev(ctx, opts.Repo.Root)
 	if err != nil {
 		return nil, err
 	}
@@ -158,21 +158,35 @@ func Abort(ctx context.Context, ws workspace.Entry) error {
 	if err != nil {
 		return err
 	}
-	for idx := state.Current; idx < len(state.Operations); idx++ {
+	for idx := 0; idx < len(state.Operations); idx++ {
 		op := state.Operations[idx]
 		if op.OldPath != "" {
-			if err := _jsii.ResetPathToCommit(ctx, ws.Path, state.BaseCommit, op.OldPath); err != nil {
+			if err := git.ResetPathToCommit(ctx, ws.Path, state.BaseCommit, op.OldPath); err != nil {
 				return err
 			}
 		}
-		if err := _jsii.ResetPathToCommit(ctx, ws.Path, state.BaseCommit, op.ChromiumPath); err != nil {
+		if err := git.ResetPathToCommit(ctx, ws.Path, state.BaseCommit, op.ChromiumPath); err != nil {
 			return err
 		}
 		if op.RejectPath != "" {
 			_ = os.Remove(op.RejectPath)
 		}
 	}
-	return resolve.Delete(ws.Path)
+	workspaceState, err := workspace.LoadState(ws.Path)
+	if err != nil {
+		return err
+	}
+	if err := resolve.Delete(ws.Path); err != nil {
+		return err
+	}
+	if workspaceState.PendingStash == "" {
+		return nil
+	}
+	if err := git.StashPop(ctx, ws.Path, workspaceState.PendingStash); err != nil {
+		return err
+	}
+	workspaceState.PendingStash = ""
+	return workspace.SaveState(ws.Path, workspaceState)
 }
 
 func buildApplyOperations(ctx context.Context, opts ApplyOptions) ([]resolve.Operation, []string, error) {
@@ -239,11 +253,11 @@ func applyOperationRange(
 		op := ops[idx]
 		result.ResetPaths = append(result.ResetPaths, op.ChromiumPath)
 		if op.OldPath != "" {
-			if err := _jsii.ResetPathToCommit(ctx, ws.Path, repoInfo.BaseCommit, op.OldPath); err != nil {
+			if err := git.ResetPathToCommit(ctx, ws.Path, repoInfo.BaseCommit, op.OldPath); err != nil {
 				return idx, err
 			}
 		}
-		if err := _jsii.ResetPathToCommit(ctx, ws.Path, repoInfo.BaseCommit, op.ChromiumPath); err != nil {
+		if err := git.ResetPathToCommit(ctx, ws.Path, repoInfo.BaseCommit, op.ChromiumPath); err != nil {
 			return idx, err
 		}
 		patchFile, ok := repoSet[op.ChromiumPath]
@@ -253,15 +267,15 @@ func applyOperationRange(
 				op.Message = err.Error()
 				ops[idx] = op
 				state := &resolve.State{
-					Workspace: ws.Path,
-					RepoRoot:  repoInfo.Root,
+					Workspace:  ws.Path,
+					RepoRoot:   repoInfo.Root,
 					BaseCommit: repoInfo.BaseCommit,
-					RepoRev:   result.RepoRev,
-					Mode:      result.Mode,
-					Current:   idx,
+					RepoRev:    result.RepoRev,
+					Mode:       result.Mode,
+					Current:    idx,
 					Operations: ops,
-					Resolved:  append([]string{}, resolved...),
-					Skipped:   append([]string{}, skipped...),
+					Resolved:   append([]string{}, resolved...),
+					Skipped:    append([]string{}, skipped...),
 				}
 				if err := resolve.Save(ws.Path, state); err != nil {
 					return idx, err
@@ -293,7 +307,7 @@ func applySingleOperation(ctx context.Context, workspacePath string, patchFile p
 	case patchFile.Op == patch.OpBinary && len(patchFile.Content) == 0:
 		return fmt.Errorf("binary markers are not directly applicable: %s", patchFile.Path)
 	default:
-		_, err := _jsii.ApplyPatch(ctx, workspacePath, patchFile.Content)
+		_, err := git.ApplyPatch(ctx, workspacePath, patchFile.Content)
 		return err
 	}
 }
@@ -336,7 +350,7 @@ func operationsFromPatchSet(set patch.PatchSet) []resolve.Operation {
 	return ops
 }
 
-func operationsFromChanges(repoSet patch.PatchSet, changes []_jsii.FileChange, filters []string) []resolve.Operation {
+func operationsFromChanges(repoSet patch.PatchSet, changes []git.FileChange, filters []string) []resolve.Operation {
 	var ops []resolve.Operation
 	for _, change := range changes {
 		rel := strings.TrimPrefix(patch.NormalizeChromiumPath(change.Path), "chromium_patches/")
@@ -357,12 +371,12 @@ func operationsFromChanges(repoSet patch.PatchSet, changes []_jsii.FileChange, f
 	return ops
 }
 
-func repoPatchChanges(ctx context.Context, repoInfo *repo.Info, ref string, rangeEnd string) ([]_jsii.FileChange, error) {
+func repoPatchChanges(ctx context.Context, repoInfo *repo.Info, ref string, rangeEnd string) ([]git.FileChange, error) {
 	pathspecs := []string{"chromium_patches"}
 	if rangeEnd == "" {
-		return _jsii.DiffTreeNameStatus(ctx, repoInfo.Root, ref, pathspecs)
+		return git.DiffTreeNameStatus(ctx, repoInfo.Root, ref, pathspecs)
 	}
-	return _jsii.DiffNameStatusBetween(ctx, repoInfo.Root, ref, rangeEnd, pathspecs)
+	return git.DiffNameStatusBetween(ctx, repoInfo.Root, ref, rangeEnd, pathspecs)
 }
 
 func rejectPath(workspacePath string, op resolve.Operation) string {
