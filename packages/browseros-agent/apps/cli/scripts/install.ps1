@@ -68,7 +68,8 @@ if (-not [Environment]::Is64BitOperatingSystem) {
 $Tag = "browseros-cli-v$Version"
 $Filename = "${Binary}_${Version}_windows_${Arch}.zip"
 $Url = "https://github.com/$Repo/releases/download/$Tag/$Filename"
-$TmpDir = Join-Path $env:TEMP ("browseros-cli-install-" + [System.IO.Path]::GetRandomFileName())
+$ChecksumUrl = "https://github.com/$Repo/releases/download/$Tag/checksums.txt"
+$TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("browseros-cli-install-" + [System.IO.Path]::GetRandomFileName())
 
 try {
     New-Item -ItemType Directory -Path $TmpDir | Out-Null
@@ -78,30 +79,41 @@ try {
     Write-Host "Downloading $Url..."
     Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
 
-    # Verify checksum
-    $ChecksumUrl = "https://github.com/$Repo/releases/download/$Tag/checksums.txt"
     $ChecksumPath = Join-Path $TmpDir "checksums.txt"
+    $ChecksumAvailable = $true
     try {
         Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ChecksumPath -UseBasicParsing
-        $expected = (Get-Content $ChecksumPath | Where-Object { $_ -match [regex]::Escape($Filename) }) -split '\s+' | Select-Object -First 1
-        if ($expected) {
-            $actual = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLower()
-            if ($actual -ne $expected.ToLower()) {
-                Write-Error "Checksum mismatch (expected $expected, got $actual)"
+    } catch {
+        $ChecksumAvailable = $false
+        Write-Warning "Could not fetch checksums.txt; skipping checksum verification. $($_.Exception.Message)"
+    }
+
+    if ($ChecksumAvailable) {
+        $ExpectedChecksum = $null
+        foreach ($line in Get-Content $ChecksumPath) {
+            $parts = $line -split '\s+', 2
+            if ($parts.Length -eq 2 -and $parts[1] -eq $Filename) {
+                $ExpectedChecksum = $parts[0].ToLowerInvariant()
+                break
+            }
+        }
+
+        if ($ExpectedChecksum) {
+            $ActualChecksum = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($ActualChecksum -ne $ExpectedChecksum) {
+                Write-Error "Checksum mismatch (expected $ExpectedChecksum, got $ActualChecksum)"
                 exit 1
             }
             Write-Host "Checksum verified."
         } else {
-            Write-Warning "Checksum not found in checksums.txt; skipping verification."
+            Write-Warning "Checksum not found in checksums.txt; skipping checksum verification."
         }
-    } catch {
-        Write-Warning "Could not verify checksum: $_"
     }
 
     Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
 
-    $ExePath = Join-Path $TmpDir "$Binary.exe"
-    if (-not (Test-Path $ExePath)) {
+    $Exe = Get-ChildItem -Path $TmpDir -Filter "$Binary.exe" -File -Recurse | Select-Object -First 1
+    if (-not $Exe) {
         Write-Error "Binary not found in archive."
         exit 1
     }
@@ -112,7 +124,7 @@ try {
         New-Item -ItemType Directory -Path $Dir -Force | Out-Null
     }
 
-    Move-Item -Force $ExePath (Join-Path $Dir "$Binary.exe")
+    Move-Item -Force $Exe.FullName (Join-Path $Dir "$Binary.exe")
 
     Write-Host "Installed $Binary.exe to $Dir"
 } finally {
@@ -125,7 +137,7 @@ $UserPath = [Environment]::GetEnvironmentVariable("Path", "User")
 $PathEntries = $UserPath -split ";" | Where-Object { $_ -ne "" }
 if ($Dir -notin $PathEntries) {
     Write-Host ""
-    Write-Host "Adding $Dir to your PATH..."
+    Write-Host "Adding $Dir to your user PATH..."
     [Environment]::SetEnvironmentVariable("Path", "$Dir;$UserPath", "User")
     $env:Path = "$Dir;$env:Path"
     Write-Host "Done. Restart your terminal for PATH changes to take effect."

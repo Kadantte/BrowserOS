@@ -92,7 +92,7 @@ curl -fSL --progress-bar -o "${TMPDIR_DL}/${FILENAME}" "$URL"
 
 # Verify checksum if sha256sum/shasum is available
 if curl -fsSL -o "${TMPDIR_DL}/checksums.txt" "$CHECKSUM_URL" 2>/dev/null; then
-  expected=$(grep -F "$FILENAME" "${TMPDIR_DL}/checksums.txt" | awk '{print $1}')
+  expected=$(awk -v filename="$FILENAME" '$2 == filename { print $1; exit }' "${TMPDIR_DL}/checksums.txt")
   if [[ -n "$expected" ]]; then
     if command -v sha256sum >/dev/null 2>&1; then
       actual=$(sha256sum "${TMPDIR_DL}/${FILENAME}" | awk '{print $1}')
@@ -116,7 +116,12 @@ fi
 
 tar -xzf "${TMPDIR_DL}/${FILENAME}" -C "$TMPDIR_DL"
 
-if [[ ! -f "${TMPDIR_DL}/${BINARY}" ]]; then
+BINARY_PATH="${TMPDIR_DL}/${BINARY}"
+if [[ ! -f "$BINARY_PATH" ]]; then
+  BINARY_PATH=$(find "$TMPDIR_DL" -type f -name "$BINARY" -print -quit)
+fi
+
+if [[ -z "$BINARY_PATH" || ! -f "$BINARY_PATH" ]]; then
   echo "Error: binary not found in archive." >&2
   exit 1
 fi
@@ -124,7 +129,7 @@ fi
 # ── Install ──────────────────────────────────────────────────────────────────
 
 mkdir -p "$INSTALL_DIR"
-mv "${TMPDIR_DL}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
+mv "$BINARY_PATH" "${INSTALL_DIR}/${BINARY}"
 chmod +x "${INSTALL_DIR}/${BINARY}"
 
 echo "Installed ${BINARY} to ${INSTALL_DIR}/${BINARY}"
