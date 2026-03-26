@@ -71,8 +71,11 @@ export class ChatService {
     let session = sessionStore.get(request.conversationId)
     let isNewSession = false
 
-    // Build a stable key from enabled MCP servers for change detection
+    // Build stable keys for change detection
     const mcpServerKey = this.buildMcpServerKey(request.browserContext)
+    const approvalConfigKey = this.buildApprovalConfigKey(
+      request.toolApprovalConfig,
+    )
 
     // Detect MCP config change mid-conversation → rebuild session
     if (session && session.mcpServerKey !== mcpServerKey) {
@@ -96,7 +99,32 @@ export class ChatService {
         aiSdkDevtoolsEnabled: this.deps.aiSdkDevtoolsEnabled,
         aclRules: request.aclRules,
       })
-      session = { agent, browserContext, mcpServerKey }
+      session = { agent, browserContext, mcpServerKey, approvalConfigKey }
+      session.agent.messages = previousMessages
+      sessionStore.set(request.conversationId, session)
+    }
+
+    // Detect approval config change mid-conversation → rebuild session
+    if (session && session.approvalConfigKey !== approvalConfigKey) {
+      logger.info(
+        'Approval config changed mid-conversation, rebuilding session',
+        { conversationId: request.conversationId },
+      )
+      const previousMessages = session.agent.messages
+      await session.agent.dispose()
+      sessionStore.remove(request.conversationId)
+
+      const browserContext = await this.resolvePageIds(request.browserContext)
+      const agent = await AiSdkAgent.create({
+        resolvedConfig: agentConfig,
+        browser: this.deps.browser,
+        registry: this.deps.registry,
+        browserContext,
+        klavisClient: this.deps.klavisClient,
+        browserosId: this.deps.browserosId,
+        aiSdkDevtoolsEnabled: this.deps.aiSdkDevtoolsEnabled,
+      })
+      session = { agent, browserContext, mcpServerKey, approvalConfigKey }
       session.agent.messages = previousMessages
       sessionStore.set(request.conversationId, session)
     }
@@ -144,7 +172,13 @@ export class ChatService {
         aiSdkDevtoolsEnabled: this.deps.aiSdkDevtoolsEnabled,
         aclRules: request.aclRules,
       })
-      session = { agent, hiddenWindowId, browserContext, mcpServerKey }
+      session = {
+        agent,
+        hiddenWindowId,
+        browserContext,
+        mcpServerKey,
+        approvalConfigKey,
+      }
       sessionStore.set(request.conversationId, session)
     }
 
@@ -265,6 +299,17 @@ export class ChatService {
         error: error instanceof Error ? error.message : String(error),
       })
     })
+  }
+
+  private buildApprovalConfigKey(config?: {
+    categories: Record<string, boolean>
+  }): string {
+    if (!config) return ''
+    return Object.entries(config.categories)
+      .filter(([, v]) => v)
+      .map(([k]) => k)
+      .sort()
+      .join(',')
   }
 
   private buildMcpServerKey(browserContext?: BrowserContext): string {
