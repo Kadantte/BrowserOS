@@ -1,7 +1,7 @@
+import type { AclRule } from '@browseros/shared/types/acl'
 import type { ChatMode } from '@/entrypoints/sidepanel/index/chatTypes'
 import type { LlmProviderConfig } from '@/lib/llm-providers/types'
 import type { ToolApprovalConfig } from '@/lib/tool-approvals/types'
-import type { AclRule } from '@browseros/shared/types/acl'
 
 export interface ApprovalResponseData {
   approvalId: string

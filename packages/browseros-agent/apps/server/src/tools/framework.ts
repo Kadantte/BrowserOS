@@ -1,6 +1,6 @@
 import { resolve } from 'node:path'
-import type { AclRule } from '@browseros/shared/types/acl'
 import type { ToolApprovalCategoryId } from '@browseros/shared/constants/tool-approval'
+import type { AclRule } from '@browseros/shared/types/acl'
 import type { z } from 'zod'
 import type { Browser } from '../browser/browser'
 import { ToolResponse, type ToolResult } from './response'

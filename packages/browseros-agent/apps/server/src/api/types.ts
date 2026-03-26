@@ -57,6 +57,7 @@ export const ChatRequestSchema = AgentLLMConfigSchema.extend({
         enabled: z.boolean(),
       }),
     )
+    .optional(),
   toolApprovalConfig: z
     .object({
       categories: z.record(z.boolean()),
