@@ -130,10 +130,7 @@ func Execute() {
 func commandName(args []string) string {
 	cmd, _, err := rootCmd.Find(args)
 	if err != nil || cmd == rootCmd {
-		if len(args) > 0 {
-			return args[0]
-		}
-		return "root"
+		return "unknown"
 	}
 	return cmd.CommandPath()
 }

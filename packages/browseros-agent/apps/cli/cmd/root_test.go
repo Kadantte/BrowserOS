@@ -8,9 +8,9 @@ func TestCommandName(t *testing.T) {
 		args []string
 		want string
 	}{
-		{"empty args", nil, "root"},
+		{"empty args", nil, "unknown"},
 		{"known command", []string{"health"}, "browseros-cli health"},
-		{"unknown command", []string{"nonexistent"}, "nonexistent"},
+		{"unknown command", []string{"nonexistent"}, "unknown"},
 		{"subcommand", []string{"bookmark", "search"}, "browseros-cli bookmark search"},
 		{"known with extra args", []string{"snap", "--enhanced"}, "browseros-cli snap"},
 	}
