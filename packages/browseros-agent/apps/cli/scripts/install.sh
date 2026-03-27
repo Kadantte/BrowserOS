@@ -52,6 +52,11 @@ if [[ -z "$VERSION" ]]; then
   fi
 fi
 
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.]+)?$ ]]; then
+  echo "Error: unexpected version format: '$VERSION'" >&2
+  exit 1
+fi
+
 echo "Installing browseros-cli v${VERSION}..."
 
 # ── Detect platform ──────────────────────────────────────────────────────────

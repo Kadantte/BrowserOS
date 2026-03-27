@@ -38,6 +38,11 @@ if (-not $Version) {
     }
 }
 
+if ($Version -notmatch '^\d+\.\d+\.\d+(-[a-zA-Z0-9.]+)?$') {
+    Write-Error "Unexpected version format: '$Version'"
+    exit 1
+}
+
 Write-Host "Installing browseros-cli v$Version..."
 
 # ── Detect architecture ──────────────────────────────────────────────────────
