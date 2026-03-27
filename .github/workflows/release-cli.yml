@@ -74,31 +74,53 @@ jobs:
         run: |
           CLI_PATH="packages/browseros-agent/apps/cli"
           TAG="browseros-cli-v${{ inputs.version }}"
+          CHANGELOG_FILE="/tmp/release-changelog.md"
           PREV_TAG=$(git tag -l "browseros-cli-v*" --sort=-v:refname | grep -v "^${TAG}$" | head -n 1)
 
           if [ -z "$PREV_TAG" ]; then
-            echo "Initial release of browseros-cli." > /tmp/release-notes.md
+            echo "Initial release of browseros-cli." > "$CHANGELOG_FILE"
           else
             COMMITS=$(git log "$PREV_TAG"..HEAD --pretty=format:"%H" -- "$CLI_PATH")
 
             if [ -z "$COMMITS" ]; then
-              echo "No notable changes." > /tmp/release-notes.md
+              echo "No notable changes." > "$CHANGELOG_FILE"
             else
-              echo "## What's Changed" > /tmp/release-notes.md
-              echo "" >> /tmp/release-notes.md
+              echo "## What's Changed" > "$CHANGELOG_FILE"
+              echo "" >> "$CHANGELOG_FILE"
 
               while IFS= read -r SHA; do
                 SUBJECT=$(git log -1 --pretty=format:"%s" "$SHA")
                 PR_NUM=$(gh api "/repos/${{ github.repository }}/commits/${SHA}/pulls" --jq '.[0].number // empty' 2>/dev/null)
 
                 if [ -n "$PR_NUM" ] && ! echo "$SUBJECT" | grep -qF "(#${PR_NUM})"; then
-                  echo "- ${SUBJECT} (#${PR_NUM})" >> /tmp/release-notes.md
+                  echo "- ${SUBJECT} (#${PR_NUM})" >> "$CHANGELOG_FILE"
                 else
-                  echo "- ${SUBJECT}" >> /tmp/release-notes.md
+                  echo "- ${SUBJECT}" >> "$CHANGELOG_FILE"
                 fi
               done <<< "$COMMITS"
             fi
           fi
+
+          cat > /tmp/release-notes.md <<'EOF'
+          ## Install `browseros-cli`
+
+          ### macOS / Linux
+
+          ```bash
+          curl -fsSL https://cdn.browseros.com/cli/install.sh | bash
+          ```
+
+          ### Windows
+
+          ```powershell
+          irm https://cdn.browseros.com/cli/install.ps1 | iex
+          ```
+
+          After install, run `browseros-cli init` to point the CLI at your BrowserOS MCP server.
+          EOF
+
+          echo "" >> /tmp/release-notes.md
+          cat "$CHANGELOG_FILE" >> /tmp/release-notes.md
         working-directory: ${{ github.workspace }}
 
       - name: Create tag and release
