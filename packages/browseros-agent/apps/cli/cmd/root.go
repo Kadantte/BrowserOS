@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -13,6 +14,7 @@ import (
 	"browseros-cli/config"
 	"browseros-cli/mcp"
 	"browseros-cli/output"
+	"browseros-cli/update"
 
 	"github.com/fatih/color"
 	"github.com/spf13/cobra"
@@ -114,10 +116,23 @@ var rootCmd = &cobra.Command{
 }
 
 func Execute() {
+	automaticUpdater := newAutomaticUpdateManager(os.Args[1:])
+	automaticNotice := ""
+	var automaticCheckDone <-chan struct{}
+	if automaticUpdater != nil {
+		automaticNotice = automaticUpdater.CachedNotice()
+		automaticCheckDone = automaticUpdater.StartBackgroundCheck(context.Background())
+	}
+
 	analytics.Init(version)
 	start := time.Now()
 
 	err := rootCmd.Execute()
+
+	if automaticNotice != "" && err == nil {
+		fmt.Fprintln(os.Stderr, automaticNotice)
+	}
+	drainAutomaticUpdateCheck(automaticCheckDone)
 
 	analytics.Track(commandName(os.Args[1:]), err == nil, time.Since(start))
 	analytics.Close()
@@ -181,6 +196,72 @@ func resolvePageID(c *mcp.Client) (int, error) {
 func envBool(key string) bool {
 	v := os.Getenv(key)
 	return v == "1" || v == "true"
+}
+
+func newAutomaticUpdateManager(args []string) *update.Manager {
+	if shouldSkipAutomaticUpdates(args) {
+		return nil
+	}
+
+	return update.NewManager(update.Options{
+		CurrentVersion: version,
+		JSONOutput:     requestedBoolFlag(args, "--json", jsonOut),
+		Debug:          requestedBoolFlag(args, "--debug", debug),
+		Automatic:      true,
+	})
+}
+
+func shouldSkipAutomaticUpdates(args []string) bool {
+	if requestedBoolFlag(args, "--help", false) || requestedBoolFlag(args, "--version", false) {
+		return true
+	}
+
+	switch primaryCommand(args) {
+	case "help", "completion", "update", "self-update", "upgrade":
+		return true
+	default:
+		return false
+	}
+}
+
+func primaryCommand(args []string) string {
+	for _, arg := range args {
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		return arg
+	}
+	return ""
+}
+
+func requestedBoolFlag(args []string, flagName string, current bool) bool {
+	if current {
+		return true
+	}
+
+	prefix := flagName + "="
+	for _, arg := range args {
+		if arg == flagName {
+			return true
+		}
+		if strings.HasPrefix(arg, prefix) {
+			value, err := strconv.ParseBool(strings.TrimPrefix(arg, prefix))
+			return err == nil && value
+		}
+	}
+
+	return false
+}
+
+func drainAutomaticUpdateCheck(done <-chan struct{}) {
+	if done == nil {
+		return
+	}
+
+	select {
+	case <-done:
+	default:
+	}
 }
 
 func defaultServerURL() string {

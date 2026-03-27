@@ -23,3 +23,56 @@ func TestCommandName(t *testing.T) {
 		})
 	}
 }
+
+func TestPrimaryCommand(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{"empty", nil, ""},
+		{"root flag then command", []string{"--json", "update"}, "update"},
+		{"subcommand", []string{"bookmark", "update"}, "bookmark"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := primaryCommand(tt.args); got != tt.want {
+				t.Fatalf("primaryCommand(%v) = %q, want %q", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestRequestedBoolFlag(t *testing.T) {
+	if !requestedBoolFlag([]string{"--json"}, "--json", false) {
+		t.Fatal("requestedBoolFlag() = false, want true")
+	}
+	if !requestedBoolFlag([]string{"--debug=true"}, "--debug", false) {
+		t.Fatal("requestedBoolFlag() with assignment = false, want true")
+	}
+	if requestedBoolFlag([]string{"--debug=false"}, "--debug", false) {
+		t.Fatal("requestedBoolFlag() with false assignment = true, want false")
+	}
+}
+
+func TestShouldSkipAutomaticUpdates(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{"help flag", []string{"--help"}, true},
+		{"version flag", []string{"--version"}, true},
+		{"update command", []string{"update"}, true},
+		{"bookmark update subcommand", []string{"bookmark", "update"}, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shouldSkipAutomaticUpdates(tt.args); got != tt.want {
+				t.Fatalf("shouldSkipAutomaticUpdates(%v) = %t, want %t", tt.args, got, tt.want)
+			}
+		})
+	}
+}
