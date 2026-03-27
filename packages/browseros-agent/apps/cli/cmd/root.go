@@ -212,7 +212,7 @@ func newAutomaticUpdateManager(args []string) *update.Manager {
 }
 
 func shouldSkipAutomaticUpdates(args []string) bool {
-	if requestedBoolFlag(args, "--help", false) || requestedBoolFlag(args, "--version", false) {
+	if hasHelpFlag(args) || requestedBoolFlag(args, "--version", false) {
 		return true
 	}
 
@@ -222,6 +222,20 @@ func shouldSkipAutomaticUpdates(args []string) bool {
 	default:
 		return false
 	}
+}
+
+func hasHelpFlag(args []string) bool {
+	if requestedBoolFlag(args, "--help", false) {
+		return true
+	}
+
+	for _, arg := range args {
+		if arg == "-h" {
+			return true
+		}
+	}
+
+	return false
 }
 
 func primaryCommand(args []string) string {

@@ -62,6 +62,7 @@ func TestShouldSkipAutomaticUpdates(t *testing.T) {
 		args []string
 		want bool
 	}{
+		{"short help flag", []string{"-h"}, true},
 		{"help flag", []string{"--help"}, true},
 		{"version flag", []string{"--version"}, true},
 		{"update command", []string{"update"}, true},
