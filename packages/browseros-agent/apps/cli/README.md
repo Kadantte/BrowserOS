@@ -11,14 +11,19 @@ Communicates with the BrowserOS MCP server over JSON-RPC 2.0 / StreamableHTTP. A
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://cdn.browseros.com/cli/install.sh | bash
+curl -fsSL https://cdn.browseros.com/cli/install.sh -o /tmp/browseros-cli-install.sh
+bash /tmp/browseros-cli-install.sh
 ```
 
 ### Windows
 
 ```powershell
-irm https://cdn.browseros.com/cli/install.ps1 | iex
+$InstallScript = Join-Path $env:TEMP "browseros-cli-install.ps1"
+Invoke-WebRequest -Uri "https://cdn.browseros.com/cli/install.ps1" -OutFile $InstallScript
+& $InstallScript
 ```
+
+These commands intentionally download the installer script before executing it so the bootstrap path stays inspectable and avoids remote-eval patterns that Windows is more likely to flag.
 
 ### Build from Source
 

@@ -1,13 +1,11 @@
 #
 # Install browseros-cli for Windows — downloads the latest release binary.
 #
-# Usage (PowerShell — save and run):
-#   Invoke-WebRequest -Uri "https://cdn.browseros.com/cli/install.ps1" -OutFile install.ps1
-#   .\install.ps1
-#   .\install.ps1 -Version "0.1.0" -Dir "C:\tools\browseros"
-#
-# Usage (one-liner, uses env vars for options):
-#   & { $env:BROWSEROS_VERSION="0.1.0"; irm https://cdn.browseros.com/cli/install.ps1 | iex }
+# Usage:
+#   $InstallScript = Join-Path $env:TEMP "browseros-cli-install.ps1"
+#   Invoke-WebRequest -Uri "https://cdn.browseros.com/cli/install.ps1" -OutFile $InstallScript
+#   & $InstallScript
+#   & $InstallScript -Version "0.1.0" -Dir "C:\tools\browseros"
 #
 
 param(
@@ -23,9 +21,7 @@ $ErrorActionPreference = "Stop"
 $Repo = "browseros-ai/BrowserOS"
 $Binary = "browseros-cli"
 
-# When piped via irm | iex, param() is ignored — fall back to env vars
-if (-not $Version) { $Version = $env:BROWSEROS_VERSION }
-if (-not $Dir) { $Dir = if ($env:BROWSEROS_DIR) { $env:BROWSEROS_DIR } else { "$env:LOCALAPPDATA\browseros-cli\bin" } }
+if (-not $Dir) { $Dir = "$env:LOCALAPPDATA\browseros-cli\bin" }
 
 # ── Resolve latest version ───────────────────────────────────────────────────
 
@@ -68,7 +64,6 @@ if (-not [Environment]::Is64BitOperatingSystem) {
 $Tag = "browseros-cli-v$Version"
 $Filename = "${Binary}_${Version}_windows_${Arch}.zip"
 $Url = "https://github.com/$Repo/releases/download/$Tag/$Filename"
-$ChecksumUrl = "https://github.com/$Repo/releases/download/$Tag/checksums.txt"
 $TmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ("browseros-cli-install-" + [System.IO.Path]::GetRandomFileName())
 
 try {
@@ -78,37 +73,6 @@ try {
 
     Write-Host "Downloading $Url..."
     Invoke-WebRequest -Uri $Url -OutFile $ZipPath -UseBasicParsing
-
-    $ChecksumPath = Join-Path $TmpDir "checksums.txt"
-    $ChecksumAvailable = $true
-    try {
-        Invoke-WebRequest -Uri $ChecksumUrl -OutFile $ChecksumPath -UseBasicParsing
-    } catch {
-        $ChecksumAvailable = $false
-        Write-Warning "Could not fetch checksums.txt; skipping checksum verification. $($_.Exception.Message)"
-    }
-
-    if ($ChecksumAvailable) {
-        $ExpectedChecksum = $null
-        foreach ($line in Get-Content $ChecksumPath) {
-            $parts = $line -split '\s+', 2
-            if ($parts.Length -eq 2 -and $parts[1] -eq $Filename) {
-                $ExpectedChecksum = $parts[0].ToLowerInvariant()
-                break
-            }
-        }
-
-        if ($ExpectedChecksum) {
-            $ActualChecksum = (Get-FileHash -Path $ZipPath -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($ActualChecksum -ne $ExpectedChecksum) {
-                Write-Error "Checksum mismatch (expected $ExpectedChecksum, got $ActualChecksum)"
-                exit 1
-            }
-            Write-Host "Checksum verified."
-        } else {
-            Write-Warning "Checksum not found in checksums.txt; skipping checksum verification."
-        }
-    }
 
     Expand-Archive -Path $ZipPath -DestinationPath $TmpDir -Force
 

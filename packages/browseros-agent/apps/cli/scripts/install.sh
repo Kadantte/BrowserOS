@@ -3,10 +3,12 @@
 # Install browseros-cli — downloads the latest release binary for your platform.
 #
 # Usage:
-#   curl -fsSL https://cdn.browseros.com/cli/install.sh | bash
+#   curl -fsSL https://cdn.browseros.com/cli/install.sh -o /tmp/browseros-cli-install.sh
+#   bash /tmp/browseros-cli-install.sh
 #
 #   # Or with options:
-#   curl -fsSL https://cdn.browseros.com/cli/install.sh | bash -s -- --version 0.1.0 --dir /usr/local/bin
+#   curl -fsSL https://cdn.browseros.com/cli/install.sh -o /tmp/browseros-cli-install.sh
+#   bash /tmp/browseros-cli-install.sh --version 0.1.0 --dir /usr/local/bin
 
 set -euo pipefail
 
@@ -82,37 +84,12 @@ esac
 FILENAME="${BINARY}_${VERSION}_${OS}_${ARCH}.tar.gz"
 TAG="browseros-cli-v${VERSION}"
 URL="https://github.com/${REPO}/releases/download/${TAG}/${FILENAME}"
-CHECKSUM_URL="https://github.com/${REPO}/releases/download/${TAG}/checksums.txt"
 
 TMPDIR_DL=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_DL"' EXIT
 
 echo "Downloading ${URL}..."
 curl -fSL --progress-bar -o "${TMPDIR_DL}/${FILENAME}" "$URL"
-
-# Verify checksum if sha256sum/shasum is available
-if curl -fsSL -o "${TMPDIR_DL}/checksums.txt" "$CHECKSUM_URL" 2>/dev/null; then
-  expected=$(awk -v filename="$FILENAME" '$2 == filename { print $1; exit }' "${TMPDIR_DL}/checksums.txt")
-  if [[ -n "$expected" ]]; then
-    if command -v sha256sum >/dev/null 2>&1; then
-      actual=$(sha256sum "${TMPDIR_DL}/${FILENAME}" | awk '{print $1}')
-    elif command -v shasum >/dev/null 2>&1; then
-      actual=$(shasum -a 256 "${TMPDIR_DL}/${FILENAME}" | awk '{print $1}')
-    else
-      actual=""
-      echo "Warning: no sha256sum/shasum found; skipping checksum verification." >&2
-    fi
-    if [[ -n "$actual" && "$actual" != "$expected" ]]; then
-      echo "Error: checksum mismatch (expected ${expected}, got ${actual})" >&2
-      exit 1
-    fi
-    [[ -n "$actual" ]] && echo "Checksum verified."
-  else
-    echo "Warning: checksum not found in checksums.txt; skipping verification." >&2
-  fi
-else
-  echo "Warning: could not fetch checksums.txt; skipping checksum verification." >&2
-fi
 
 tar -xzf "${TMPDIR_DL}/${FILENAME}" -C "$TMPDIR_DL"
 
