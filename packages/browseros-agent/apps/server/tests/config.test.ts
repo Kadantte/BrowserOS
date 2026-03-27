@@ -80,6 +80,30 @@ describe('loadServerConfig', () => {
       assert.strictEqual(result.value.cdpPort, null)
       assert.strictEqual(result.value.extensionPort, null)
     })
+
+    it('warns when --extension-port is provided', () => {
+      const warnings: string[] = []
+      const originalWarn = console.warn
+      console.warn = (message?: unknown) => {
+        warnings.push(String(message))
+      }
+
+      try {
+        const result = loadServerConfig([
+          'bun',
+          'src/index.ts',
+          '--server-port=9223',
+          '--extension-port=9224',
+        ])
+
+        assert.strictEqual(result.ok, true)
+        assert.deepStrictEqual(warnings, [
+          'Warning: --extension-port is deprecated and has no effect.',
+        ])
+      } finally {
+        console.warn = originalWarn
+      }
+    })
   })
 
   describe('environment variables', () => {

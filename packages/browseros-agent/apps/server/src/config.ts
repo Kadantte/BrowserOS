@@ -161,6 +161,10 @@ function parseCliArgs(argv: string[]): ConfigResult<ParsedCliArgs> {
     )
   }
 
+  if (opts.extensionPort !== undefined) {
+    console.warn('Warning: --extension-port is deprecated and has no effect.')
+  }
+
   const cwd = process.cwd()
 
   return {

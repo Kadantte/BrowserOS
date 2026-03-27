@@ -12,13 +12,12 @@ interface StatusDeps {
 }
 
 export function createStatusRoute(deps: StatusDeps = {}) {
-  const cdpConnected = deps.browser?.isCdpConnected()
-
-  return new Hono().get('/', (c) =>
-    c.json(
+  return new Hono().get('/', (c) => {
+    const cdpConnected = deps.browser?.isCdpConnected()
+    return c.json(
       cdpConnected === undefined
         ? { status: 'ok' }
         : { status: 'ok', cdpConnected },
-    ),
-  )
+    )
+  })
 }

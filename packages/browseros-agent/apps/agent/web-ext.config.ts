@@ -1,11 +1,7 @@
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { defineWebExtConfig } from 'wxt'
 
 // biome-ignore lint/style/noProcessEnv: config file needs env access
 const env = process.env
-
-const _MONOREPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
 const chromiumArgs = [
   '--use-mock-keychain',
