@@ -101,7 +101,9 @@ jobs:
             fi
           fi
 
-          cat > /tmp/release-notes.md <<'EOF'
+          cat "$CHANGELOG_FILE" > /tmp/release-notes.md
+          cat >> /tmp/release-notes.md <<'EOF'
+
           ## Install `browseros-cli`
 
           ### macOS / Linux
@@ -118,9 +120,6 @@ jobs:
 
           After install, run `browseros-cli init` to point the CLI at your BrowserOS MCP server.
           EOF
-
-          echo "" >> /tmp/release-notes.md
-          cat "$CHANGELOG_FILE" >> /tmp/release-notes.md
         working-directory: ${{ github.workspace }}
 
       - name: Create tag and release
