@@ -45,7 +45,7 @@
 
 ## Install `browseros-cli`
 
-Use `browseros-cli` when you want to control BrowserOS from the terminal or scripts via the BrowserOS MCP server.
+Use `browseros-cli` to launch and control BrowserOS from the terminal or from AI coding agents like Claude Code.
 
 ### macOS / Linux
 
@@ -59,7 +59,7 @@ curl -fsSL https://cdn.browseros.com/cli/install.sh | bash
 irm https://cdn.browseros.com/cli/install.ps1 | iex
 ```
 
-After install, run `browseros-cli init` to point the CLI at your BrowserOS MCP server.
+After install, run `browseros-cli init` to connect the CLI to your running BrowserOS instance.
 
 ## What makes BrowserOS special
 - 🏠 Feels like home — same Chrome interface, all your extensions just work
@@ -70,6 +70,7 @@ After install, run `browseros-cli init` to point the CLI at your BrowserOS MCP s
 - 📂 [Cowork](https://docs.browseros.com/features/cowork) — combine browser automation with local file operations. Research the web, save reports to your folder
 - ⏰ [Scheduled Tasks](https://docs.browseros.com/features/scheduled-tasks) — run the agent on autopilot, daily or every few minutes
 - 💬 [LLM Hub](https://docs.browseros.com/features/llm-chat-hub) — compare Claude, ChatGPT, and Gemini side-by-side on any page
+- 📌 [Vertical Tabs](https://docs.browseros.com/features/vertical-tabs) — move tabs to a side panel for a cleaner layout, even with 100+ tabs open
 - 🛡️ Built-in ad blocker — [10x more protection than Chrome](https://docs.browseros.com/features/ad-blocking) with uBlock Origin + Manifest V2 support
 - 🚀 100% open source under AGPL-3.0
 
