@@ -12,6 +12,7 @@ import (
 )
 
 const maxAssetSize = 64 << 20
+const maxBinarySize = 256 << 20
 
 func DownloadAsset(ctx context.Context, client *http.Client, asset Asset) ([]byte, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, asset.URL, nil)
@@ -84,9 +85,12 @@ func readTarBinary(reader *tar.Reader) ([]byte, error) {
 			return nil, fmt.Errorf("archive contains multiple files; expected exactly one binary")
 		}
 
-		binary, err = io.ReadAll(reader)
+		binary, err = io.ReadAll(io.LimitReader(reader, maxBinarySize+1))
 		if err != nil {
 			return nil, err
+		}
+		if len(binary) > maxBinarySize {
+			return nil, fmt.Errorf("extracted binary exceeds %d bytes", maxBinarySize)
 		}
 	}
 
@@ -116,10 +120,13 @@ func extractZipBinary(archive []byte) ([]byte, error) {
 		if err != nil {
 			return nil, err
 		}
-		binary, err = io.ReadAll(rc)
+		binary, err = io.ReadAll(io.LimitReader(rc, maxBinarySize+1))
 		rc.Close()
 		if err != nil {
 			return nil, err
+		}
+		if len(binary) > maxBinarySize {
+			return nil, fmt.Errorf("extracted binary exceeds %d bytes", maxBinarySize)
 		}
 	}
 

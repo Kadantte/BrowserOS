@@ -181,6 +181,9 @@ func (m *Manager) Apply(ctx context.Context, result *CheckResult) error {
 	if err != nil {
 		return err
 	}
+	if err := VerifyChecksum(archive, result.Asset.SHA256); err != nil {
+		return err
+	}
 	binary, err := ExtractBinary(archive, result.Asset.ArchiveFormat)
 	if err != nil {
 		return err
@@ -197,7 +200,7 @@ func (m *Manager) Apply(ctx context.Context, result *CheckResult) error {
 			err,
 		)
 	}
-	if err := ApplyBinary(binary, result.Asset.SHA256, targetPath); err != nil {
+	if err := ApplyBinary(binary, targetPath); err != nil {
 		return err
 	}
 
@@ -215,12 +218,10 @@ func FormatNotice(currentVersion, latestVersion string) string {
 }
 
 func (m *Manager) recordError(err error) {
-	now := m.options.Now()
 	state := &State{}
 	if m.state != nil {
 		*state = *m.state
 	}
-	state.LastCheckedAt = now
 	state.CheckError = err.Error()
 	m.state = state
 	_ = SaveState(state)

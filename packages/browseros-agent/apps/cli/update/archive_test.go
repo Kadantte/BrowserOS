@@ -51,6 +51,22 @@ func TestExtractBinaryTarGzRejectsMultipleFiles(t *testing.T) {
 	}
 }
 
+func TestVerifyChecksumValid(t *testing.T) {
+	data := []byte("some-data")
+	sum := sha256.Sum256(data)
+	if err := VerifyChecksum(data, hex.EncodeToString(sum[:])); err != nil {
+		t.Fatalf("VerifyChecksum() error = %v", err)
+	}
+}
+
+func TestVerifyChecksumMismatch(t *testing.T) {
+	data := []byte("some-data")
+	badChecksum := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	if err := VerifyChecksum(data, badChecksum); err == nil {
+		t.Fatal("VerifyChecksum() error = nil, want mismatch error")
+	}
+}
+
 func TestApplyBinary(t *testing.T) {
 	targetPath := filepath.Join(t.TempDir(), "browseros-cli")
 	if err := os.WriteFile(targetPath, []byte("old-binary"), 0755); err != nil {
@@ -58,8 +74,7 @@ func TestApplyBinary(t *testing.T) {
 	}
 
 	newBinary := []byte("new-binary")
-	sum := sha256.Sum256(newBinary)
-	if err := ApplyBinary(newBinary, hex.EncodeToString(sum[:]), targetPath); err != nil {
+	if err := ApplyBinary(newBinary, targetPath); err != nil {
 		t.Fatalf("ApplyBinary() error = %v", err)
 	}
 
@@ -69,6 +84,36 @@ func TestApplyBinary(t *testing.T) {
 	}
 	if string(data) != "new-binary" {
 		t.Fatalf("updated binary = %q, want %q", string(data), "new-binary")
+	}
+}
+
+func TestVerifyThenApplyIntegration(t *testing.T) {
+	archive := createTarGz(t, map[string]string{"browseros-cli": "updated-binary"})
+	archiveSum := sha256.Sum256(archive)
+
+	if err := VerifyChecksum(archive, hex.EncodeToString(archiveSum[:])); err != nil {
+		t.Fatalf("VerifyChecksum(archive) error = %v", err)
+	}
+
+	binary, err := ExtractBinary(archive, "tar.gz")
+	if err != nil {
+		t.Fatalf("ExtractBinary() error = %v", err)
+	}
+
+	targetPath := filepath.Join(t.TempDir(), "browseros-cli")
+	if err := os.WriteFile(targetPath, []byte("old"), 0755); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	if err := ApplyBinary(binary, targetPath); err != nil {
+		t.Fatalf("ApplyBinary() error = %v", err)
+	}
+
+	data, err := os.ReadFile(targetPath)
+	if err != nil {
+		t.Fatalf("ReadFile() error = %v", err)
+	}
+	if string(data) != "updated-binary" {
+		t.Fatalf("binary = %q, want %q", string(data), "updated-binary")
 	}
 }
 

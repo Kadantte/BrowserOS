@@ -34,13 +34,13 @@ export interface CliReleaseOptions {
 export interface CliReleaseAsset {
   filename: string
   url: string
-  archiveFormat: 'tar.gz' | 'zip'
+  archive_format: 'tar.gz' | 'zip'
   sha256: string
 }
 
 export interface CliReleaseManifest {
   version: string
-  publishedAt: string
+  published_at: string
   tag: string
   assets: Record<string, CliReleaseAsset>
 }
@@ -50,7 +50,7 @@ interface CliArchiveMetadata {
   version: string
   os: string
   arch: string
-  archiveFormat: 'tar.gz' | 'zip'
+  archive_format: 'tar.gz' | 'zip'
 }
 
 function resolveRootDir(): string {
@@ -118,13 +118,13 @@ export function parseCliArchiveFilename(
   if (!match?.groups) {
     return null
   }
-  const archiveFormat = match.groups.ext as 'tar.gz' | 'zip'
+  const archive_format = match.groups.ext as 'tar.gz' | 'zip'
   return {
     filename,
     version: match.groups.version,
     os: match.groups.os,
     arch: match.groups.arch,
-    archiveFormat,
+    archive_format,
   }
 }
 
@@ -132,7 +132,7 @@ export function buildCliReleaseManifest(options: {
   version: string
   filenames: string[]
   checksumsContent: string
-  publishedAt?: string
+  published_at?: string
   cdnBaseURL?: string
   uploadPrefix?: string
 }): CliReleaseManifest {
@@ -162,14 +162,14 @@ export function buildCliReleaseManifest(options: {
     assets[assetKey] = {
       filename,
       url: `${cdnBaseURL}/${joinObjectKey(uploadPrefix, `v${options.version}`, filename)}`,
-      archiveFormat: archive.archiveFormat,
+      archive_format: archive.archive_format,
       sha256: checksum,
     }
   }
 
   return {
     version: options.version,
-    publishedAt: options.publishedAt ?? new Date().toISOString(),
+    published_at: options.published_at ?? new Date().toISOString(),
     tag: `browseros-cli-v${options.version}`,
     assets,
   }
