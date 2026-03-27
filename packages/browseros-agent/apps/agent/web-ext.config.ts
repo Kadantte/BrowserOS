@@ -5,15 +5,13 @@ import { defineWebExtConfig } from 'wxt'
 // biome-ignore lint/style/noProcessEnv: config file needs env access
 const env = process.env
 
-const MONOREPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
-const CONTROLLER_EXT_DIR = join(MONOREPO_ROOT, 'apps/controller-ext/dist')
+const _MONOREPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '../..')
 
 const chromiumArgs = [
   '--use-mock-keychain',
   '--show-component-extension-options',
   '--disable-browseros-server',
   '--disable-browseros-extensions',
-  `--load-extension=${CONTROLLER_EXT_DIR}`,
 ]
 
 if (env.BROWSEROS_CDP_PORT) {
