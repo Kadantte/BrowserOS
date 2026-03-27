@@ -82,7 +82,11 @@ export const AdminDashboardPage: FC = () => {
   }, [historyList])
 
   const groupedTasks = useMemo(() => groupTasks(tasks), [tasks])
-  const runningCount = tasks.filter((task) => task.status === 'running').length
+  const runningCount = useMemo(
+    () => tasks.filter((task) => task.status === 'running').length,
+    [tasks],
+  )
+  const conversationCount = historyList.length
 
   const handleDeleteTask = async () => {
     if (!taskToDelete) return
@@ -144,8 +148,11 @@ export const AdminDashboardPage: FC = () => {
           </h2>
           {tasks.length > 0 && (
             <p className="mt-2 text-muted-foreground text-sm">
-              {tasks.length} recorded run{tasks.length === 1 ? '' : 's'}. Newest
-              first.
+              {tasks.length} recorded run{tasks.length === 1 ? '' : 's'}
+              {conversationCount > 1
+                ? ` across ${conversationCount} chats`
+                : ''}
+              . Newest first.
             </p>
           )}
         </div>
