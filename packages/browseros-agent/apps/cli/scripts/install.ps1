@@ -1,11 +1,13 @@
 #
 # Install browseros-cli for Windows — downloads the latest release binary.
 #
-# Usage:
-#   $InstallScript = Join-Path $env:TEMP "browseros-cli-install.ps1"
-#   Invoke-WebRequest -Uri "https://cdn.browseros.com/cli/install.ps1" -OutFile $InstallScript
-#   & $InstallScript
-#   & $InstallScript -Version "0.1.0" -Dir "C:\tools\browseros"
+# Usage (PowerShell — save and run):
+#   Invoke-WebRequest -Uri "https://cdn.browseros.com/cli/install.ps1" -OutFile install.ps1
+#   .\install.ps1
+#   .\install.ps1 -Version "0.1.0" -Dir "C:\tools\browseros"
+#
+# Usage (one-liner, uses env vars for options):
+#   & { $env:BROWSEROS_VERSION="0.1.0"; irm https://cdn.browseros.com/cli/install.ps1 | iex }
 #
 
 param(
@@ -21,7 +23,9 @@ $ErrorActionPreference = "Stop"
 $Repo = "browseros-ai/BrowserOS"
 $Binary = "browseros-cli"
 
-if (-not $Dir) { $Dir = "$env:LOCALAPPDATA\browseros-cli\bin" }
+# When piped via irm | iex, param() is ignored — fall back to env vars
+if (-not $Version) { $Version = $env:BROWSEROS_VERSION }
+if (-not $Dir) { $Dir = if ($env:BROWSEROS_DIR) { $env:BROWSEROS_DIR } else { "$env:LOCALAPPDATA\browseros-cli\bin" } }
 
 # ── Resolve latest version ───────────────────────────────────────────────────
 
