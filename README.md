@@ -43,6 +43,24 @@
 
 4. Start automating!
 
+## Install `browseros-cli`
+
+Use `browseros-cli` when you want to control BrowserOS from the terminal or scripts via the BrowserOS MCP server.
+
+### macOS / Linux
+
+```bash
+curl -fsSL https://cdn.browseros.com/cli/install.sh | bash
+```
+
+### Windows
+
+```powershell
+irm https://cdn.browseros.com/cli/install.ps1 | iex
+```
+
+After install, run `browseros-cli init` to point the CLI at your BrowserOS MCP server.
+
 ## What makes BrowserOS special
 - 🏠 Feels like home — same Chrome interface, all your extensions just work
 - 🤖 AI agents that run on YOUR browser, not in the cloud
@@ -163,5 +181,4 @@ Thank you to all our supporters!
 <p align="center">
 Built with ❤️ from San Francisco
 </p>
-
 
