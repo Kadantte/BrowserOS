@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/git"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/patch"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/repo"
 	"github.com/browseros-ai/BrowserOS/packages/browseros/tools/bdev/internal/resolve"
@@ -88,6 +89,82 @@ func TestPublishReturnsHelpfulErrorWhenNothingChanged(t *testing.T) {
 	}
 	if _, err := Publish(ctx, repoInfo, "", ""); err == nil || !strings.Contains(err.Error(), "nothing to publish") {
 		t.Fatalf("expected helpful no-op error, got %v", err)
+	}
+}
+
+func TestOperationsFromChangesNormalizesOldPath(t *testing.T) {
+	ops := operationsFromChanges(nil, []git.FileChange{{
+		Status:  "R",
+		Path:    "chromium_patches/chrome/new.cc",
+		OldPath: "chromium_patches/chrome/old.cc",
+	}}, nil)
+
+	if len(ops) != 1 {
+		t.Fatalf("expected 1 operation, got %d", len(ops))
+	}
+	if ops[0].ChromiumPath != "chrome/new.cc" {
+		t.Fatalf("unexpected chromium path: %q", ops[0].ChromiumPath)
+	}
+	if ops[0].OldPath != "chrome/old.cc" {
+		t.Fatalf("unexpected old path: %q", ops[0].OldPath)
+	}
+}
+
+func TestSyncClearsPendingStashAfterSuccessfulNonRebaseRun(t *testing.T) {
+	ctx := context.Background()
+	workspacePath := initGitRepo(t)
+	writeFile(t, filepath.Join(workspacePath, "chrome", "browser.cc"), "base\n")
+	runGit(t, workspacePath, "add", "chrome/browser.cc")
+	runGit(t, workspacePath, "commit", "-m", "workspace base")
+	baseCommit := gitOutput(t, workspacePath, "rev-parse", "HEAD")
+
+	remoteRepo := t.TempDir()
+	runGit(t, remoteRepo, "init", "--bare")
+
+	repoRoot := initGitRepo(t)
+	if err := os.MkdirAll(filepath.Join(repoRoot, "chromium_patches"), 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+	writeFile(t, filepath.Join(repoRoot, "BASE_COMMIT"), baseCommit+"\n")
+	runGit(t, repoRoot, "add", "BASE_COMMIT")
+	runGit(t, repoRoot, "commit", "-m", "patch repo init")
+	runGit(t, repoRoot, "remote", "add", "origin", remoteRepo)
+	runGit(t, repoRoot, "push", "-u", "origin", "HEAD")
+	repoHead := gitOutput(t, repoRoot, "rev-parse", "HEAD")
+
+	repoInfo, err := repo.Load(repoRoot)
+	if err != nil {
+		t.Fatalf("repo.Load: %v", err)
+	}
+	if err := workspace.SaveState(workspacePath, &workspace.State{
+		Version:      1,
+		Workspace:    workspacePath,
+		BaseCommit:   baseCommit,
+		LastSyncRev:  repoHead,
+		PendingStash: "stash@{42}",
+	}); err != nil {
+		t.Fatalf("SaveState: %v", err)
+	}
+
+	result, err := Sync(ctx, SyncOptions{
+		Workspace: workspace.Entry{Name: "ws", Path: workspacePath},
+		Repo:      repoInfo,
+		Remote:    "origin",
+		Rebase:    false,
+	})
+	if err != nil {
+		t.Fatalf("Sync: %v", err)
+	}
+	if result.StashRef != "" {
+		t.Fatalf("expected no new stash ref, got %q", result.StashRef)
+	}
+
+	state, err := workspace.LoadState(workspacePath)
+	if err != nil {
+		t.Fatalf("LoadState: %v", err)
+	}
+	if state.PendingStash != "" {
+		t.Fatalf("expected pending stash to be cleared, got %q", state.PendingStash)
 	}
 }
 

@@ -194,15 +194,6 @@ func ListUntracked(ctx context.Context, dir string, pathspecs []string) ([]strin
 	return lines, nil
 }
 
-func DiffNameStatusAgainst(ctx context.Context, dir string, ref string, pathspecs []string) ([]FileChange, error) {
-	args := []string{"diff", "--name-status", "-M", ref}
-	if len(pathspecs) > 0 {
-		args = append(args, "--")
-		args = append(args, pathspecs...)
-	}
-	return runNameStatus(ctx, dir, args...)
-}
-
 func DiffNameStatusBetween(ctx context.Context, dir string, from string, to string, pathspecs []string) ([]FileChange, error) {
 	args := []string{"diff", "--name-status", "-M", fmt.Sprintf("%s..%s", from, to)}
 	if len(pathspecs) > 0 {

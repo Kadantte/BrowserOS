@@ -118,8 +118,8 @@ func Sync(ctx context.Context, opts SyncOptions) (*SyncResult, error) {
 		if err := git.StashPop(ctx, opts.Workspace.Path, result.StashRef); err != nil {
 			return nil, err
 		}
-		state.PendingStash = ""
 	}
+	state.PendingStash = ""
 	state.BaseCommit = opts.Repo.BaseCommit
 	state.LastSyncRev = head
 	state.LastSyncAt = time.Now().UTC()

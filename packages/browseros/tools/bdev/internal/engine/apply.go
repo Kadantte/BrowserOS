@@ -353,7 +353,7 @@ func operationsFromPatchSet(set patch.PatchSet) []resolve.Operation {
 func operationsFromChanges(repoSet patch.PatchSet, changes []git.FileChange, filters []string) []resolve.Operation {
 	var ops []resolve.Operation
 	for _, change := range changes {
-		rel := strings.TrimPrefix(patch.NormalizeChromiumPath(change.Path), "chromium_patches/")
+		rel := normalizeChangedPatchPath(change.Path)
 		if !patch.PathMatches(rel, filters) {
 			continue
 		}
@@ -365,7 +365,7 @@ func operationsFromChanges(repoSet patch.PatchSet, changes []git.FileChange, fil
 			ChromiumPath: rel,
 			PatchRel:     rel,
 			Op:           patch.OpDelete,
-			OldPath:      patch.NormalizeChromiumPath(change.OldPath),
+			OldPath:      normalizeChangedPatchPath(change.OldPath),
 		})
 	}
 	return ops
@@ -385,6 +385,10 @@ func rejectPath(workspacePath string, op resolve.Operation) string {
 		return candidate
 	}
 	return ""
+}
+
+func normalizeChangedPatchPath(path string) string {
+	return strings.TrimPrefix(patch.NormalizeChromiumPath(path), "chromium_patches/")
 }
 
 func clearResolveState(workspacePath string) error {
