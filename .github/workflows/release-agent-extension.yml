@@ -1,4 +1,4 @@
-name: Release Agent Extension
+name: Release BrowserOS Extension
 
 on:
   workflow_dispatch:
@@ -83,7 +83,7 @@ jobs:
         run: |
           TAG="agent-extension-v${{ steps.version.outputs.version }}"
           RELEASE_SHA="${{ steps.version.outputs.release_sha }}"
-          TITLE="BrowserOS Agent Extension v${{ steps.version.outputs.version }}"
+          TITLE="BrowserOS Extension - v${{ steps.version.outputs.version }}"
 
           if git rev-parse "$TAG" >/dev/null 2>&1; then
             echo "Tag $TAG already exists, skipping tag creation"
@@ -140,7 +140,7 @@ jobs:
 
           gh pr create \
             --title "docs: update agent extension changelog for v${VERSION}" \
-            --body "Auto-generated changelog update for BrowserOS Agent Extension v${VERSION}." \
+            --body "Auto-generated changelog update for BrowserOS Extension v${VERSION}." \
             --base main \
             --head "$BRANCH"
 

@@ -1,4 +1,4 @@
-name: Release CLI
+name: Release BrowserOS CLI
 
 on:
   workflow_dispatch:
@@ -161,7 +161,7 @@ jobs:
 
           CLI_DIST="packages/browseros-agent/apps/cli/dist"
           gh release create "$TAG" \
-            --title "browseros-cli v${{ inputs.version }}" \
+            --title "BrowserOS CLI - v${{ inputs.version }}" \
             --notes-file /tmp/release-notes.md \
             ${CLI_DIST}/*
         working-directory: ${{ github.workspace }}

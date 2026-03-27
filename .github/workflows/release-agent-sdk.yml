@@ -1,4 +1,4 @@
-name: Release Agent SDK
+name: Release BrowserOS Agent SDK
 
 on:
   workflow_dispatch:
@@ -102,7 +102,7 @@ jobs:
         run: |
           TAG="agent-sdk-v${{ steps.version.outputs.version }}"
           RELEASE_SHA="${{ steps.version.outputs.release_sha }}"
-          TITLE="@browseros-ai/agent-sdk v${{ steps.version.outputs.version }}"
+          TITLE="BrowserOS Agent SDK - v${{ steps.version.outputs.version }}"
 
           # Create or reuse tag (idempotent for re-runs)
           if git rev-parse "$TAG" >/dev/null 2>&1; then
@@ -160,7 +160,7 @@ jobs:
 
           gh pr create \
             --title "docs: update agent-sdk changelog for v${VERSION}" \
-            --body "Auto-generated changelog update for @browseros-ai/agent-sdk v${VERSION}." \
+            --body "Auto-generated changelog update for BrowserOS Agent SDK v${VERSION}." \
             --base main \
             --head "$BRANCH"
 
