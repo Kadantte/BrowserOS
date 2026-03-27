@@ -102,7 +102,7 @@ jobs:
           PREV_TAG=$(git tag -l "browseros-cli-v*" --sort=-v:refname | grep -v "^${TAG}$" | head -n 1)
 
           if [ -z "$PREV_TAG" ]; then
-            echo "Initial release of browseros-cli." > "$CHANGELOG_FILE"
+            echo "Initial release of BrowserOS CLI." > "$CHANGELOG_FILE"
           else
             COMMITS=$(git log "$PREV_TAG"..HEAD --pretty=format:"%H" -- "$CLI_PATH")
 
@@ -155,7 +155,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
           if ! git rev-parse "$TAG" >/dev/null 2>&1; then
-            git tag -a "$TAG" -m "browseros-cli v${{ inputs.version }}"
+            git tag -a "$TAG" -m "BrowserOS CLI v${{ inputs.version }}"
             git push origin "$TAG"
           fi
 
