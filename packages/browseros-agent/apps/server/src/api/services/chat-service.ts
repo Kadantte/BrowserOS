@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { createHash } from 'node:crypto'
 import { createAgentUIStreamResponse, type UIMessage } from 'ai'
 import { AiSdkAgent } from '../../agent/ai-sdk-agent'
 import { formatUserMessage } from '../../agent/format-message'
@@ -65,84 +66,22 @@ export class ChatService {
       declinedApps: request.declinedApps,
       browserosId: this.deps.browserosId,
     }
+    const agentConfigKey = buildAgentConfigKey(agentConfig)
 
     let session = sessionStore.get(request.conversationId)
     let isNewSession = false
-    const contextChanges: string[] = []
 
     // Build a stable key from enabled MCP servers for change detection
     const mcpServerKey = this.buildMcpServerKey(request.browserContext)
-
-    // Detect MCP config change mid-conversation → rebuild session
-    if (session && session.mcpServerKey !== mcpServerKey) {
-      logger.info('MCP servers changed mid-conversation, rebuilding session', {
-        conversationId: request.conversationId,
-        previous: session.mcpServerKey,
-        current: mcpServerKey,
-      })
-      const previousMcpKey = session.mcpServerKey
-      session = await this.rebuildSession(
+    const { session: updatedSession, contextChanges } =
+      await this.applySessionChanges(
         session,
         request,
         agentConfig,
+        agentConfigKey,
         mcpServerKey,
       )
-
-      const oldServers = new Set(
-        (previousMcpKey ?? '').split(',').filter(Boolean),
-      )
-      const newServers = new Set(mcpServerKey.split(',').filter(Boolean))
-      const added = [...newServers].filter((s) => !oldServers.has(s))
-      const removed = [...oldServers].filter((s) => !newServers.has(s))
-
-      const parts: string[] = []
-      if (removed.length > 0) {
-        parts.push(
-          `The following app integrations were disconnected: ${removed.join(', ')}. Their tools are no longer available.`,
-        )
-      }
-      if (added.length > 0) {
-        parts.push(
-          `The following app integrations were connected: ${added.join(', ')}. Their tools are now available.`,
-        )
-      }
-      if (parts.length === 0) {
-        parts.push(
-          'Connected app integrations changed during this conversation. Use only tools that are currently registered.',
-        )
-      }
-      contextChanges.push(parts.join(' '))
-    }
-
-    // Detect workspace change mid-conversation → rebuild session
-    if (session && session.workingDir !== request.userWorkingDir) {
-      logger.info('Workspace changed mid-conversation, rebuilding session', {
-        conversationId: request.conversationId,
-        previous: session.workingDir ?? '(none)',
-        current: request.userWorkingDir ?? '(none)',
-      })
-      const previousWorkingDir = session.workingDir
-      session = await this.rebuildSession(
-        session,
-        request,
-        agentConfig,
-        mcpServerKey,
-      )
-
-      if (!request.userWorkingDir) {
-        contextChanges.push(
-          'The user disconnected the workspace during this conversation. Filesystem tools (filesystem_read, filesystem_write, filesystem_edit, filesystem_bash, filesystem_grep, filesystem_find, filesystem_ls) are no longer available. Return all output directly in chat. If the user asks for file operations, suggest they select a working directory from the chat toolbar.',
-        )
-      } else if (!previousWorkingDir) {
-        contextChanges.push(
-          `The user connected a workspace during this conversation. Filesystem tools are now available. Working directory: ${request.userWorkingDir}`,
-        )
-      } else {
-        contextChanges.push(
-          `The user switched workspace during this conversation. Filesystem tools now use the new working directory: ${request.userWorkingDir}`,
-        )
-      }
-    }
+    session = updatedSession
 
     if (!session) {
       isNewSession = true
@@ -192,6 +131,7 @@ export class ChatService {
         browserContext,
         mcpServerKey,
         workingDir: request.userWorkingDir,
+        agentConfigKey,
       }
       sessionStore.set(request.conversationId, session)
     }
@@ -324,6 +264,7 @@ export class ChatService {
     request: ChatRequest,
     agentConfig: ResolvedAgentConfig,
     mcpServerKey: string,
+    agentConfigKey: string,
   ): Promise<AgentSession> {
     const previousMessages = session.agent.messages
     await session.agent.dispose()
@@ -344,6 +285,7 @@ export class ChatService {
       browserContext,
       mcpServerKey,
       workingDir: request.userWorkingDir,
+      agentConfigKey,
     }
     newSession.agent.messages = sanitizeMessagesForToolset(
       previousMessages,
@@ -353,10 +295,161 @@ export class ChatService {
     return newSession
   }
 
+  private async applySessionChanges(
+    session: AgentSession | undefined,
+    request: ChatRequest,
+    agentConfig: ResolvedAgentConfig,
+    agentConfigKey: string,
+    mcpServerKey: string,
+  ): Promise<{
+    session: AgentSession | undefined
+    contextChanges: string[]
+  }> {
+    const contextChanges: string[] = []
+    let currentSession = session
+
+    if (currentSession && currentSession.mcpServerKey !== mcpServerKey) {
+      const previousMcpKey = currentSession.mcpServerKey
+      logger.info('MCP servers changed mid-conversation, rebuilding session', {
+        conversationId: request.conversationId,
+        previous: previousMcpKey,
+        current: mcpServerKey,
+      })
+      currentSession = await this.rebuildSession(
+        currentSession,
+        request,
+        agentConfig,
+        mcpServerKey,
+        agentConfigKey,
+      )
+      contextChanges.push(
+        this.buildMcpChangeMessage(previousMcpKey, mcpServerKey),
+      )
+    }
+
+    if (
+      currentSession &&
+      currentSession.workingDir !== request.userWorkingDir
+    ) {
+      const previousWorkingDir = currentSession.workingDir
+      logger.info('Workspace changed mid-conversation, rebuilding session', {
+        conversationId: request.conversationId,
+        previous: previousWorkingDir ?? '(none)',
+        current: request.userWorkingDir ?? '(none)',
+      })
+      currentSession = await this.rebuildSession(
+        currentSession,
+        request,
+        agentConfig,
+        mcpServerKey,
+        agentConfigKey,
+      )
+      contextChanges.push(
+        this.buildWorkspaceChangeMessage(
+          previousWorkingDir,
+          request.userWorkingDir,
+        ),
+      )
+    }
+
+    if (currentSession && currentSession.agentConfigKey !== agentConfigKey) {
+      logger.info('Agent config changed mid-conversation, rebuilding session', {
+        conversationId: request.conversationId,
+        provider: agentConfig.provider,
+        model: agentConfig.model,
+      })
+      currentSession = await this.rebuildSession(
+        currentSession,
+        request,
+        agentConfig,
+        mcpServerKey,
+        agentConfigKey,
+      )
+      contextChanges.push(
+        `The user changed the active model configuration during this conversation. Continue with provider ${agentConfig.provider} and model ${agentConfig.model}.`,
+      )
+    }
+
+    return {
+      session: currentSession,
+      contextChanges,
+    }
+  }
+
   private buildMcpServerKey(browserContext?: BrowserContext): string {
     const managed = browserContext?.enabledMcpServers?.slice().sort() ?? []
     const custom =
       browserContext?.customMcpServers?.map((s) => s.url).sort() ?? []
     return [...managed, ...custom].join(',')
   }
+
+  private buildMcpChangeMessage(
+    previousMcpKey: string | undefined,
+    mcpServerKey: string,
+  ): string {
+    const oldServers = new Set(
+      (previousMcpKey ?? '').split(',').filter(Boolean),
+    )
+    const newServers = new Set(mcpServerKey.split(',').filter(Boolean))
+    const added = [...newServers].filter((s) => !oldServers.has(s))
+    const removed = [...oldServers].filter((s) => !newServers.has(s))
+
+    const parts: string[] = []
+    if (removed.length > 0) {
+      parts.push(
+        `The following app integrations were disconnected: ${removed.join(', ')}. Their tools are no longer available.`,
+      )
+    }
+    if (added.length > 0) {
+      parts.push(
+        `The following app integrations were connected: ${added.join(', ')}. Their tools are now available.`,
+      )
+    }
+    if (parts.length === 0) {
+      parts.push(
+        'Connected app integrations changed during this conversation. Use only tools that are currently registered.',
+      )
+    }
+    return parts.join(' ')
+  }
+
+  private buildWorkspaceChangeMessage(
+    previousWorkingDir: string | undefined,
+    currentWorkingDir: string | undefined,
+  ): string {
+    if (!currentWorkingDir) {
+      return 'The user disconnected the workspace during this conversation. Filesystem tools (filesystem_read, filesystem_write, filesystem_edit, filesystem_bash, filesystem_grep, filesystem_find, filesystem_ls) are no longer available. Return all output directly in chat. If the user asks for file operations, suggest they select a working directory from the chat toolbar.'
+    }
+    if (!previousWorkingDir) {
+      return `The user connected a workspace during this conversation. Filesystem tools are now available. Working directory: ${currentWorkingDir}`
+    }
+    return `The user switched workspace during this conversation. Filesystem tools now use the new working directory: ${currentWorkingDir}`
+  }
+}
+
+export function buildAgentConfigKey(config: ResolvedAgentConfig): string {
+  const keyInput = JSON.stringify({
+    provider: config.provider,
+    model: config.model,
+    apiKey: config.apiKey,
+    baseUrl: config.baseUrl,
+    upstreamProvider: config.upstreamProvider,
+    resourceName: config.resourceName,
+    region: config.region,
+    accessKeyId: config.accessKeyId,
+    secretAccessKey: config.secretAccessKey,
+    sessionToken: config.sessionToken,
+    accountId: config.accountId,
+    reasoningEffort: config.reasoningEffort,
+    reasoningSummary: config.reasoningSummary,
+    contextWindowSize: config.contextWindowSize,
+    userSystemPrompt: config.userSystemPrompt,
+    supportsImages: config.supportsImages,
+    chatMode: config.chatMode,
+    isScheduledTask: config.isScheduledTask,
+    origin: config.origin,
+    declinedApps: config.declinedApps?.slice().sort(),
+    browserosId: config.browserosId,
+  })
+  return createHash('sha256').update(keyInput).digest('hex')
 }

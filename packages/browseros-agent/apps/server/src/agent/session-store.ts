@@ -11,6 +11,8 @@ export interface AgentSession {
   mcpServerKey?: string
   /** Workspace directory when the session was created, for change detection. */
   workingDir?: string
+  /** Material agent configuration used when the session was created. */
+  agentConfigKey?: string
 }
 
 export class SessionStore {
