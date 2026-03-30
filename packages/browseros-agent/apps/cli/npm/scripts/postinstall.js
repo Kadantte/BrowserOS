@@ -34,8 +34,13 @@ const archiveName = `browseros-cli_${VERSION}_${platform}_${arch}.${archiveExt}`
 const archiveURL = `${GITHUB_RELEASE_BASE}/${archiveName}`
 const checksumURL = `${GITHUB_RELEASE_BASE}/checksums.txt`
 
-function download(url) {
+const MAX_REDIRECTS = 5
+
+function download(url, redirects = 0) {
   return new Promise((resolve, reject) => {
+    if (redirects > MAX_REDIRECTS) {
+      return reject(new Error(`Too many redirects for ${url}`))
+    }
     const client = url.startsWith('https') ? https : http
     client
       .get(url, { headers: { 'User-Agent': 'browseros-cli-npm' } }, (res) => {
@@ -44,7 +49,10 @@ function download(url) {
           res.statusCode < 400 &&
           res.headers.location
         ) {
-          return download(res.headers.location).then(resolve, reject)
+          return download(res.headers.location, redirects + 1).then(
+            resolve,
+            reject,
+          )
         }
         if (res.statusCode !== 200) {
           return reject(new Error(`HTTP ${res.statusCode} for ${url}`))
@@ -73,17 +81,25 @@ async function main() {
     const expectedLine = checksumText
       .split('\n')
       .find((l) => l.includes(archiveName))
-    if (expectedLine) {
-      const expected = expectedLine.split(/\s+/)[0]
-      const actual = createHash('sha256').update(archiveBuffer).digest('hex')
-      if (actual !== expected) {
-        console.error(
-          `browseros-cli: checksum mismatch!\n  expected: ${expected}\n  got:      ${actual}`,
-        )
-        process.exit(1)
-      }
-      console.log('browseros-cli: checksum verified.')
+    if (!expectedLine) {
+      console.error(
+        `browseros-cli: checksum entry for ${archiveName} not found in checksums.txt`,
+      )
+      process.exit(1)
     }
+    const expected = expectedLine.split(/\s+/)[0]
+    const actual = createHash('sha256').update(archiveBuffer).digest('hex')
+    if (actual !== expected) {
+      console.error(
+        `browseros-cli: checksum mismatch!\n  expected: ${expected}\n  got:      ${actual}`,
+      )
+      process.exit(1)
+    }
+    console.log('browseros-cli: checksum verified.')
+  } else {
+    console.warn(
+      'browseros-cli: warning: could not fetch checksums.txt, skipping verification.',
+    )
   }
 
   fs.mkdirSync(BINARY_DIR, { recursive: true })
