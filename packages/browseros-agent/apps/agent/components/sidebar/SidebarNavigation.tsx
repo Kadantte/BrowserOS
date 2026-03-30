@@ -58,7 +58,7 @@ const primaryNavItems: NavItem[] = [
     icon: Sparkles,
     feature: Feature.SOUL_SUPPORT,
   },
-  { name: 'Admin', to: '/admin', icon: Shield },
+  { name: 'Governance', to: '/admin', icon: Shield },
   { name: 'Settings', to: '/settings/ai', icon: Settings },
 ]
 

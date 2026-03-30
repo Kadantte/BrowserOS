@@ -112,13 +112,13 @@ export const AdminDashboardPage: FC = () => {
       />
 
       <section className="space-y-3">
-        <h3 className="font-semibold text-sm">Tool Approvals</h3>
+        <h3 className="font-semibold text-sm">Approvals</h3>
         <PendingApprovals />
       </section>
 
       <section className="space-y-4">
         <div>
-          <h3 className="font-semibold text-sm">Execution History</h3>
+          <h3 className="font-semibold text-sm">Audit Trail</h3>
           {tasks.length > 0 && (
             <p className="mt-1 text-muted-foreground text-sm">
               {tasks.length} recorded run{tasks.length === 1 ? '' : 's'}

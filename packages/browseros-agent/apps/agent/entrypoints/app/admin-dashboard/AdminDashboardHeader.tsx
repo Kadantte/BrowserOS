@@ -19,7 +19,7 @@ export const AdminDashboardHeader: FC<AdminDashboardHeaderProps> = ({
         </div>
         <div className="flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h2 className="font-semibold text-xl">Admin</h2>
+            <h2 className="font-semibold text-xl">Governance</h2>
             {pendingCount > 0 && (
               <Badge className="gap-1.5 rounded-full bg-yellow-500/10 text-yellow-600">
                 {pendingCount} pending
@@ -33,7 +33,7 @@ export const AdminDashboardHeader: FC<AdminDashboardHeaderProps> = ({
             )}
           </div>
           <p className="text-muted-foreground text-sm">
-            Manage tool approvals and review what BrowserOS did for each run.
+            Control agent permissions and audit every action.
           </p>
         </div>
       </div>
