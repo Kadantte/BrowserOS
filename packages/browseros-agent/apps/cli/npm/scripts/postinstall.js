@@ -1,9 +1,9 @@
-const https = require('https')
-const http = require('http')
-const fs = require('fs')
-const path = require('path')
-const { execSync } = require('child_process')
-const { createHash } = require('crypto')
+const https = require('node:https')
+const http = require('node:http')
+const fs = require('node:fs')
+const path = require('node:path')
+const { execSync } = require('node:child_process')
+const { createHash } = require('node:crypto')
 
 const VERSION = require('../package.json').version
 const GITHUB_RELEASE_BASE = `https://github.com/browseros-ai/BrowserOS/releases/download/browseros-cli-v${VERSION}`

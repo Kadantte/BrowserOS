@@ -1,8 +1,8 @@
 #!/usr/bin/env node
 
-const { execFileSync, spawnSync } = require('child_process')
-const path = require('path')
-const fs = require('fs')
+const { execFileSync, spawnSync } = require('node:child_process')
+const path = require('node:path')
+const fs = require('node:fs')
 
 const BINARY_DIR = path.join(__dirname, '..', '.binary')
 const EXT = process.platform === 'win32' ? '.exe' : ''
