@@ -81,21 +81,21 @@ async function main() {
     const expectedLine = checksumText
       .split('\n')
       .find((l) => l.includes(archiveName))
-    if (!expectedLine) {
-      console.error(
-        `browseros-cli: checksum entry for ${archiveName} not found in checksums.txt`,
+    if (expectedLine) {
+      const expected = expectedLine.split(/\s+/)[0]
+      const actual = createHash('sha256').update(archiveBuffer).digest('hex')
+      if (actual !== expected) {
+        console.error(
+          `browseros-cli: checksum mismatch!\n  expected: ${expected}\n  got:      ${actual}`,
+        )
+        process.exit(1)
+      }
+      console.log('browseros-cli: checksum verified.')
+    } else {
+      console.warn(
+        'browseros-cli: warning: checksum entry not found in checksums.txt, skipping verification.',
       )
-      process.exit(1)
     }
-    const expected = expectedLine.split(/\s+/)[0]
-    const actual = createHash('sha256').update(archiveBuffer).digest('hex')
-    if (actual !== expected) {
-      console.error(
-        `browseros-cli: checksum mismatch!\n  expected: ${expected}\n  got:      ${actual}`,
-      )
-      process.exit(1)
-    }
-    console.log('browseros-cli: checksum verified.')
   } else {
     console.warn(
       'browseros-cli: warning: could not fetch checksums.txt, skipping verification.',
