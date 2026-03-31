@@ -351,12 +351,11 @@ func isPortOnly(s string) bool {
 	if s == "" {
 		return false
 	}
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return false
-		}
+	port, err := strconv.Atoi(s)
+	if err != nil {
+		return false
 	}
-	return true
+	return port >= 1 && port <= 65535
 }
 
 func validateServerURL(raw string) (string, error) {
