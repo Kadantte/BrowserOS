@@ -4,19 +4,33 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * Agent management routes for OpenClaw Docker instances.
+ * Uses the official OpenClaw Docker setup script from the OpenClaw repo.
  */
 
+import fs from 'node:fs'
+import path from 'node:path'
 import { Hono } from 'hono'
 import { logger } from '../../lib/logger'
+
+const OPENCLAW_IMAGE = 'ghcr.io/openclaw/openclaw:latest'
+const OPENCLAW_SETUP_SCRIPT_URL =
+  'https://raw.githubusercontent.com/openclaw/openclaw/main/scripts/docker/setup.sh'
+const OPENCLAW_COMPOSE_URL =
+  'https://raw.githubusercontent.com/openclaw/openclaw/main/docker-compose.yml'
 
 interface AgentInstance {
   id: string
   name: string
   status: 'creating' | 'running' | 'stopped' | 'error'
   port: number
-  containerId?: string
+  dir: string
   createdAt: string
   error?: string
+}
+
+function getAgentsBaseDir(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || '/tmp'
+  return path.join(home, '.browseros', 'agents')
 }
 
 const instances = new Map<string, AgentInstance>()
@@ -34,6 +48,25 @@ async function isDockerAvailable(): Promise<boolean> {
   }
 }
 
+async function runCommand(
+  cmd: string,
+  args: string[],
+  options?: { cwd?: string; env?: Record<string, string> },
+): Promise<{ stdout: string; stderr: string; exitCode: number }> {
+  const proc = Bun.spawn([cmd, ...args], {
+    stdout: 'pipe',
+    stderr: 'pipe',
+    cwd: options?.cwd,
+    env: { ...process.env, ...options?.env },
+  })
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+    proc.exited,
+  ])
+  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode }
+}
+
 async function findAvailablePort(startPort: number): Promise<number> {
   const net = await import('node:net')
   return new Promise((resolve) => {
@@ -45,21 +78,6 @@ async function findAvailablePort(startPort: number): Promise<number> {
       resolve(findAvailablePort(startPort + 1))
     })
   })
-}
-
-async function runDocker(
-  args: string[],
-): Promise<{ stdout: string; stderr: string; exitCode: number }> {
-  const proc = Bun.spawn(['docker', ...args], {
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
-  const [stdout, stderr, exitCode] = await Promise.all([
-    new Response(proc.stdout).text(),
-    new Response(proc.stderr).text(),
-    proc.exited,
-  ])
-  return { stdout: stdout.trim(), stderr: stderr.trim(), exitCode }
 }
 
 export function createAgentsRoutes() {
@@ -112,14 +130,14 @@ export function createAgentsRoutes() {
 
       const id = crypto.randomUUID()
       const port = await findAvailablePort(18789)
-      const containerName = `browseros-claw-${name}`
-      const token = crypto.randomUUID()
+      const agentDir = path.join(getAgentsBaseDir(), name)
 
       const instance: AgentInstance = {
         id,
         name,
         status: 'creating',
         port,
+        dir: agentDir,
         createdAt: new Date().toISOString(),
       }
       instances.set(id, instance)
@@ -128,42 +146,58 @@ export function createAgentsRoutes() {
         id,
         name,
         port,
-        containerName,
+        dir: agentDir,
       })
 
-      // Pull image and start container in the background
+      // Set up and run the official OpenClaw Docker setup in the background
       ;(async () => {
         try {
-          // Pull image
-          const pull = await runDocker(['pull', 'openclaw/openclaw:latest'])
-          if (pull.exitCode !== 0) {
-            throw new Error(`Failed to pull image: ${pull.stderr}`)
+          // Create agent directory
+          fs.mkdirSync(agentDir, { recursive: true })
+
+          // Download the official setup script
+          const setupScriptPath = path.join(agentDir, 'setup.sh')
+          const scriptRes = await fetch(OPENCLAW_SETUP_SCRIPT_URL)
+          if (!scriptRes.ok) {
+            throw new Error(
+              `Failed to download setup script: ${scriptRes.status}`,
+            )
+          }
+          fs.writeFileSync(setupScriptPath, await scriptRes.text())
+          fs.chmodSync(setupScriptPath, 0o755)
+
+          // Download the official docker-compose.yml
+          const composeRes = await fetch(OPENCLAW_COMPOSE_URL)
+          if (!composeRes.ok) {
+            throw new Error(
+              `Failed to download docker-compose.yml: ${composeRes.status}`,
+            )
+          }
+          fs.writeFileSync(
+            path.join(agentDir, 'docker-compose.yml'),
+            await composeRes.text(),
+          )
+
+          // Run the setup script with the pre-built image
+          const setup = await runCommand('bash', [setupScriptPath], {
+            cwd: agentDir,
+            env: {
+              OPENCLAW_IMAGE: OPENCLAW_IMAGE,
+              COMPOSE_PROJECT_NAME: `browseros-claw-${name}`,
+            },
+          })
+
+          if (setup.exitCode !== 0) {
+            throw new Error(
+              `Setup script failed: ${setup.stderr || setup.stdout}`,
+            )
           }
 
-          // Run container
-          const run = await runDocker([
-            'run',
-            '-d',
-            '--name',
-            containerName,
-            '-p',
-            `127.0.0.1:${port}:18789`,
-            '-v',
-            `browseros-claw-${name}-data:/home/node/.openclaw`,
-            '-e',
-            `OPENCLAW_GATEWAY_TOKEN=${token}`,
-            'openclaw/openclaw:latest',
-          ])
-
-          if (run.exitCode !== 0) {
-            throw new Error(`Failed to start container: ${run.stderr}`)
-          }
-
-          instance.containerId = run.stdout
           instance.status = 'running'
           logger.info('OpenClaw agent instance started', {
             id,
-            containerId: run.stdout.slice(0, 12),
+            name,
+            dir: agentDir,
           })
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
@@ -187,10 +221,11 @@ export function createAgentsRoutes() {
         return c.json({ error: 'Agent not found' }, 404)
       }
 
-      const containerName = `browseros-claw-${instance.name}`
-
       try {
-        await runDocker(['stop', containerName])
+        await runCommand('docker', ['compose', 'stop'], {
+          cwd: instance.dir,
+          env: { COMPOSE_PROJECT_NAME: `browseros-claw-${instance.name}` },
+        })
         instance.status = 'stopped'
         return c.json({ agent: instance })
       } catch (err) {
@@ -207,10 +242,14 @@ export function createAgentsRoutes() {
         return c.json({ error: 'Agent not found' }, 404)
       }
 
-      const containerName = `browseros-claw-${instance.name}`
-
       try {
-        await runDocker(['start', containerName])
+        await runCommand('docker', ['compose', 'up', '-d'], {
+          cwd: instance.dir,
+          env: {
+            COMPOSE_PROJECT_NAME: `browseros-claw-${instance.name}`,
+            OPENCLAW_IMAGE: OPENCLAW_IMAGE,
+          },
+        })
         instance.status = 'running'
         return c.json({ agent: instance })
       } catch (err) {
@@ -227,17 +266,14 @@ export function createAgentsRoutes() {
         return c.json({ error: 'Agent not found' }, 404)
       }
 
-      const containerName = `browseros-claw-${instance.name}`
-
       try {
-        // Stop and remove container
-        await runDocker(['rm', '-f', containerName])
-        // Remove volume
-        await runDocker([
-          'volume',
-          'rm',
-          `browseros-claw-${instance.name}-data`,
-        ])
+        // Stop and remove containers + volumes via compose
+        await runCommand('docker', ['compose', 'down', '-v'], {
+          cwd: instance.dir,
+          env: { COMPOSE_PROJECT_NAME: `browseros-claw-${instance.name}` },
+        })
+        // Clean up agent directory
+        fs.rmSync(instance.dir, { recursive: true, force: true })
         instances.delete(id)
         return c.json({ success: true })
       } catch (err) {
