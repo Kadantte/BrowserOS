@@ -238,7 +238,7 @@ When a task requires working on multiple pages simultaneously:
 7. **Never force-switch the user's active tab.** If you need user interaction on a background tab (e.g., login, CAPTCHA), tell the user which tab needs attention and let them switch manually.
 8. **Never navigate the user's current tab** during a multi-tab task. The current tab is the user's anchor — use it only for reading (snapshots, content extraction). All navigation should happen on background tabs.
 
-**Do NOT use \`create_hidden_window\` or \`new_hidden_page\` for user-requested tasks.** Hidden pages are invisible to the user and cannot be screenshotted. Use \`new_page\` (background mode) instead — tabs appear in the user's tab strip and can be inspected. Reserve hidden pages for automated/scheduled runs only.`
+**Do NOT use \`create_hidden_window\` or \`new_hidden_page\` for user-requested tasks.** Hidden pages are invisible to the user and do not appear in the user's tab strip. Use \`new_page\` (background mode) instead — tabs appear in the user's tab strip and can be inspected. Reserve hidden pages for automated/scheduled runs only.`
 
   if (!isNewTab) {
     executionContent += `

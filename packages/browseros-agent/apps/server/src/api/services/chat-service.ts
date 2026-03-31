@@ -154,9 +154,22 @@ export class ChatService {
             hidden: true,
             background: true,
           })
+          let hiddenWindowId: number | undefined
+          try {
+            const hiddenPage = (await this.deps.browser.listPages()).find(
+              (page) => page.pageId === hiddenPageId,
+            )
+            hiddenWindowId = hiddenPage?.windowId
+          } catch (error) {
+            logger.warn('Failed to look up hidden page metadata', {
+              conversationId: request.conversationId,
+              pageId: hiddenPageId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
           browserContext = {
             ...browserContext,
-            windowId: undefined,
+            windowId: hiddenWindowId,
             selectedTabs: undefined,
             tabs: undefined,
             activeTab: {
@@ -169,6 +182,7 @@ export class ChatService {
           logger.info('Created hidden page for scheduled task', {
             conversationId: request.conversationId,
             pageId: hiddenPageId,
+            windowId: hiddenWindowId,
           })
         } catch (error) {
           logger.warn(

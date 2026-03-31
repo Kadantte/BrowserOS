@@ -127,6 +127,12 @@ describe('ChatService scheduled task hidden page lifecycle', () => {
 
     const browser = {
       newPage: mock(async () => 77),
+      listPages: mock(async () => [
+        {
+          pageId: 77,
+          windowId: 11,
+        },
+      ]),
       closePage: mock(async () => {}),
       createWindow: mock(async () => ({ windowId: 11 })),
       closeWindow: mock(async () => {}),
@@ -182,7 +188,7 @@ describe('ChatService scheduled task hidden page lifecycle', () => {
         enabledMcpServers?: string[]
       }
     }
-    expect(createArgs.browserContext?.windowId).toBeUndefined()
+    expect(createArgs.browserContext?.windowId).toBe(11)
     expect(createArgs.browserContext?.selectedTabs).toBeUndefined()
     expect(createArgs.browserContext?.activeTab).toEqual({
       id: 77,
@@ -218,5 +224,68 @@ describe('ChatService scheduled task hidden page lifecycle', () => {
     expect(result).toEqual({ deleted: true, sessionCount: 0 })
     expect(browser.closePage).toHaveBeenCalledWith(33)
     expect(fakeAgent.dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the scheduled hidden page context when metadata lookup fails', async () => {
+    const fakeAgent = createFakeAgent()
+    agentToReturn = fakeAgent
+    streamResponseHandler = async ({ onFinish }) => {
+      await onFinish({ messages: fakeAgent.messages })
+      return new Response('ok')
+    }
+
+    const browser = {
+      newPage: mock(async () => 88),
+      listPages: mock(async () => {
+        throw new Error('CDP lookup failed')
+      }),
+      closePage: mock(async () => {}),
+      resolveTabIds: mock(async () => new Map<number, number>()),
+    }
+    const sessionStore = createSessionStore()
+    const service = new ChatService({
+      sessionStore: sessionStore as never,
+      klavisClient: {} as never,
+      browser: browser as never,
+      registry: {} as never,
+    })
+
+    await service.processMessage(
+      {
+        conversationId: crypto.randomUUID(),
+        message: 'Run the scheduled task',
+        isScheduledTask: true,
+        mode: 'agent',
+        origin: 'sidepanel',
+        browserContext: {
+          activeTab: {
+            id: 3,
+            url: 'https://example.com',
+            title: 'Example',
+          },
+        },
+      } as never,
+      new AbortController().signal,
+    )
+
+    const createArgs = createAgentSpy.mock.calls.at(-1)?.[0] as {
+      browserContext?: {
+        windowId?: number
+        activeTab?: {
+          id: number
+          pageId: number
+          url: string
+          title: string
+        }
+      }
+    }
+    expect(createArgs.browserContext?.windowId).toBeUndefined()
+    expect(createArgs.browserContext?.activeTab).toEqual({
+      id: 88,
+      pageId: 88,
+      url: 'about:blank',
+      title: 'Scheduled Task',
+    })
+    expect(browser.closePage).toHaveBeenCalledWith(88)
   })
 })

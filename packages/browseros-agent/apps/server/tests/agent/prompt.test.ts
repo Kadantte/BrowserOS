@@ -1061,11 +1061,12 @@ describe('execution section', () => {
 
   it('prohibits hidden windows for user tasks', () => {
     // Why: Run 2 used create_hidden_window instead of background tabs.
-    // Hidden windows are invisible to users and can't be screenshotted.
+    // Hidden pages are invisible to users, so user-requested work must stay on visible tabs.
     const prompt = buildRegular()
     expect(prompt).toContain('Do NOT use')
     expect(prompt).toContain('create_hidden_window')
     expect(prompt).toContain('new_hidden_page')
+    expect(prompt).not.toContain('cannot be screenshotted')
   })
 
   it('includes tab retry discipline', () => {
