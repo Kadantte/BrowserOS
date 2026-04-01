@@ -492,6 +492,10 @@ export const NewTab = () => {
                     ref: inputRef,
                     onChange: (e) => handleInputChange(e.currentTarget.value),
                     onKeyDown: (e) => {
+                      if (e.key === 'Enter' && e.shiftKey) {
+                        e.preventDefault()
+                        return
+                      }
                       if (!mentionStateRef.current.isOpen) return
                       if (e.key === 'Tab') {
                         e.preventDefault()
