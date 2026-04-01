@@ -5,7 +5,12 @@ import { parse } from 'dotenv'
 
 import type { BuildConfig } from './types'
 
-const REQUIRED_PROD_VARS = ['BROWSEROS_CONFIG_URL']
+const REQUIRED_PROD_VARS = [
+  'BROWSEROS_CONFIG_URL',
+  'CODEGEN_SERVICE_URL',
+  'POSTHOG_API_KEY',
+  'SENTRY_DSN',
+]
 const INLINED_ENV_VARS = [
   ...REQUIRED_PROD_VARS,
   'NODE_ENV',
@@ -71,6 +76,7 @@ function validateProductionEnv(envVars: Record<string, string>): void {
 
 export interface LoadBuildConfigOptions {
   compileOnly?: boolean
+  ci?: boolean
 }
 
 export function loadBuildConfig(
@@ -79,7 +85,9 @@ export function loadBuildConfig(
 ): BuildConfig {
   const fileEnv = loadProdEnv(rootDir)
   const envVars = buildInlineEnv(fileEnv)
-  validateProductionEnv(envVars)
+  if (!options.ci) {
+    validateProductionEnv(envVars)
+  }
 
   const processEnv: NodeJS.ProcessEnv = {
     PATH: process.env.PATH ?? '',
@@ -87,7 +95,7 @@ export function loadBuildConfig(
     ...process.env,
   }
 
-  if (options.compileOnly) {
+  if (options.compileOnly || options.ci) {
     return { version: readServerVersion(rootDir), envVars, processEnv }
   }
 
