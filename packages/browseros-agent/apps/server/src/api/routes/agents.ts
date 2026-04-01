@@ -353,6 +353,7 @@ export function createAgentsRoutes() {
         providerType?: string
         apiKey?: string
         baseUrl?: string
+        modelId?: string
       }>()
       const name = body.name?.trim()
 
@@ -393,17 +394,26 @@ export function createAgentsRoutes() {
       const agentDir = path.join(getAgentsBaseDir(), name)
       const token = crypto.randomUUID()
 
-      // Map BrowserOS provider to OpenClaw env vars
+      // Map BrowserOS provider to OpenClaw env vars + model string
       const llmEnvVars: Array<{ envVar: string; value: string }> = []
+      let openclawModel: string | undefined
       if (body.apiKey && body.providerType) {
         const directEnvVar = OPENCLAW_PROVIDER_ENV_MAP[body.providerType]
         if (directEnvVar) {
           // Direct mapping (Anthropic, OpenAI, etc.)
           llmEnvVars.push({ envVar: directEnvVar, value: body.apiKey })
+          // Set model: <provider>/<modelId> if modelId provided
+          if (body.modelId) {
+            openclawModel = `${body.providerType}/${body.modelId}`
+          }
         } else if (body.baseUrl) {
           // OpenAI-compatible provider — pass as OPENAI_API_KEY + OPENAI_BASE_URL
           llmEnvVars.push({ envVar: 'OPENAI_API_KEY', value: body.apiKey })
           llmEnvVars.push({ envVar: 'OPENAI_BASE_URL', value: body.baseUrl })
+          // OpenAI-compatible models are referenced as openai/<modelId>
+          if (body.modelId) {
+            openclawModel = `openai/${body.modelId}`
+          }
         }
       }
 
@@ -500,6 +510,19 @@ export function createAgentsRoutes() {
           )
           if (httpApiExit !== 0) {
             throw new Error('Failed to enable chat completions API')
+          }
+          // Set default model if provider was configured
+          if (openclawModel) {
+            const modelExit = await runConfigSet(
+              instance,
+              agentDir,
+              name,
+              'agents.defaults.model.primary',
+              openclawModel,
+            )
+            if (modelExit !== 0) {
+              pushLog(instance, 'Warning: failed to set default model')
+            }
           }
           pushLog(instance, 'Gateway configured for local mode')
 
