@@ -4,6 +4,7 @@ import {
   Loader2,
   Play,
   Plus,
+  ScrollText,
   Square,
   Trash2,
 } from 'lucide-react'
@@ -21,13 +22,13 @@ import {
 import { Input } from '@/components/ui/input'
 import { getAgentServerUrl } from '@/lib/browseros/helpers'
 import { useRpcClient } from '@/lib/rpc/RpcClientProvider'
+import { AgentLogsDialog } from './AgentLogsDialog'
 
 interface AgentInstance {
   id: string
   name: string
   status: 'creating' | 'running' | 'stopped' | 'error'
   port: number
-  containerId?: string
   createdAt: string
   error?: string
 }
@@ -42,7 +43,12 @@ export const AgentsPage: FC = () => {
   const [creating, setCreating] = useState(false)
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [logsAgentId, setLogsAgentId] = useState<string | null>(null)
   const triggerRefresh = () => setRefreshKey((k) => k + 1)
+
+  const logsAgent = logsAgentId
+    ? agents.find((a) => a.id === logsAgentId)
+    : null
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey triggers refetch from outside the effect
   useEffect(() => {
@@ -87,9 +93,12 @@ export const AgentsPage: FC = () => {
         json: { name: newAgentName.trim() },
       })
       if (res.ok) {
+        const data = (await res.json()) as { agent: AgentInstance }
         setCreateDialogOpen(false)
         setNewAgentName('')
         triggerRefresh()
+        // Auto-open logs for the new agent
+        setLogsAgentId(data.agent.id)
       }
     } finally {
       setCreating(false)
@@ -104,11 +113,11 @@ export const AgentsPage: FC = () => {
     try {
       const baseUrl = await getAgentServerUrl()
       const method = action === 'delete' ? 'DELETE' : 'POST'
-      const path =
+      const actionPath =
         action === 'delete'
           ? `${baseUrl}/agents/${id}`
           : `${baseUrl}/agents/${id}/${action}`
-      await fetch(path, { method })
+      await fetch(actionPath, { method })
       triggerRefresh()
     } finally {
       setActionInProgress(null)
@@ -272,6 +281,15 @@ export const AgentsPage: FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="size-8"
+                    onClick={() => setLogsAgentId(agent.id)}
+                    title="View logs"
+                  >
+                    <ScrollText className="size-4" />
+                  </Button>
                   {agent.status === 'running' && (
                     <Button
                       variant="ghost"
@@ -279,6 +297,7 @@ export const AgentsPage: FC = () => {
                       className="size-8"
                       onClick={() => handleStop(agent.id)}
                       disabled={actionInProgress === agent.id}
+                      title="Stop"
                     >
                       <Square className="size-4" />
                     </Button>
@@ -290,6 +309,7 @@ export const AgentsPage: FC = () => {
                       className="size-8"
                       onClick={() => handleStart(agent.id)}
                       disabled={actionInProgress === agent.id}
+                      title="Start"
                     >
                       <Play className="size-4" />
                     </Button>
@@ -301,6 +321,7 @@ export const AgentsPage: FC = () => {
                       className="size-8 text-destructive hover:text-destructive"
                       onClick={() => handleDelete(agent.id)}
                       disabled={actionInProgress === agent.id}
+                      title="Delete"
                     >
                       <Trash2 className="size-4" />
                     </Button>
@@ -313,6 +334,17 @@ export const AgentsPage: FC = () => {
             </Card>
           ))}
         </div>
+      )}
+
+      {logsAgent && (
+        <AgentLogsDialog
+          agentId={logsAgent.id}
+          agentName={logsAgent.name}
+          open={!!logsAgentId}
+          onOpenChange={(isOpen) => {
+            if (!isOpen) setLogsAgentId(null)
+          }}
+        />
       )}
     </div>
   )
