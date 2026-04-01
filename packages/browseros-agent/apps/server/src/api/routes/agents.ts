@@ -215,23 +215,16 @@ function generateComposeFile(config: {
   token: string
   configDir: string
   workspaceDir: string
-  extraEnv?: Array<{ envVar: string; value: string }>
 }): string {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
-  const envLines = [
-    `      - OPENCLAW_GATEWAY_TOKEN=${config.token}`,
-    `      - TZ=${tz}`,
-  ]
-  for (const env of config.extraEnv ?? []) {
-    envLines.push(`      - ${env.envVar}=${env.value}`)
-  }
   return `services:
   openclaw-gateway:
     image: ${config.image}
     ports:
       - "127.0.0.1:${config.gatewayPort}:18789"
     environment:
-${envLines.join('\n')}
+      - OPENCLAW_GATEWAY_TOKEN=${config.token}
+      - TZ=${tz}
     volumes:
       - ${config.configDir}:/home/node/.openclaw
       - ${config.workspaceDir}:/home/node/.openclaw/workspace
@@ -243,6 +236,81 @@ ${envLines.join('\n')}
       retries: 3
     restart: unless-stopped
 `
+}
+
+function generateOpenClawConfig(config: {
+  port: number
+  providerType?: string
+  apiKey?: string
+  baseUrl?: string
+  modelId?: string
+  providerName?: string
+}): Record<string, unknown> {
+  const openclawConfig: Record<string, unknown> = {
+    gateway: {
+      mode: 'local',
+      controlUi: {
+        allowedOrigins: [
+          `http://127.0.0.1:${config.port}`,
+          `http://localhost:${config.port}`,
+        ],
+      },
+      http: {
+        endpoints: {
+          chatCompletions: { enabled: true },
+        },
+      },
+    },
+  }
+
+  if (!config.apiKey || !config.providerType) {
+    return openclawConfig
+  }
+
+  const directEnvVar = OPENCLAW_PROVIDER_ENV_MAP[config.providerType]
+
+  if (directEnvVar) {
+    // Built-in provider (Anthropic, OpenAI, Google, etc.)
+    openclawConfig.env = { [directEnvVar]: config.apiKey }
+    if (config.modelId) {
+      openclawConfig.agents = {
+        defaults: {
+          model: { primary: `${config.providerType}/${config.modelId}` },
+        },
+      }
+    }
+  } else if (config.baseUrl) {
+    // Custom OpenAI-compatible provider
+    const providerId = (config.providerName || 'custom-provider')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+    const envVarName = `${providerId.toUpperCase().replace(/-/g, '_')}_API_KEY`
+
+    openclawConfig.env = { [envVarName]: config.apiKey }
+    openclawConfig.models = {
+      mode: 'merge',
+      providers: {
+        [providerId]: {
+          baseUrl: config.baseUrl,
+          apiKey: `\${${envVarName}}`,
+          api: 'openai-completions',
+          ...(config.modelId
+            ? { models: [{ id: config.modelId, name: config.modelId }] }
+            : {}),
+        },
+      },
+    }
+    if (config.modelId) {
+      openclawConfig.agents = {
+        defaults: {
+          model: { primary: `${providerId}/${config.modelId}` },
+        },
+      }
+    }
+  }
+
+  return openclawConfig
 }
 
 async function dumpContainerLogs(
@@ -264,34 +332,6 @@ async function dumpContainerLogs(
   } catch {
     // Best effort
   }
-}
-
-async function runConfigSet(
-  instance: AgentInstance,
-  agentDir: string,
-  name: string,
-  key: string,
-  value: string,
-): Promise<number> {
-  return runCommandWithLogs(
-    instance,
-    'docker',
-    [
-      'compose',
-      'run',
-      '--rm',
-      '--no-deps',
-      '--entrypoint',
-      'node',
-      'openclaw-gateway',
-      'dist/index.js',
-      'config',
-      'set',
-      key,
-      value,
-    ],
-    { cwd: agentDir, env: composeEnv(name) },
-  )
 }
 
 // ─── Routes ─────────────────────────────────────────────────────────────────
@@ -354,6 +394,7 @@ export function createAgentsRoutes() {
         apiKey?: string
         baseUrl?: string
         modelId?: string
+        providerName?: string
       }>()
       const name = body.name?.trim()
 
@@ -394,29 +435,6 @@ export function createAgentsRoutes() {
       const agentDir = path.join(getAgentsBaseDir(), name)
       const token = crypto.randomUUID()
 
-      // Map BrowserOS provider to OpenClaw env vars + model string
-      const llmEnvVars: Array<{ envVar: string; value: string }> = []
-      let openclawModel: string | undefined
-      if (body.apiKey && body.providerType) {
-        const directEnvVar = OPENCLAW_PROVIDER_ENV_MAP[body.providerType]
-        if (directEnvVar) {
-          // Direct mapping (Anthropic, OpenAI, etc.)
-          llmEnvVars.push({ envVar: directEnvVar, value: body.apiKey })
-          // Set model: <provider>/<modelId> if modelId provided
-          if (body.modelId) {
-            openclawModel = `${body.providerType}/${body.modelId}`
-          }
-        } else if (body.baseUrl) {
-          // OpenAI-compatible provider — pass as OPENAI_API_KEY + OPENAI_BASE_URL
-          llmEnvVars.push({ envVar: 'OPENAI_API_KEY', value: body.apiKey })
-          llmEnvVars.push({ envVar: 'OPENAI_BASE_URL', value: body.baseUrl })
-          // OpenAI-compatible models are referenced as openai/<modelId>
-          if (body.modelId) {
-            openclawModel = `openai/${body.modelId}`
-          }
-        }
-      }
-
       const instance: AgentInstance = {
         id,
         name,
@@ -448,13 +466,13 @@ export function createAgentsRoutes() {
           fs.mkdirSync(workspaceDir, { recursive: true })
           pushLog(instance, 'Created agent directories')
 
+          // Generate docker-compose.yml
           const composeContent = generateComposeFile({
             image: OPENCLAW_IMAGE,
             gatewayPort: port,
             token,
             configDir,
             workspaceDir,
-            extraEnv: llmEnvVars,
           })
           fs.writeFileSync(
             path.join(agentDir, 'docker-compose.yml'),
@@ -462,6 +480,22 @@ export function createAgentsRoutes() {
           )
           pushLog(instance, 'Generated docker-compose.yml')
 
+          // Write openclaw.json config (gateway mode, allowed origins, LLM provider, model)
+          const openclawConfig = generateOpenClawConfig({
+            port,
+            providerType: body.providerType,
+            apiKey: body.apiKey,
+            baseUrl: body.baseUrl,
+            modelId: body.modelId,
+            providerName: body.providerName,
+          })
+          fs.writeFileSync(
+            path.join(configDir, 'openclaw.json'),
+            JSON.stringify(openclawConfig, null, 2),
+          )
+          pushLog(instance, 'Wrote openclaw.json configuration')
+
+          // Pull image
           pushLog(instance, `Pulling image ${OPENCLAW_IMAGE}...`)
           const pullExit = await runCommandWithLogs(
             instance,
@@ -473,58 +507,6 @@ export function createAgentsRoutes() {
             throw new Error('Failed to pull OpenClaw image')
           }
           pushLog(instance, 'Image pulled successfully')
-
-          pushLog(instance, 'Configuring gateway...')
-          const modeExit = await runConfigSet(
-            instance,
-            agentDir,
-            name,
-            'gateway.mode',
-            'local',
-          )
-          if (modeExit !== 0) {
-            throw new Error('Failed to configure gateway mode')
-          }
-
-          const originsExit = await runConfigSet(
-            instance,
-            agentDir,
-            name,
-            'gateway.controlUi.allowedOrigins',
-            JSON.stringify([
-              `http://127.0.0.1:${port}`,
-              `http://localhost:${port}`,
-            ]),
-          )
-          if (originsExit !== 0) {
-            throw new Error('Failed to configure Control UI allowed origins')
-          }
-
-          // Enable OpenAI-compatible HTTP API for chat
-          const httpApiExit = await runConfigSet(
-            instance,
-            agentDir,
-            name,
-            'gateway.http.endpoints.chatCompletions.enabled',
-            'true',
-          )
-          if (httpApiExit !== 0) {
-            throw new Error('Failed to enable chat completions API')
-          }
-          // Set default model if provider was configured
-          if (openclawModel) {
-            const modelExit = await runConfigSet(
-              instance,
-              agentDir,
-              name,
-              'agents.defaults.model.primary',
-              openclawModel,
-            )
-            if (modelExit !== 0) {
-              pushLog(instance, 'Warning: failed to set default model')
-            }
-          }
-          pushLog(instance, 'Gateway configured for local mode')
 
           pushLog(instance, 'Starting OpenClaw gateway...')
           const upExit = await runCommandWithLogs(

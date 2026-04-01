@@ -139,6 +139,7 @@ export const AgentsPage: FC = () => {
           apiKey: selectedProvider?.apiKey,
           baseUrl: selectedProvider?.baseUrl,
           modelId: selectedProvider?.modelId,
+          providerName: selectedProvider?.name,
         }),
       })
 
