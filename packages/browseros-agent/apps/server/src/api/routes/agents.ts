@@ -336,6 +336,33 @@ export function createAgentsRoutes() {
           if (configExit !== 0) {
             throw new Error('Failed to configure gateway mode')
           }
+
+          // Set allowed origins for Control UI (required when bind is non-loopback)
+          const originsExit = await runCommandWithLogs(
+            instance,
+            'docker',
+            [
+              'compose',
+              'run',
+              '--rm',
+              '--no-deps',
+              '--entrypoint',
+              'node',
+              'openclaw-gateway',
+              'dist/index.js',
+              'config',
+              'set',
+              'gateway.controlUi.allowedOrigins',
+              `http://127.0.0.1:${port},http://localhost:${port}`,
+            ],
+            {
+              cwd: agentDir,
+              env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
+            },
+          )
+          if (originsExit !== 0) {
+            throw new Error('Failed to configure Control UI allowed origins')
+          }
           pushLog(instance, 'Gateway configured for local mode')
 
           // Start containers
