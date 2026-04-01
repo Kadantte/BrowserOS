@@ -5,12 +5,7 @@ import { parse } from 'dotenv'
 
 import type { BuildConfig } from './types'
 
-const REQUIRED_PROD_VARS = [
-  'BROWSEROS_CONFIG_URL',
-  'CODEGEN_SERVICE_URL',
-  'POSTHOG_API_KEY',
-  'SENTRY_DSN',
-]
+const REQUIRED_PROD_VARS = ['BROWSEROS_CONFIG_URL']
 const INLINED_ENV_VARS = [
   ...REQUIRED_PROD_VARS,
   'NODE_ENV',

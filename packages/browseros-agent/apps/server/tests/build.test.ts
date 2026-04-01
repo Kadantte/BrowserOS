@@ -33,9 +33,6 @@ function getNativeTarget(): { id: string; ext: string } {
 // Stub values so the build config validation passes without real secrets
 const INLINE_ENV_STUBS: Record<string, string> = {
   BROWSEROS_CONFIG_URL: 'https://stub.test/config',
-  CODEGEN_SERVICE_URL: 'https://stub.test/codegen',
-  POSTHOG_API_KEY: 'phc_test_stub',
-  SENTRY_DSN: 'https://stub@sentry.test/0',
 }
 
 const R2_ENV_STUBS: Record<string, string> = {
