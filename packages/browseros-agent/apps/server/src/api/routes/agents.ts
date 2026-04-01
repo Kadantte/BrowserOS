@@ -3,9 +3,9 @@
  * Copyright 2025 BrowserOS
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * Agent management routes for OpenClaw Docker instances.
- * Generates docker-compose.yml directly and uses docker compose for lifecycle.
- * Provides SSE log streaming for real-time setup visibility.
+ * Agent management routes for OpenClaw container instances.
+ * Generates docker-compose.yml and uses Podman compose for lifecycle.
+ * Manages Podman machine (Linux VM) automatically on macOS/Windows.
  * Persists agent metadata to ~/.browseros/agents.json.
  */
 
@@ -15,6 +15,7 @@ import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
 import { getBrowserosDir } from '../../lib/browseros-dir'
 import { logger } from '../../lib/logger'
+import { getPodmanRuntime } from '../services/podman-runtime'
 
 const OPENCLAW_IMAGE = 'ghcr.io/openclaw/openclaw:latest'
 const MAX_LOG_LINES = 1000
@@ -125,17 +126,8 @@ function updateStatus(
   saveAgents()
 }
 
-async function isDockerAvailable(): Promise<boolean> {
-  try {
-    const proc = Bun.spawn(['docker', 'info'], {
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
-    const exitCode = await proc.exited
-    return exitCode === 0
-  } catch {
-    return false
-  }
+async function isRuntimeAvailable(): Promise<boolean> {
+  return getPodmanRuntime().isPodmanAvailable()
 }
 
 async function findAvailablePort(startPort: number): Promise<number> {
@@ -151,58 +143,22 @@ async function findAvailablePort(startPort: number): Promise<number> {
   })
 }
 
-async function streamProcessOutput(
-  proc: ReturnType<typeof Bun.spawn>,
-  instance: AgentInstance,
-  prefix: string,
-): Promise<void> {
-  const seen = new Set<string>()
-  const dedup =
-    (tag: string) => async (readable: ReadableStream<Uint8Array>) => {
-      const reader = readable.getReader()
-      const decoder = new TextDecoder()
-      let buf = ''
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buf += decoder.decode(value, { stream: true })
-        const lines = buf.split('\n')
-        buf = lines.pop() ?? ''
-        for (const line of lines) {
-          const trimmed = line.trim()
-          if (trimmed && !seen.has(trimmed)) {
-            seen.add(trimmed)
-            pushLog(instance, `[${tag}] ${trimmed}`)
-          }
-        }
-      }
-      const trimmed = buf.trim()
-      if (trimmed && !seen.has(trimmed)) {
-        seen.add(trimmed)
-        pushLog(instance, `[${tag}] ${trimmed}`)
-      }
-    }
-
-  await Promise.all([
-    dedup(prefix)(proc.stdout as ReadableStream<Uint8Array>),
-    dedup(prefix)(proc.stderr as ReadableStream<Uint8Array>),
-  ])
-}
-
 async function runCommandWithLogs(
   instance: AgentInstance,
-  cmd: string,
   args: string[],
   options?: { cwd?: string; env?: Record<string, string> },
 ): Promise<number> {
-  const proc = Bun.spawn([cmd, ...args], {
-    stdout: 'pipe',
-    stderr: 'pipe',
+  const seen = new Set<string>()
+  return getPodmanRuntime().runCommand(args, {
     cwd: options?.cwd,
-    env: { ...process.env, ...options?.env },
+    env: options?.env,
+    onOutput: (line) => {
+      if (!seen.has(line)) {
+        seen.add(line)
+        pushLog(instance, line)
+      }
+    },
   })
-  await streamProcessOutput(proc, instance, cmd)
-  return proc.exited
 }
 
 function composeEnv(name: string): Record<string, string> {
@@ -323,7 +279,6 @@ async function dumpContainerLogs(
       pushLog(instance, '--- Container logs ---')
       await runCommandWithLogs(
         instance,
-        'docker',
         ['compose', 'logs', '--no-color', '--tail', '50'],
         { cwd: agentDir, env: composeEnv(name) },
       )
@@ -345,9 +300,16 @@ export function createAgentsRoutes() {
       return c.json({ agents: agentList })
     })
 
-    .get('/docker-status', async (c) => {
-      const available = await isDockerAvailable()
-      return c.json({ available })
+    .get('/runtime-status', async (c) => {
+      const runtime = getPodmanRuntime()
+      const available = await runtime.isPodmanAvailable()
+      const machineStatus = available ? await runtime.getMachineStatus() : null
+      return c.json({
+        available,
+        machineInitialized: machineStatus?.initialized ?? false,
+        machineRunning: machineStatus?.running ?? false,
+        needsSetup: available && !machineStatus?.initialized,
+      })
     })
 
     .get('/:id/logs', (c) => {
@@ -419,12 +381,12 @@ export function createAgentsRoutes() {
         return c.json({ error: `Agent "${name}" already exists` }, 409)
       }
 
-      const dockerAvailable = await isDockerAvailable()
-      if (!dockerAvailable) {
+      const runtimeAvailable = await isRuntimeAvailable()
+      if (!runtimeAvailable) {
         return c.json(
           {
             error:
-              'Docker is not available. Install Docker Desktop or OrbStack to create local agents.',
+              'Podman is not available. Install Podman to create local agents.',
           },
           503,
         )
@@ -495,11 +457,13 @@ export function createAgentsRoutes() {
           )
           pushLog(instance, 'Wrote openclaw.json configuration')
 
-          // Pull image
+          pushLog(instance, 'Checking container runtime...')
+          await getPodmanRuntime().ensureReady((msg) => pushLog(instance, msg))
+          pushLog(instance, 'Container runtime ready')
+
           pushLog(instance, `Pulling image ${OPENCLAW_IMAGE}...`)
           const pullExit = await runCommandWithLogs(
             instance,
-            'docker',
             ['compose', 'pull', '--quiet'],
             { cwd: agentDir, env: composeEnv(name) },
           )
@@ -511,7 +475,6 @@ export function createAgentsRoutes() {
           pushLog(instance, 'Starting OpenClaw gateway...')
           const upExit = await runCommandWithLogs(
             instance,
-            'docker',
             ['compose', 'up', '-d'],
             { cwd: agentDir, env: composeEnv(name) },
           )
@@ -584,7 +547,7 @@ export function createAgentsRoutes() {
 
       try {
         pushLog(instance, 'Stopping agent...')
-        await runCommandWithLogs(instance, 'docker', ['compose', 'stop'], {
+        await runCommandWithLogs(instance, ['compose', 'stop'], {
           cwd: instance.dir,
           env: composeEnv(instance.name),
         })
@@ -615,7 +578,7 @@ export function createAgentsRoutes() {
 
       try {
         pushLog(instance, 'Starting agent...')
-        await runCommandWithLogs(instance, 'docker', ['compose', 'up', '-d'], {
+        await runCommandWithLogs(instance, ['compose', 'up', '-d'], {
           cwd: instance.dir,
           env: composeEnv(instance.name),
         })
@@ -708,12 +671,10 @@ export function createAgentsRoutes() {
           instance.logListeners.delete(listener)
         }
 
-        await runCommandWithLogs(
-          instance,
-          'docker',
-          ['compose', 'down', '-v'],
-          { cwd: instance.dir, env: composeEnv(instance.name) },
-        )
+        await runCommandWithLogs(instance, ['compose', 'down', '-v'], {
+          cwd: instance.dir,
+          env: composeEnv(instance.name),
+        })
         fs.rmSync(instance.dir, { recursive: true, force: true })
         instances.delete(id)
         saveAgents()
