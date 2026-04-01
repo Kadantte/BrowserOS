@@ -309,6 +309,35 @@ export function createAgentsRoutes() {
           }
           pushLog(instance, 'Image pulled successfully')
 
+          // Initialize gateway config
+          pushLog(instance, 'Configuring gateway mode...')
+          const configExit = await runCommandWithLogs(
+            instance,
+            'docker',
+            [
+              'compose',
+              'run',
+              '--rm',
+              '--no-deps',
+              '--entrypoint',
+              'node',
+              'openclaw-gateway',
+              'dist/index.js',
+              'config',
+              'set',
+              'gateway.mode',
+              'local',
+            ],
+            {
+              cwd: agentDir,
+              env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
+            },
+          )
+          if (configExit !== 0) {
+            throw new Error('Failed to configure gateway mode')
+          }
+          pushLog(instance, 'Gateway configured for local mode')
+
           // Start containers
           pushLog(instance, 'Starting OpenClaw gateway...')
           const upExit = await runCommandWithLogs(
