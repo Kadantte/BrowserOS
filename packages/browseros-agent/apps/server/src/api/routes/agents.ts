@@ -6,35 +6,91 @@
  * Agent management routes for OpenClaw Docker instances.
  * Generates docker-compose.yml directly and uses docker compose for lifecycle.
  * Provides SSE log streaming for real-time setup visibility.
+ * Persists agent metadata to ~/.browseros/agents.json.
  */
 
 import fs from 'node:fs'
 import path from 'node:path'
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
+import { getBrowserosDir } from '../../lib/browseros-dir'
 import { logger } from '../../lib/logger'
 
 const OPENCLAW_IMAGE = 'ghcr.io/openclaw/openclaw:latest'
 const MAX_LOG_LINES = 1000
 
-interface AgentInstance {
+// Persisted to agents.json
+interface AgentRecord {
   id: string
   name: string
   status: 'creating' | 'running' | 'stopped' | 'error'
   port: number
   dir: string
+  token: string
   createdAt: string
   error?: string
+}
+
+// Runtime-only (not persisted)
+interface AgentRuntime {
   logs: string[]
   logListeners: Set<(line: string) => void>
 }
 
+type AgentInstance = AgentRecord & AgentRuntime
+
+// ─── Persistence ────────────────────────────────────────────────────────────
+
+function getAgentsJsonPath(): string {
+  return path.join(getBrowserosDir(), 'agents.json')
+}
+
 function getAgentsBaseDir(): string {
-  const home = process.env.HOME || process.env.USERPROFILE || '/tmp'
-  return path.join(home, '.browseros', 'agents')
+  return path.join(getBrowserosDir(), 'agents')
 }
 
 const instances = new Map<string, AgentInstance>()
+
+function saveAgents(): void {
+  const records: AgentRecord[] = Array.from(instances.values()).map(
+    ({ logs: _, logListeners: __, ...record }) => record,
+  )
+  try {
+    const filePath = getAgentsJsonPath()
+    fs.mkdirSync(path.dirname(filePath), { recursive: true })
+    fs.writeFileSync(filePath, JSON.stringify(records, null, 2))
+  } catch (err) {
+    logger.warn('Failed to save agents.json', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+function loadAgents(): void {
+  try {
+    const filePath = getAgentsJsonPath()
+    if (!fs.existsSync(filePath)) return
+
+    const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as AgentRecord[]
+    for (const record of data) {
+      instances.set(record.id, {
+        ...record,
+        logs: [],
+        logListeners: new Set(),
+      })
+    }
+    logger.info(`Loaded ${data.length} agent(s) from agents.json`)
+  } catch (err) {
+    logger.warn('Failed to load agents.json', {
+      error: err instanceof Error ? err.message : String(err),
+    })
+  }
+}
+
+// Load persisted agents on module init
+loadAgents()
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
 
 function pushLog(instance: AgentInstance, line: string) {
   const timestamped = `[${new Date().toISOString().slice(11, 19)}] ${line}`
@@ -45,6 +101,16 @@ function pushLog(instance: AgentInstance, line: string) {
   for (const listener of instance.logListeners) {
     listener(timestamped)
   }
+}
+
+function updateStatus(
+  instance: AgentInstance,
+  status: AgentRecord['status'],
+  error?: string,
+): void {
+  instance.status = status
+  instance.error = error
+  saveAgents()
 }
 
 async function isDockerAvailable(): Promise<boolean> {
@@ -78,32 +144,32 @@ async function streamProcessOutput(
   instance: AgentInstance,
   prefix: string,
 ): Promise<void> {
-  // Docker compose writes progress to stderr; deduplicate across both streams
   const seen = new Set<string>()
-  const dedup = (tag: string) => async (stream: ReadableStream<Uint8Array>) => {
-    const reader = stream.getReader()
-    const decoder = new TextDecoder()
-    let buf = ''
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      buf += decoder.decode(value, { stream: true })
-      const lines = buf.split('\n')
-      buf = lines.pop() ?? ''
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (trimmed && !seen.has(trimmed)) {
-          seen.add(trimmed)
-          pushLog(instance, `[${tag}] ${trimmed}`)
+  const dedup =
+    (tag: string) => async (readable: ReadableStream<Uint8Array>) => {
+      const reader = readable.getReader()
+      const decoder = new TextDecoder()
+      let buf = ''
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buf += decoder.decode(value, { stream: true })
+        const lines = buf.split('\n')
+        buf = lines.pop() ?? ''
+        for (const line of lines) {
+          const trimmed = line.trim()
+          if (trimmed && !seen.has(trimmed)) {
+            seen.add(trimmed)
+            pushLog(instance, `[${tag}] ${trimmed}`)
+          }
         }
       }
+      const trimmed = buf.trim()
+      if (trimmed && !seen.has(trimmed)) {
+        seen.add(trimmed)
+        pushLog(instance, `[${tag}] ${trimmed}`)
+      }
     }
-    const trimmed = buf.trim()
-    if (trimmed && !seen.has(trimmed)) {
-      seen.add(trimmed)
-      pushLog(instance, `[${tag}] ${trimmed}`)
-    }
-  }
 
   await Promise.all([
     dedup(prefix)(proc.stdout as ReadableStream<Uint8Array>),
@@ -123,9 +189,12 @@ async function runCommandWithLogs(
     cwd: options?.cwd,
     env: { ...process.env, ...options?.env },
   })
-
   await streamProcessOutput(proc, instance, cmd)
   return proc.exited
+}
+
+function composeEnv(name: string): Record<string, string> {
+  return { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` }
 }
 
 function generateComposeFile(config: {
@@ -156,6 +225,57 @@ function generateComposeFile(config: {
     restart: unless-stopped
 `
 }
+
+async function dumpContainerLogs(
+  instance: AgentInstance,
+  agentDir: string,
+  name: string,
+): Promise<void> {
+  try {
+    if (fs.existsSync(path.join(agentDir, 'docker-compose.yml'))) {
+      pushLog(instance, '--- Container logs ---')
+      await runCommandWithLogs(
+        instance,
+        'docker',
+        ['compose', 'logs', '--no-color', '--tail', '50'],
+        { cwd: agentDir, env: composeEnv(name) },
+      )
+      pushLog(instance, '--- End container logs ---')
+    }
+  } catch {
+    // Best effort
+  }
+}
+
+async function runConfigSet(
+  instance: AgentInstance,
+  agentDir: string,
+  name: string,
+  key: string,
+  value: string,
+): Promise<number> {
+  return runCommandWithLogs(
+    instance,
+    'docker',
+    [
+      'compose',
+      'run',
+      '--rm',
+      '--no-deps',
+      '--entrypoint',
+      'node',
+      'openclaw-gateway',
+      'dist/index.js',
+      'config',
+      'set',
+      key,
+      value,
+    ],
+    { cwd: agentDir, env: composeEnv(name) },
+  )
+}
+
+// ─── Routes ─────────────────────────────────────────────────────────────────
 
 export function createAgentsRoutes() {
   return new Hono()
@@ -188,12 +308,10 @@ export function createAgentsRoutes() {
           await s.write(`data: ${JSON.stringify(line)}\n\n`)
         }
 
-        // Replay existing logs
         for (const line of instance.logs) {
           await write(line)
         }
 
-        // Subscribe to new logs
         const onLog = (line: string) => {
           write(line).catch(() => {
             instance.logListeners.delete(onLog)
@@ -201,7 +319,6 @@ export function createAgentsRoutes() {
         }
         instance.logListeners.add(onLog)
 
-        // Keep connection alive until client disconnects
         await new Promise<void>((resolve) => {
           s.onAbort(() => {
             instance.logListeners.delete(onLog)
@@ -258,11 +375,13 @@ export function createAgentsRoutes() {
         status: 'creating',
         port,
         dir: agentDir,
+        token,
         createdAt: new Date().toISOString(),
         logs: [],
         logListeners: new Set(),
       }
       instances.set(id, instance)
+      saveAgents()
 
       logger.info('Creating OpenClaw agent instance', {
         id,
@@ -274,14 +393,12 @@ export function createAgentsRoutes() {
       // Set up and start in the background
       ;(async () => {
         try {
-          // Create directories
           const configDir = path.join(agentDir, 'config')
           const workspaceDir = path.join(agentDir, 'workspace')
           fs.mkdirSync(configDir, { recursive: true })
           fs.mkdirSync(workspaceDir, { recursive: true })
           pushLog(instance, 'Created agent directories')
 
-          // Generate docker-compose.yml
           const composeContent = generateComposeFile({
             image: OPENCLAW_IMAGE,
             gatewayPort: port,
@@ -295,97 +412,56 @@ export function createAgentsRoutes() {
           )
           pushLog(instance, 'Generated docker-compose.yml')
 
-          // Pull image
           pushLog(instance, `Pulling image ${OPENCLAW_IMAGE}...`)
           const pullExit = await runCommandWithLogs(
             instance,
             'docker',
             ['compose', 'pull', '--quiet'],
-            {
-              cwd: agentDir,
-              env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
-            },
+            { cwd: agentDir, env: composeEnv(name) },
           )
           if (pullExit !== 0) {
             throw new Error('Failed to pull OpenClaw image')
           }
           pushLog(instance, 'Image pulled successfully')
 
-          // Initialize gateway config
-          pushLog(instance, 'Configuring gateway mode...')
-          const configExit = await runCommandWithLogs(
+          pushLog(instance, 'Configuring gateway...')
+          const modeExit = await runConfigSet(
             instance,
-            'docker',
-            [
-              'compose',
-              'run',
-              '--rm',
-              '--no-deps',
-              '--entrypoint',
-              'node',
-              'openclaw-gateway',
-              'dist/index.js',
-              'config',
-              'set',
-              'gateway.mode',
-              'local',
-            ],
-            {
-              cwd: agentDir,
-              env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
-            },
+            agentDir,
+            name,
+            'gateway.mode',
+            'local',
           )
-          if (configExit !== 0) {
+          if (modeExit !== 0) {
             throw new Error('Failed to configure gateway mode')
           }
 
-          // Set allowed origins for Control UI (required when bind is non-loopback)
-          const originsExit = await runCommandWithLogs(
+          const originsExit = await runConfigSet(
             instance,
-            'docker',
-            [
-              'compose',
-              'run',
-              '--rm',
-              '--no-deps',
-              '--entrypoint',
-              'node',
-              'openclaw-gateway',
-              'dist/index.js',
-              'config',
-              'set',
-              'gateway.controlUi.allowedOrigins',
-              JSON.stringify([
-                `http://127.0.0.1:${port}`,
-                `http://localhost:${port}`,
-              ]),
-            ],
-            {
-              cwd: agentDir,
-              env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
-            },
+            agentDir,
+            name,
+            'gateway.controlUi.allowedOrigins',
+            JSON.stringify([
+              `http://127.0.0.1:${port}`,
+              `http://localhost:${port}`,
+            ]),
           )
           if (originsExit !== 0) {
             throw new Error('Failed to configure Control UI allowed origins')
           }
           pushLog(instance, 'Gateway configured for local mode')
 
-          // Start containers
           pushLog(instance, 'Starting OpenClaw gateway...')
           const upExit = await runCommandWithLogs(
             instance,
             'docker',
             ['compose', 'up', '-d'],
-            {
-              cwd: agentDir,
-              env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
-            },
+            { cwd: agentDir, env: composeEnv(name) },
           )
           if (upExit !== 0) {
             throw new Error('Failed to start OpenClaw containers')
           }
 
-          // Wait for health check
           pushLog(instance, 'Waiting for gateway to be ready...')
           let healthy = false
           for (let i = 0; i < 30; i++) {
@@ -402,18 +478,7 @@ export function createAgentsRoutes() {
           }
 
           if (!healthy) {
-            // Dump container logs to help debug
-            pushLog(instance, '--- Container logs ---')
-            await runCommandWithLogs(
-              instance,
-              'docker',
-              ['compose', 'logs', '--no-color', '--tail', '50'],
-              {
-                cwd: agentDir,
-                env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
-              },
-            )
-            pushLog(instance, '--- End container logs ---')
+            await dumpContainerLogs(instance, agentDir, name)
             throw new Error('Gateway did not become healthy within 30 seconds')
           }
 
@@ -422,31 +487,13 @@ export function createAgentsRoutes() {
             `OpenClaw gateway is ready at ws://127.0.0.1:${port}`,
           )
           pushLog(instance, `Control UI available at http://127.0.0.1:${port}`)
-          instance.status = 'running'
+          updateStatus(instance, 'running')
           logger.info('OpenClaw agent instance started', { id, name, port })
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err)
           pushLog(instance, `ERROR: ${message}`)
-          // Also fetch container logs on any error if the compose file exists
-          try {
-            if (fs.existsSync(path.join(agentDir, 'docker-compose.yml'))) {
-              pushLog(instance, '--- Container logs ---')
-              await runCommandWithLogs(
-                instance,
-                'docker',
-                ['compose', 'logs', '--no-color', '--tail', '50'],
-                {
-                  cwd: agentDir,
-                  env: { COMPOSE_PROJECT_NAME: `browseros-claw-${name}` },
-                },
-              )
-              pushLog(instance, '--- End container logs ---')
-            }
-          } catch {
-            // Best effort — don't mask the original error
-          }
-          instance.status = 'error'
-          instance.error = message
+          await dumpContainerLogs(instance, agentDir, name)
+          updateStatus(instance, 'error', message)
           logger.error('Failed to create OpenClaw agent instance', {
             id,
             error: message,
@@ -462,6 +509,7 @@ export function createAgentsRoutes() {
             status: 'creating',
             port,
             dir: agentDir,
+            token,
             createdAt: instance.createdAt,
           },
         },
@@ -481,9 +529,9 @@ export function createAgentsRoutes() {
         pushLog(instance, 'Stopping agent...')
         await runCommandWithLogs(instance, 'docker', ['compose', 'stop'], {
           cwd: instance.dir,
-          env: { COMPOSE_PROJECT_NAME: `browseros-claw-${instance.name}` },
+          env: composeEnv(instance.name),
         })
-        instance.status = 'stopped'
+        updateStatus(instance, 'stopped')
         pushLog(instance, 'Agent stopped')
         return c.json({
           agent: {
@@ -512,11 +560,9 @@ export function createAgentsRoutes() {
         pushLog(instance, 'Starting agent...')
         await runCommandWithLogs(instance, 'docker', ['compose', 'up', '-d'], {
           cwd: instance.dir,
-          env: {
-            COMPOSE_PROJECT_NAME: `browseros-claw-${instance.name}`,
-          },
+          env: composeEnv(instance.name),
         })
-        instance.status = 'running'
+        updateStatus(instance, 'running')
         pushLog(instance, 'Agent started')
         return c.json({
           agent: {
@@ -542,26 +588,19 @@ export function createAgentsRoutes() {
       }
 
       try {
-        // Close all log listeners
         for (const listener of instance.logListeners) {
           instance.logListeners.delete(listener)
         }
 
-        // Stop and remove containers + volumes via compose
         await runCommandWithLogs(
           instance,
           'docker',
           ['compose', 'down', '-v'],
-          {
-            cwd: instance.dir,
-            env: {
-              COMPOSE_PROJECT_NAME: `browseros-claw-${instance.name}`,
-            },
-          },
+          { cwd: instance.dir, env: composeEnv(instance.name) },
         )
-        // Clean up agent directory
         fs.rmSync(instance.dir, { recursive: true, force: true })
         instances.delete(id)
+        saveAgents()
         return c.json({ success: true })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
