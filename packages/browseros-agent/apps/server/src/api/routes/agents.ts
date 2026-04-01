@@ -19,6 +19,17 @@ import { logger } from '../../lib/logger'
 const OPENCLAW_IMAGE = 'ghcr.io/openclaw/openclaw:latest'
 const MAX_LOG_LINES = 1000
 
+// Maps BrowserOS provider types to OpenClaw environment variable names
+const OPENCLAW_PROVIDER_ENV_MAP: Record<string, string> = {
+  anthropic: 'ANTHROPIC_API_KEY',
+  openai: 'OPENAI_API_KEY',
+  google: 'GEMINI_API_KEY',
+  openrouter: 'OPENROUTER_API_KEY',
+  moonshot: 'MOONSHOT_API_KEY',
+  groq: 'GROQ_API_KEY',
+  mistral: 'MISTRAL_API_KEY',
+}
+
 // Persisted to agents.json
 interface AgentRecord {
   id: string
@@ -29,6 +40,7 @@ interface AgentRecord {
   token: string
   createdAt: string
   error?: string
+  providerType?: string
 }
 
 // Runtime-only (not persisted)
@@ -203,16 +215,25 @@ function generateComposeFile(config: {
   token: string
   configDir: string
   workspaceDir: string
+  llmProvider?: { envVar: string; apiKey: string }
 }): string {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone
+  const envLines = [
+    `      - OPENCLAW_GATEWAY_TOKEN=${config.token}`,
+    `      - TZ=${tz}`,
+  ]
+  if (config.llmProvider) {
+    envLines.push(
+      `      - ${config.llmProvider.envVar}=${config.llmProvider.apiKey}`,
+    )
+  }
   return `services:
   openclaw-gateway:
     image: ${config.image}
     ports:
       - "127.0.0.1:${config.gatewayPort}:18789"
     environment:
-      - OPENCLAW_GATEWAY_TOKEN=${config.token}
-      - TZ=${tz}
+${envLines.join('\n')}
     volumes:
       - ${config.configDir}:/home/node/.openclaw
       - ${config.workspaceDir}:/home/node/.openclaw/workspace
@@ -329,7 +350,11 @@ export function createAgentsRoutes() {
     })
 
     .post('/create', async (c) => {
-      const body = await c.req.json<{ name: string }>()
+      const body = await c.req.json<{
+        name: string
+        providerType?: string
+        apiKey?: string
+      }>()
       const name = body.name?.trim()
 
       if (!name) {
@@ -369,6 +394,15 @@ export function createAgentsRoutes() {
       const agentDir = path.join(getAgentsBaseDir(), name)
       const token = crypto.randomUUID()
 
+      // Map BrowserOS provider type to OpenClaw env var
+      const llmEnvVar = body.providerType
+        ? OPENCLAW_PROVIDER_ENV_MAP[body.providerType]
+        : undefined
+      const llmProvider =
+        llmEnvVar && body.apiKey
+          ? { envVar: llmEnvVar, apiKey: body.apiKey }
+          : undefined
+
       const instance: AgentInstance = {
         id,
         name,
@@ -377,6 +411,7 @@ export function createAgentsRoutes() {
         dir: agentDir,
         token,
         createdAt: new Date().toISOString(),
+        providerType: body.providerType,
         logs: [],
         logListeners: new Set(),
       }
@@ -405,6 +440,7 @@ export function createAgentsRoutes() {
             token,
             configDir,
             workspaceDir,
+            llmProvider,
           })
           fs.writeFileSync(
             path.join(agentDir, 'docker-compose.yml'),
@@ -448,6 +484,18 @@ export function createAgentsRoutes() {
           )
           if (originsExit !== 0) {
             throw new Error('Failed to configure Control UI allowed origins')
+          }
+
+          // Enable OpenAI-compatible HTTP API for chat
+          const httpApiExit = await runConfigSet(
+            instance,
+            agentDir,
+            name,
+            'gateway.http.endpoints.chatCompletions.enabled',
+            'true',
+          )
+          if (httpApiExit !== 0) {
+            throw new Error('Failed to enable chat completions API')
           }
           pushLog(instance, 'Gateway configured for local mode')
 
@@ -576,6 +624,65 @@ export function createAgentsRoutes() {
         const message = err instanceof Error ? err.message : String(err)
         pushLog(instance, `ERROR starting: ${message}`)
         return c.json({ error: `Failed to start agent: ${message}` }, 500)
+      }
+    })
+
+    .post('/:id/chat', async (c) => {
+      const { id } = c.req.param()
+      const instance = instances.get(id)
+
+      if (!instance) {
+        return c.json({ error: 'Agent not found' }, 404)
+      }
+      if (instance.status !== 'running') {
+        return c.json({ error: 'Agent is not running' }, 400)
+      }
+
+      const body = await c.req.json<{ message: string }>()
+      if (!body.message?.trim()) {
+        return c.json({ error: 'Message is required' }, 400)
+      }
+
+      const openclawUrl = `http://127.0.0.1:${instance.port}/v1/chat/completions`
+
+      try {
+        const response = await fetch(openclawUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${instance.token}`,
+          },
+          body: JSON.stringify({
+            model: 'openclaw/default',
+            stream: true,
+            messages: [{ role: 'user', content: body.message.trim() }],
+          }),
+        })
+
+        if (!response.ok) {
+          const errText = await response.text()
+          return c.json(
+            { error: `OpenClaw error: ${errText}` },
+            response.status as 400,
+          )
+        }
+
+        c.header('Content-Type', 'text/event-stream')
+        c.header('Cache-Control', 'no-cache')
+
+        return stream(c, async (s) => {
+          const reader = (
+            response.body as ReadableStream<Uint8Array>
+          ).getReader()
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            await s.write(value)
+          }
+        })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ error: `Failed to chat: ${message}` }, 500)
       }
     })
 

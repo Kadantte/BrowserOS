@@ -2,13 +2,14 @@ import {
   AlertCircle,
   Cpu,
   Loader2,
+  MessageSquare,
   Play,
   Plus,
   ScrollText,
   Square,
   Trash2,
 } from 'lucide-react'
-import { type FC, useEffect, useState } from 'react'
+import { type FC, useEffect, useMemo, useState } from 'react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -20,9 +21,28 @@ import {
   DialogTrigger,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
 import { getAgentServerUrl } from '@/lib/browseros/helpers'
+import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { useRpcClient } from '@/lib/rpc/RpcClientProvider'
+import { AgentChat } from './AgentChat'
 import { AgentLogsDialog } from './AgentLogsDialog'
+
+const OPENCLAW_COMPATIBLE_TYPES = new Set([
+  'anthropic',
+  'openai',
+  'google',
+  'openrouter',
+  'moonshot',
+  'groq',
+  'mistral',
+])
 
 interface AgentInstance {
   id: string
@@ -31,10 +51,12 @@ interface AgentInstance {
   port: number
   createdAt: string
   error?: string
+  providerType?: string
 }
 
 export const AgentsPage: FC = () => {
   const client = useRpcClient()
+  const { providers, defaultProviderId } = useLlmProviders()
   const [agents, setAgents] = useState<AgentInstance[]>([])
   const [loading, setLoading] = useState(true)
   const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null)
@@ -44,11 +66,35 @@ export const AgentsPage: FC = () => {
   const [actionInProgress, setActionInProgress] = useState<string | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
   const [logsAgentId, setLogsAgentId] = useState<string | null>(null)
+  const [chatAgentId, setChatAgentId] = useState<string | null>(null)
+  const [selectedProviderId, setSelectedProviderId] = useState('')
   const triggerRefresh = () => setRefreshKey((k) => k + 1)
 
   const logsAgent = logsAgentId
     ? agents.find((a) => a.id === logsAgentId)
     : null
+  const chatAgent = chatAgentId
+    ? agents.find((a) => a.id === chatAgentId)
+    : null
+
+  // Filter providers compatible with OpenClaw (have an API key + supported type)
+  const compatibleProviders = useMemo(
+    () =>
+      providers.filter(
+        (p) => p.apiKey && OPENCLAW_COMPATIBLE_TYPES.has(p.type),
+      ),
+    [providers],
+  )
+
+  // Pre-select default provider when dialog opens
+  useEffect(() => {
+    if (createDialogOpen && compatibleProviders.length > 0) {
+      const defaultMatch = compatibleProviders.find(
+        (p) => p.id === defaultProviderId,
+      )
+      setSelectedProviderId(defaultMatch?.id ?? compatibleProviders[0].id)
+    }
+  }, [createDialogOpen, compatibleProviders, defaultProviderId])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshKey triggers refetch from outside the effect
   useEffect(() => {
@@ -89,15 +135,26 @@ export const AgentsPage: FC = () => {
     if (!newAgentName.trim()) return
     setCreating(true)
     try {
-      const res = await client.agents.create.$post({
-        json: { name: newAgentName.trim() },
+      const selectedProvider = compatibleProviders.find(
+        (p) => p.id === selectedProviderId,
+      )
+
+      const baseUrl = await getAgentServerUrl()
+      const res = await fetch(`${baseUrl}/agents/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: newAgentName.trim(),
+          providerType: selectedProvider?.type,
+          apiKey: selectedProvider?.apiKey,
+        }),
       })
+
       if (res.ok) {
         const data = (await res.json()) as { agent: AgentInstance }
         setCreateDialogOpen(false)
         setNewAgentName('')
         triggerRefresh()
-        // Auto-open logs for the new agent
         setLogsAgentId(data.agent.id)
       }
     } finally {
@@ -145,6 +202,17 @@ export const AgentsPage: FC = () => {
     return <Badge variant={variant}>{label}</Badge>
   }
 
+  // Show chat view when an agent is selected
+  if (chatAgent) {
+    return (
+      <AgentChat
+        agentId={chatAgent.id}
+        agentName={chatAgent.name}
+        onBack={() => setChatAgentId(null)}
+      />
+    )
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-16">
@@ -188,11 +256,47 @@ export const AgentsPage: FC = () => {
                     if (e.key === 'Enter') handleCreate()
                   }}
                 />
-                <p className="text-muted-foreground text-xs">
-                  A Docker container with OpenClaw will be created locally.
-                  Requires ~500MB disk space.
-                </p>
               </div>
+
+              <div className="space-y-2">
+                <label className="font-medium text-sm" htmlFor="agent-provider">
+                  LLM Provider
+                </label>
+                {compatibleProviders.length > 0 ? (
+                  <>
+                    <Select
+                      value={selectedProviderId}
+                      onValueChange={setSelectedProviderId}
+                    >
+                      <SelectTrigger id="agent-provider">
+                        <SelectValue placeholder="Select a provider" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {compatibleProviders.map((p) => (
+                          <SelectItem key={p.id} value={p.id}>
+                            {p.name} — {p.modelId}
+                            {p.id === defaultProviderId ? ' (default)' : ''}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-muted-foreground text-xs">
+                      Uses your existing API key from BrowserOS settings. The
+                      key is passed to the container and never leaves your
+                      machine.
+                    </p>
+                  </>
+                ) : (
+                  <p className="text-muted-foreground text-sm">
+                    No compatible LLM providers configured.{' '}
+                    <a href="#/settings/ai" className="underline">
+                      Add one in AI settings
+                    </a>{' '}
+                    first, or create the agent without one and configure later.
+                  </p>
+                )}
+              </div>
+
               <Button
                 className="w-full"
                 onClick={handleCreate}
@@ -281,6 +385,17 @@ export const AgentsPage: FC = () => {
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
+                  {agent.status === 'running' && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="size-8"
+                      onClick={() => setChatAgentId(agent.id)}
+                      title="Chat"
+                    >
+                      <MessageSquare className="size-4" />
+                    </Button>
+                  )}
                   <Button
                     variant="ghost"
                     size="icon"
