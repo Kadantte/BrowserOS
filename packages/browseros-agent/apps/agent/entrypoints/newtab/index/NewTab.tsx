@@ -93,6 +93,7 @@ export const NewTab = () => {
   const [mounted, setMounted] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const tabsDropdownRef = useRef<HTMLDivElement>(null)
+  const shiftHeldRef = useRef(false)
   const [selectedTabs, setSelectedTabs] = useState<chrome.tabs.Tab[]>([])
   const [shortcutsDialogOpen, setShortcutsDialogOpen] = useState(false)
   const [mentionState, setMentionState] = useState<MentionState>({
@@ -180,6 +181,16 @@ export const NewTab = () => {
   } = useCombobox<SuggestionItem>({
     items: flatItems,
     itemToString: (item) => (item ? getSuggestionLabel(item) : ''),
+    stateReducer: (state, actionAndChanges) => {
+      if (
+        actionAndChanges.type ===
+          useCombobox.stateChangeTypes.InputKeyDownEnter &&
+        shiftHeldRef.current
+      ) {
+        return state
+      }
+      return actionAndChanges.changes
+    },
     onSelectedItemChange({ selectedItem }) {
       if (selectedItem) {
         runSelectedAction(selectedItem)
@@ -492,14 +503,7 @@ export const NewTab = () => {
                     ref: inputRef,
                     onChange: (e) => handleInputChange(e.currentTarget.value),
                     onKeyDown: (e) => {
-                      if (e.key === 'Enter' && e.shiftKey) {
-                        ;(
-                          e.nativeEvent as Event & {
-                            preventDownshiftDefault?: boolean
-                          }
-                        ).preventDownshiftDefault = true
-                        return
-                      }
+                      shiftHeldRef.current = e.shiftKey
                       if (!mentionStateRef.current.isOpen) return
                       if (e.key === 'Tab') {
                         e.preventDefault()
