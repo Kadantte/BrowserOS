@@ -58,11 +58,7 @@ jobs:
           CODEGEN_SERVICE_URL: ${{ secrets.CODEGEN_SERVICE_URL }}
           POSTHOG_API_KEY: ${{ secrets.POSTHOG_API_KEY }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
-          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
-          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          R2_BUCKET: ${{ secrets.R2_BUCKET }}
-        run: bun run build:server:release
+        run: bun run build:server:ci
 
       - name: Verify release artifacts
         run: |
