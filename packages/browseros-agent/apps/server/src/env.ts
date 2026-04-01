@@ -23,8 +23,5 @@ export const INLINED_ENV = {
 } as const
 
 export const REQUIRED_FOR_PRODUCTION = [
-  'SENTRY_DSN',
-  'CODEGEN_SERVICE_URL',
-  'POSTHOG_API_KEY',
   'BROWSEROS_CONFIG_URL',
 ] as const satisfies readonly (keyof typeof INLINED_ENV)[]
