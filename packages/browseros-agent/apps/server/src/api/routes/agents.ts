@@ -78,34 +78,36 @@ async function streamProcessOutput(
   instance: AgentInstance,
   prefix: string,
 ): Promise<void> {
-  const readStream = async (
-    stream: ReadableStream<Uint8Array>,
-    tag: string,
-  ) => {
+  // Docker compose writes progress to stderr; deduplicate across both streams
+  const seen = new Set<string>()
+  const dedup = (tag: string) => async (stream: ReadableStream<Uint8Array>) => {
     const reader = stream.getReader()
     const decoder = new TextDecoder()
-    let buffer = ''
-
+    let buf = ''
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
-      buffer += decoder.decode(value, { stream: true })
-      const lines = buffer.split('\n')
-      buffer = lines.pop() ?? ''
+      buf += decoder.decode(value, { stream: true })
+      const lines = buf.split('\n')
+      buf = lines.pop() ?? ''
       for (const line of lines) {
-        if (line.trim()) {
-          pushLog(instance, `[${tag}] ${line}`)
+        const trimmed = line.trim()
+        if (trimmed && !seen.has(trimmed)) {
+          seen.add(trimmed)
+          pushLog(instance, `[${tag}] ${trimmed}`)
         }
       }
     }
-    if (buffer.trim()) {
-      pushLog(instance, `[${tag}] ${buffer}`)
+    const trimmed = buf.trim()
+    if (trimmed && !seen.has(trimmed)) {
+      seen.add(trimmed)
+      pushLog(instance, `[${tag}] ${trimmed}`)
     }
   }
 
   await Promise.all([
-    readStream(proc.stdout as ReadableStream<Uint8Array>, prefix),
-    readStream(proc.stderr as ReadableStream<Uint8Array>, `${prefix}:err`),
+    dedup(prefix)(proc.stdout as ReadableStream<Uint8Array>),
+    dedup(prefix)(proc.stderr as ReadableStream<Uint8Array>),
   ])
 }
 
@@ -353,7 +355,10 @@ export function createAgentsRoutes() {
               'config',
               'set',
               'gateway.controlUi.allowedOrigins',
-              `http://127.0.0.1:${port},http://localhost:${port}`,
+              JSON.stringify([
+                `http://127.0.0.1:${port}`,
+                `http://localhost:${port}`,
+              ]),
             ],
             {
               cwd: agentDir,
