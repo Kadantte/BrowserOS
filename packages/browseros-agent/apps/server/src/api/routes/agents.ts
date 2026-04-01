@@ -289,6 +289,70 @@ async function dumpContainerLogs(
   }
 }
 
+// ─── Lifecycle ──────────────────────────────────────────────────────────────
+
+/**
+ * Call on server startup. If agents exist from a previous session,
+ * pre-start the Podman machine in the background so it's ready
+ * when the user interacts with agents.
+ */
+export function initAgentRuntime(): void {
+  if (instances.size === 0) return
+
+  const hasActiveAgents = Array.from(instances.values()).some(
+    (i) => i.status === 'running' || i.status === 'creating',
+  )
+  if (!hasActiveAgents) return
+
+  logger.info('Agents exist from previous session, pre-starting Podman machine')
+  getPodmanRuntime()
+    .ensureReady()
+    .then(() => logger.info('Podman machine ready'))
+    .catch((err) =>
+      logger.warn('Failed to pre-start Podman machine', {
+        error: err instanceof Error ? err.message : String(err),
+      }),
+    )
+}
+
+/**
+ * Call on server shutdown. Stops all running agent containers
+ * and then stops the Podman machine to free resources.
+ */
+export async function shutdownAgentRuntime(): Promise<void> {
+  const runtime = getPodmanRuntime()
+  const available = await runtime.isPodmanAvailable()
+  if (!available) return
+
+  const runningAgents = Array.from(instances.values()).filter(
+    (i) => i.status === 'running',
+  )
+
+  for (const instance of runningAgents) {
+    try {
+      logger.info(`Stopping agent container: ${instance.name}`)
+      await runtime.runCommand(['compose', 'stop'], {
+        cwd: instance.dir,
+        env: composeEnv(instance.name),
+      })
+      instance.status = 'stopped'
+    } catch {
+      // Best effort — shutting down
+    }
+  }
+  saveAgents()
+
+  const status = await runtime.getMachineStatus()
+  if (status.running) {
+    try {
+      logger.info('Stopping Podman machine')
+      await runtime.stopMachine()
+    } catch {
+      // Best effort
+    }
+  }
+}
+
 // ─── Routes ─────────────────────────────────────────────────────────────────
 
 export function createAgentsRoutes() {
@@ -685,6 +749,17 @@ export function createAgentsRoutes() {
         fs.rmSync(instance.dir, { recursive: true, force: true })
         instances.delete(id)
         saveAgents()
+
+        // Stop machine if no agents remain
+        if (instances.size === 0) {
+          const runtime = getPodmanRuntime()
+          const status = await runtime.getMachineStatus()
+          if (status.running) {
+            logger.info('Last agent deleted, stopping Podman machine')
+            runtime.stopMachine().catch(() => {})
+          }
+        }
+
         return c.json({ success: true })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

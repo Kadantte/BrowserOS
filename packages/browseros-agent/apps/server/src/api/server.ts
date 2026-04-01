@@ -20,7 +20,11 @@ import { initializeOAuth } from '../lib/clients/oauth'
 import { getDb } from '../lib/db'
 import { logger } from '../lib/logger'
 import { Sentry } from '../lib/sentry'
-import { createAgentsRoutes } from './routes/agents'
+import {
+  createAgentsRoutes,
+  initAgentRuntime,
+  shutdownAgentRuntime,
+} from './routes/agents'
 import { createChatRoutes } from './routes/chat'
 import { createCreditsRoutes } from './routes/credits'
 import { createGraphRoutes } from './routes/graph'
@@ -114,6 +118,11 @@ export async function createHttpServer(config: HttpServerConfig) {
           tokenManager?.stopCallbackServer()
           klavisProxy?.close().catch((err) =>
             logger.warn('Failed to close Klavis proxy transport', {
+              error: err instanceof Error ? err.message : String(err),
+            }),
+          )
+          shutdownAgentRuntime().catch((err) =>
+            logger.warn('Failed to shut down agent runtime', {
               error: err instanceof Error ? err.message : String(err),
             }),
           )
@@ -230,6 +239,9 @@ export async function createHttpServer(config: HttpServerConfig) {
   })
 
   logger.info('Consolidated HTTP Server started', { port, host })
+
+  // Pre-start Podman machine if agents exist from a previous session
+  initAgentRuntime()
 
   if (config.aiSdkDevtoolsEnabled) {
     logger.info(
