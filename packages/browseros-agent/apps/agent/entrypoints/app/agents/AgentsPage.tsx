@@ -52,7 +52,7 @@ export const AgentsPage: FC = () => {
   const { providers, defaultProviderId } = useLlmProviders()
   const [agents, setAgents] = useState<AgentInstance[]>([])
   const [loading, setLoading] = useState(true)
-  const [dockerAvailable, setDockerAvailable] = useState<boolean | null>(null)
+  const [runtimeAvailable, setRuntimeAvailable] = useState<boolean | null>(null)
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
   const [newAgentName, setNewAgentName] = useState('')
   const [creating, setCreating] = useState(false)
@@ -102,18 +102,19 @@ export const AgentsPage: FC = () => {
       }
     }
 
-    const checkDocker = async () => {
+    const checkRuntime = async () => {
       try {
-        const res = await client.agents['docker-status'].$get()
-        const data = (await res.json()) as { available: boolean }
-        if (!cancelled) setDockerAvailable(data.available)
+        const serverUrl = await getAgentServerUrl()
+        const res = await fetch(`${serverUrl}/agents/runtime-status`)
+        const data = await res.json()
+        if (!cancelled) setRuntimeAvailable(data.available)
       } catch {
-        if (!cancelled) setDockerAvailable(false)
+        if (!cancelled) setRuntimeAvailable(false)
       }
     }
 
     fetchAgents()
-    checkDocker()
+    checkRuntime()
     const interval = setInterval(fetchAgents, 3000)
     return () => {
       cancelled = true
@@ -220,13 +221,12 @@ export const AgentsPage: FC = () => {
         <div>
           <h1 className="font-semibold text-2xl tracking-tight">Agents</h1>
           <p className="text-muted-foreground text-sm">
-            Create and manage OpenClaw agent instances running in Docker
-            containers.
+            Create and manage OpenClaw agent instances.
           </p>
         </div>
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button disabled={dockerAvailable === false}>
+            <Button disabled={runtimeAvailable === false}>
               <Plus className="mr-2 size-4" />
               New Agent
             </Button>
@@ -309,32 +309,17 @@ export const AgentsPage: FC = () => {
         </Dialog>
       </div>
 
-      {dockerAvailable === false && (
+      {runtimeAvailable === false && (
         <Card className="border-destructive/50 bg-destructive/5 p-4">
           <div className="flex items-start gap-3">
             <AlertCircle className="mt-0.5 size-5 shrink-0 text-destructive" />
             <div>
-              <p className="font-medium text-sm">Docker is not available</p>
+              <p className="font-medium text-sm">
+                Container runtime not available
+              </p>
               <p className="text-muted-foreground text-sm">
-                Install{' '}
-                <a
-                  href="https://www.docker.com/products/docker-desktop/"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  Docker Desktop
-                </a>{' '}
-                or{' '}
-                <a
-                  href="https://orbstack.dev"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="underline"
-                >
-                  OrbStack
-                </a>{' '}
-                to create local OpenClaw agents.
+                Podman is required to run OpenClaw agents. It will be bundled
+                with BrowserOS in a future update.
               </p>
             </div>
           </div>
@@ -347,7 +332,7 @@ export const AgentsPage: FC = () => {
           <h3 className="font-medium text-lg">No agents yet</h3>
           <p className="mt-1 max-w-sm text-muted-foreground text-sm">
             Create your first OpenClaw agent to get started. Each agent runs in
-            an isolated Docker container with its own workspace.
+            an isolated container with its own workspace.
           </p>
         </Card>
       ) : (
