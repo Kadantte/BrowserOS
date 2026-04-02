@@ -610,63 +610,60 @@ export function createAgentsRoutes(config: { serverPort: number }) {
           }
           pushLog(instance, 'Image pulled successfully')
 
-          // Create container (stopped) so the named volume is initialized
-          pushLog(instance, 'Creating container...')
-          const createExit = await runCommandWithLogs(
+          // Start container — it will crash because config is missing, but
+          // this initializes the named volume with the correct directory
+          // structure and ownership (uid 1000 node user)
+          pushLog(instance, 'Initializing container...')
+          await runCommandWithLogs(
             instance,
             'docker',
-            ['compose', 'create'],
+            ['compose', 'up', '-d'],
             { cwd: agentDir, env: composeEnv(name) },
           )
-          if (createExit !== 0) {
-            throw new Error('Failed to create container')
-          }
 
-          // Build the directory structure that mirrors the container paths
-          // docker cp copies entire directories, so we create the tree locally
-          const injectDir = path.join(tmpDir, 'home', 'node', '.openclaw')
-          const injectWorkspace = path.join(injectDir, 'workspace')
-          fs.mkdirSync(injectWorkspace, { recursive: true })
-          fs.renameSync(
-            path.join(tmpDir, 'openclaw.json'),
-            path.join(injectDir, 'openclaw.json'),
-          )
-          fs.renameSync(
-            path.join(tmpDir, 'SOUL.md'),
-            path.join(injectWorkspace, 'SOUL.md'),
-          )
-          fs.renameSync(
-            path.join(tmpDir, 'AGENTS.md'),
-            path.join(injectWorkspace, 'AGENTS.md'),
-          )
+          // Wait a moment for the container to start and init the volume
+          await Bun.sleep(2000)
 
-          // Copy the entire /home/node directory tree into the container
+          // Inject config via docker cp (volume now has /home/node/.openclaw)
           const containerName = `browseros-claw-${name}-openclaw-gateway-1`
           pushLog(instance, 'Injecting configuration...')
-          const cpExit = await runCommandWithLogs(instance, 'docker', [
-            'cp',
-            `${path.join(tmpDir, 'home', 'node', '.')}/`,
-            `${containerName}:/home/node/`,
-          ])
-          if (cpExit !== 0) {
-            throw new Error('Failed to inject configuration files')
+
+          for (const [src, dest] of [
+            ['openclaw.json', '/home/node/.openclaw/openclaw.json'],
+            ['SOUL.md', '/home/node/.openclaw/workspace/SOUL.md'],
+            ['AGENTS.md', '/home/node/.openclaw/workspace/AGENTS.md'],
+          ]) {
+            const cpExit = await runCommandWithLogs(instance, 'docker', [
+              'cp',
+              path.join(tmpDir, src),
+              `${containerName}:${dest}`,
+            ])
+            if (cpExit !== 0) {
+              throw new Error(`Failed to inject ${src}`)
+            }
           }
 
-          // Clean up temp files immediately
+          // Fix ownership — docker cp creates files as root, but OpenClaw
+          // runs as node (uid 1000)
+          await runCommandWithLogs(instance, 'docker', [
+            'exec',
+            containerName,
+            'chown',
+            '-R',
+            'node:node',
+            '/home/node/.openclaw',
+          ])
+
+          // Clean up temp files
           fs.rmSync(tmpDir, { recursive: true, force: true })
           pushLog(instance, 'Configuration injected')
 
-          // Start the container
+          // Restart so the gateway picks up the new config
           pushLog(instance, 'Starting OpenClaw gateway...')
-          const startExit = await runCommandWithLogs(
-            instance,
-            'docker',
-            ['compose', 'start'],
-            { cwd: agentDir, env: composeEnv(name) },
-          )
-          if (startExit !== 0) {
-            throw new Error('Failed to start OpenClaw gateway')
-          }
+          await runCommandWithLogs(instance, 'docker', ['compose', 'restart'], {
+            cwd: agentDir,
+            env: composeEnv(name),
+          })
 
           // Wait for health check
           pushLog(instance, 'Waiting for gateway to be ready...')
