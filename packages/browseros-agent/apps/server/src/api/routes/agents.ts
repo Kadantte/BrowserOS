@@ -622,23 +622,34 @@ export function createAgentsRoutes(config: { serverPort: number }) {
             throw new Error('Failed to create container')
           }
 
-          // Inject config files into the named volume via docker cp
+          // Build the directory structure that mirrors the container paths
+          // docker cp copies entire directories, so we create the tree locally
+          const injectDir = path.join(tmpDir, 'home', 'node', '.openclaw')
+          const injectWorkspace = path.join(injectDir, 'workspace')
+          fs.mkdirSync(injectWorkspace, { recursive: true })
+          fs.renameSync(
+            path.join(tmpDir, 'openclaw.json'),
+            path.join(injectDir, 'openclaw.json'),
+          )
+          fs.renameSync(
+            path.join(tmpDir, 'SOUL.md'),
+            path.join(injectWorkspace, 'SOUL.md'),
+          )
+          fs.renameSync(
+            path.join(tmpDir, 'AGENTS.md'),
+            path.join(injectWorkspace, 'AGENTS.md'),
+          )
+
+          // Copy the entire /home/node directory tree into the container
           const containerName = `browseros-claw-${name}-openclaw-gateway-1`
           pushLog(instance, 'Injecting configuration...')
-
-          for (const [src, dest] of [
-            ['openclaw.json', '/home/node/.openclaw/openclaw.json'],
-            ['SOUL.md', '/home/node/.openclaw/workspace/SOUL.md'],
-            ['AGENTS.md', '/home/node/.openclaw/workspace/AGENTS.md'],
-          ]) {
-            const cpExit = await runCommandWithLogs(instance, 'docker', [
-              'cp',
-              path.join(tmpDir, src),
-              `${containerName}:${dest}`,
-            ])
-            if (cpExit !== 0) {
-              throw new Error(`Failed to inject ${src}`)
-            }
+          const cpExit = await runCommandWithLogs(instance, 'docker', [
+            'cp',
+            `${path.join(tmpDir, 'home', 'node', '.')}/`,
+            `${containerName}:/home/node/`,
+          ])
+          if (cpExit !== 0) {
+            throw new Error('Failed to inject configuration files')
           }
 
           // Clean up temp files immediately
