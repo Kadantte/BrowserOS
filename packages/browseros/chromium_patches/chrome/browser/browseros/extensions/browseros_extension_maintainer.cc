@@ -1,9 +1,9 @@
 diff --git a/chrome/browser/browseros/extensions/browseros_extension_maintainer.cc b/chrome/browser/browseros/extensions/browseros_extension_maintainer.cc
 new file mode 100644
-index 0000000000000..c02cdfb887a7f
+index 0000000000000..5804d54696e8f
 --- /dev/null
 +++ b/chrome/browser/browseros/extensions/browseros_extension_maintainer.cc
-@@ -0,0 +1,407 @@
+@@ -0,0 +1,395 @@
 +// Copyright 2024 The Chromium Authors
 +// Use of this source code is governed by a BSD-style license that can be
 +// found in the LICENSE file.
@@ -204,18 +204,6 @@ index 0000000000000..c02cdfb887a7f
 +  std::set<std::string> server_ids;
 +  for (const auto [id, _] : last_config_) {
 +    server_ids.insert(id);
-+  }
-+
-+  // Guard: Require ALL registered BrowserOS extensions to be present in the
-+  // config before allowing deprecation uninstalls. A partial config likely
-+  // indicates a CDN issue, not an intentional deprecation.
-+  for (const std::string& registered_id : GetBrowserOSExtensionIds()) {
-+    if (!server_ids.contains(registered_id)) {
-+      LOG(WARNING) << "browseros: Config missing registered extension "
-+                   << registered_id
-+                   << ", skipping deprecation check (possible CDN issue)";
-+      return;
-+    }
 +  }
 +
 +  for (const std::string& id : GetBrowserOSExtensionIds()) {
