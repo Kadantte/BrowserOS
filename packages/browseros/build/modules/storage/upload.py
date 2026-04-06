@@ -146,7 +146,7 @@ def _get_linux_artifact_key(filename: str) -> Optional[str]:
         if "x64" in lower or "x86_64" in lower:
             return "x64_appimage"
     elif ".deb" in lower:
-        if "arm64" in lower:
+        if "arm64" in lower or "aarch64" in lower:
             return "arm64_deb"
         if "amd64" in lower or "x64" in lower or "x86_64" in lower:
             return "x64_deb"
@@ -184,6 +184,7 @@ def _get_artifact_key(filename: str, platform: str) -> str:
         artifact_key = _get_linux_artifact_key(filename)
         if artifact_key:
             return artifact_key
+        log_warning(f"Unrecognized Linux artifact name: {filename}; using stem key")
 
     return Path(filename).stem
 
@@ -273,8 +274,13 @@ def upload_release_artifacts(
         artifact_metadata.append(metadata)
 
     release_data = generate_release_json(ctx, artifact_metadata, platform)
-    existing_release_data = get_release_json(ctx.get_semantic_version(), platform, env)
-    release_data = merge_release_metadata(existing_release_data, release_data)
+    if platform == "linux":
+        # Linux x64 and arm64 release jobs must be sequenced. A parallel
+        # fetch-merge-upload flow can still race and drop one architecture.
+        existing_release_data = get_release_json(
+            ctx.get_semantic_version(), platform, env
+        )
+        release_data = merge_release_metadata(existing_release_data, release_data)
     release_json_path = ctx.get_dist_dir() / "release.json"
     release_json_path.write_text(json.dumps(release_data, indent=2))
 

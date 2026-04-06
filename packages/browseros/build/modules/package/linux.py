@@ -738,6 +738,8 @@ def package_deb(ctx: Context, package_dir: Path) -> Optional[Path]:
         return output_path
 
     return None
+
+
 def package_universal(contexts: List[Context]) -> bool:
     """Linux doesn't support universal binaries"""
     log_warning("Universal binaries are not supported on Linux")

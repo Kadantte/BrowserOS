@@ -26,6 +26,10 @@ class UploadMetadataTest(unittest.TestCase):
             _get_artifact_key("BrowserOS_v1.2.3_arm64.deb", "linux"),
             "arm64_deb",
         )
+        self.assertEqual(
+            _get_artifact_key("BrowserOS_v1.2.3_aarch64.deb", "linux"),
+            "arm64_deb",
+        )
 
     def test_merge_release_metadata_preserves_existing_artifacts(self) -> None:
         existing = {
