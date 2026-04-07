@@ -10,6 +10,7 @@ import { z } from 'zod'
 import { KlavisClient } from '../../lib/clients/klavis/klavis-client'
 import { OAUTH_MCP_SERVERS } from '../../lib/clients/klavis/oauth-mcp-servers'
 import { logger } from '../../lib/logger'
+import { klavisStrataCache } from '../services/klavis/strata-cache'
 
 const ServerNameSchema = z.object({
   serverName: z.string().min(1),
@@ -125,6 +126,7 @@ export function createKlavisRoutes(deps: KlavisRouteDeps) {
       logger.info('Adding server to strata', { serverName })
 
       const result = await klavisClient.createStrata(browserosId, [serverName])
+      klavisStrataCache.invalidate(browserosId)
 
       return c.json({
         success: true,
@@ -184,7 +186,15 @@ export function createKlavisRoutes(deps: KlavisRouteDeps) {
 
         logger.info('Removing server from strata', { serverName })
 
-        await klavisClient.removeServer(browserosId, serverName)
+        const strata = await klavisStrataCache.getOrFetch(
+          klavisClient,
+          browserosId,
+          [serverName],
+        )
+        await klavisClient.deleteServersFromStrata(strata.strataId, [
+          serverName,
+        ])
+        klavisStrataCache.invalidate(browserosId)
 
         return c.json({
           success: true,
