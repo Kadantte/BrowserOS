@@ -43,6 +43,9 @@ jobs:
         working-directory: packages/browseros-agent
         run: bun install --ignore-scripts && bun run build:agent-sdk
 
+      - name: Install Python eval dependencies
+        run: pip install agisdk
+
       - name: Install xvfb
         run: sudo apt-get update && sudo apt-get install -y xvfb
 
