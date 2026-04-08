@@ -14,9 +14,13 @@ import json
 import sys
 
 
+def has_llm_eval(task: dict) -> bool:
+    return any(e.get("type") == "llm_boolean" for e in task.get("evals", []))
+
+
 def main():
     try:
-        from agisdk.real import TASKS
+        from agisdk.REAL.tasks import all_tasks
     except ImportError:
         print(
             "Error: agisdk package not installed. Run: pip install agisdk",
@@ -28,52 +32,39 @@ def main():
     skipped_infeasible = 0
     skipped_llm = 0
 
-    for task_id, task_config in TASKS.items():
-        # Skip infeasible tasks
-        if not getattr(task_config, "possible", True):
+    for task in all_tasks:
+        if not task.get("possible", True):
             skipped_infeasible += 1
             continue
 
-        # Skip tasks that use llm_boolean evaluator (non-deterministic)
-        eval_type = getattr(task_config, "eval_type", None) or getattr(
-            task_config, "evaluator_type", None
-        )
-        if eval_type == "llm_boolean":
+        if has_llm_eval(task):
             skipped_llm += 1
             continue
 
-        # Extract task fields
-        website = getattr(task_config, "website", "") or ""
-        url = getattr(task_config, "url", "") or getattr(task_config, "start_url", "")
-        prompt = getattr(task_config, "prompt", "") or getattr(
-            task_config, "instruction", ""
-        )
-        difficulty = getattr(task_config, "difficulty", "unknown")
-        similar_to = getattr(task_config, "similar_to", "")
-        category = getattr(task_config, "category", "action")
+        task_id = task["id"]
+        website = task.get("website", {})
+        goal = task.get("goal", "")
+        start_url = website.get("url", "")
 
-        if not url or not prompt:
-            print(
-                f"Warning: Skipping {task_id} — missing url or prompt", file=sys.stderr
-            )
+        if not start_url or not goal:
+            print(f"Warning: Skipping {task_id} — missing url or goal", file=sys.stderr)
             continue
 
         entry = {
             "query_id": f"agisdk-{task_id}",
             "dataset": "agisdk-real",
-            "query": prompt,
+            "query": goal,
             "graders": ["agisdk_state_diff"],
-            "start_url": url,
+            "start_url": start_url,
             "metadata": {
                 "original_task_id": task_id,
-                "website": website,
+                "website": website.get("name", ""),
                 "category": "agisdk-real",
                 "additional": {
                     "agisdk_task_id": task_id,
-                    "challenge_type": "action",
-                    "difficulty": str(difficulty),
-                    "similar_to": str(similar_to),
-                    "eval_type": str(eval_type or "script"),
+                    "challenge_type": task.get("challengeType", "action"),
+                    "difficulty": task.get("difficulty", "unknown"),
+                    "similar_to": website.get("similarTo", ""),
                 },
             },
         }

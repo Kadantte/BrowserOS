@@ -81,12 +81,16 @@ export class AgisdkStateDiffGrader implements Grader {
       return metadata.start_url
     }
 
-    // Try extracting from user messages — look for vercel.app URLs
+    // Try extracting vercel.app URLs from messages (user text or tool inputs)
     for (const msg of input.messages) {
-      if (msg.type === 'user') {
-        const urlMatch = msg.content.match(/https?:\/\/[^\s"']+\.vercel\.app/)
-        if (urlMatch) return urlMatch[0]
-      }
+      const text =
+        msg.type === 'user'
+          ? msg.content
+          : msg.type === 'tool-input-available'
+            ? JSON.stringify(msg.input)
+            : ''
+      const urlMatch = text.match(/https?:\/\/[^\s"']+\.vercel\.app/)
+      if (urlMatch) return urlMatch[0]
     }
 
     // Fallback: try reading task metadata from output dir

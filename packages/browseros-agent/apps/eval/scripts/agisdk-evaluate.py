@@ -10,10 +10,6 @@ Input format:
 
 Output format:
     {"reward": 0.0, "pass": false, "message": "...", "per_criterion": [...]}
-
-NOTE: The agisdk API (WebCloneEvaluator, TaskConfig) needs verification
-against the actual installed package version. The imports and method
-signatures below are based on the documented API and may need adjustment.
 """
 
 import json
@@ -27,57 +23,43 @@ def main():
     model_response = data.get("model_response", "")
 
     try:
-        from agisdk.real import TaskConfig, WebCloneEvaluator
+        from agisdk.REAL.browsergym.webclones.evaluate import WebCloneEvaluator
+        from agisdk.REAL.browsergym.webclones.task_config import TaskConfig
     except ImportError:
-        # Fall back to alternative import paths
-        try:
-            from agisdk import TaskConfig, WebCloneEvaluator
-        except ImportError:
-            print(
-                json.dumps(
-                    {
-                        "reward": 0,
-                        "pass": False,
-                        "message": "agisdk package not installed",
-                        "per_criterion": [],
-                    }
-                )
+        print(
+            json.dumps(
+                {
+                    "reward": 0,
+                    "pass": False,
+                    "message": "agisdk package not installed. Run: pip install agisdk",
+                    "per_criterion": [],
+                }
             )
-            sys.exit(0)
+        )
+        sys.exit(0)
 
     try:
-        config = TaskConfig(task_id, version="v2")
-        evaluator = WebCloneEvaluator(config)
-        result = evaluator.evaluate(
+        tc = TaskConfig(task_id)
+        evaluator = WebCloneEvaluator(tc)
+        # evaluate() returns (reward: float, done: bool, message: str, info: dict)
+        reward_val, _done, message, info = evaluator.evaluate(
             env_state=env_state, model_response=model_response
         )
 
-        reward = getattr(result, "reward", 0.0)
-        message = getattr(result, "message", "")
-        per_criterion = getattr(result, "per_criterion", [])
-
-        # Serialize per_criterion if it contains non-serializable objects
-        try:
-            serialized_criteria = [
-                {
-                    "name": getattr(c, "name", str(c)),
-                    "passed": getattr(c, "passed", False),
-                    "message": getattr(c, "message", ""),
-                }
-                if not isinstance(c, dict)
-                else c
-                for c in per_criterion
-            ]
-        except (TypeError, AttributeError):
-            serialized_criteria = []
+        reward_val = float(reward_val) if reward_val is not None else 0.0
+        results = info.get("results", [])
+        per_criterion = [
+            {"passed": r[0], "detail": str(r[1]) if len(r) > 1 else ""}
+            for r in results
+        ]
 
         print(
             json.dumps(
                 {
-                    "reward": float(reward),
-                    "pass": float(reward) == 1.0,
+                    "reward": reward_val,
+                    "pass": reward_val == 1.0,
                     "message": str(message),
-                    "per_criterion": serialized_criteria,
+                    "per_criterion": per_criterion,
                 }
             )
         )
