@@ -903,11 +903,14 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && modelSearch) {
                                 e.preventDefault()
+                                e.stopPropagation()
                                 form.setValue('modelId', modelSearch)
                                 track(MODEL_SELECTED_EVENT, {
                                   provider_type: watchedType,
                                   model_id: modelSearch,
-                                  is_custom_model: true,
+                                  is_custom_model: !modelInfoList.some(
+                                    (m) => m.modelId === modelSearch,
+                                  ),
                                 })
                                 setModelPickerOpen(false)
                                 setModelSearch('')
