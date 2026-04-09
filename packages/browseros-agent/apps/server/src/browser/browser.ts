@@ -422,7 +422,13 @@ export class Browser {
       try {
         const result = await session.Accessibility.getFullAXTree({ frameId })
         const nodes = (result.nodes as AXNode[]) ?? []
-        allNodes.push(...nodes)
+        for (const node of nodes) {
+          allNodes.push({
+            ...node,
+            nodeId: `${frameId}:${node.nodeId}`,
+            childIds: node.childIds?.map((id) => `${frameId}:${id}`),
+          })
+        }
       } catch {
         // Cross-origin or detached frames may fail — skip
       }
