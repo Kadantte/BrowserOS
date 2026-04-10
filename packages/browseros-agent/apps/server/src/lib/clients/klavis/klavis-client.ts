@@ -28,6 +28,19 @@ export interface UserIntegration {
   isAuthenticated: boolean
 }
 
+export type KlavisServerToolsFormat =
+  | 'openai'
+  | 'anthropic'
+  | 'gemini'
+  | 'mcp_native'
+
+export interface KlavisServerToolsResponse {
+  success: boolean
+  format: KlavisServerToolsFormat | string
+  tools: unknown[] | null
+  error?: string | null
+}
+
 export class KlavisClient {
   private baseUrl: string
 
@@ -156,5 +169,62 @@ export class KlavisClient {
       'DELETE',
       `/mcp-server/strata/${strata.strataId}/servers?servers=${encodeURIComponent(serverName)}`,
     )
+  }
+
+  /**
+   * Fetch the published tool catalog for a supported Klavis server.
+   * This uses the public Klavis metadata API, not the BrowserOS proxy.
+   */
+  async getServerTools(
+    serverName: string,
+    format: KlavisServerToolsFormat = 'openai',
+  ): Promise<KlavisServerToolsResponse> {
+    const apiKey = process.env.KLAVIS_API_KEY
+    if (!apiKey) {
+      throw new Error(
+        'KLAVIS_API_KEY is required to fetch Klavis tool metadata',
+      )
+    }
+
+    const apiBaseUrl =
+      process.env.KLAVIS_API_BASE_URL || 'https://api.klavis.ai'
+    const controller = new AbortController()
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      TIMEOUTS.KLAVIS_FETCH,
+    )
+
+    try {
+      const url = new URL(
+        `${apiBaseUrl.replace(/\/$/, '')}/mcp-server/tools/${encodeURIComponent(serverName)}`,
+      )
+      url.searchParams.set('format', format)
+
+      const response = await fetch(url, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        signal: controller.signal,
+      })
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(
+          `Klavis metadata error: ${response.status} ${response.statusText} - ${errorText}`,
+        )
+      }
+
+      return (await response.json()) as KlavisServerToolsResponse
+    } catch (error) {
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error(
+          `Klavis metadata request timed out after ${TIMEOUTS.KLAVIS_FETCH}ms`,
+        )
+      }
+      throw error
+    } finally {
+      clearTimeout(timeoutId)
+    }
   }
 }

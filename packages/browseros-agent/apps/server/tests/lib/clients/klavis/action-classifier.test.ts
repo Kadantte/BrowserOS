@@ -6,6 +6,7 @@ import {
   normalizeKlavisSegment,
   summarizeKlavisToolExposure,
 } from '../../../../src/lib/clients/klavis/action-classifier'
+import { GENERATED_KLAVIS_TOOL_CATALOG } from '../../../../src/lib/clients/klavis/generated-tool-catalog'
 
 describe('normalizeKlavisSegment', () => {
   it('normalizes mixed casing and punctuation', () => {
@@ -37,6 +38,14 @@ describe('classifyKlavisToolName', () => {
     expect(classification.capabilityType).toBe('unknown')
     expect(classification.riskLevel).toBe('unknown')
     expect(classification.policyFamily).toBe('unknown')
+  })
+
+  it('classifies generated catalog tools before fallback heuristics', () => {
+    const classification = classifyKlavisToolName('brave_web_search')
+    expect(classification.serverName).toBe('Brave Search')
+    expect(classification.capabilityType).toBe('search')
+    expect(classification.effectType).toBe('read_only')
+    expect(classification.policyFamily).toBe('read_only_external')
   })
 })
 
@@ -124,6 +133,16 @@ describe('classifyKlavisExternalAction', () => {
     expect(classification.policyFamily).toBe('unknown')
     expect(classification.requiresConfirmedIntent).toBe(true)
   })
+
+  it('uses generated catalog entries to classify supported server tools', () => {
+    const classification = classifyKlavisExternalAction({
+      serverName: 'Airtable',
+      actionName: 'airtable_create_records',
+    })
+    expect(classification.capabilityType).toBe('create_record')
+    expect(classification.effectType).toBe('external_side_effect')
+    expect(classification.policyFamily).toBe('external_mutation')
+  })
 })
 
 describe('buildKlavisActionKey', () => {
@@ -150,5 +169,12 @@ describe('summarizeKlavisToolExposure', () => {
       discovery: 2,
       unknown: 1,
     })
+  })
+})
+
+describe('GENERATED_KLAVIS_TOOL_CATALOG', () => {
+  it('contains fetched tool metadata for the supported server set', () => {
+    expect(GENERATED_KLAVIS_TOOL_CATALOG.serverCount).toBe(45)
+    expect(GENERATED_KLAVIS_TOOL_CATALOG.generatedAt).not.toBeNull()
   })
 })

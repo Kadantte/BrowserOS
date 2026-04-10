@@ -409,6 +409,10 @@ function textMatcher(pattern: RegExp): KlavisActionPatternRule['test'] {
   return ({ combinedText }) => pattern.test(combinedText)
 }
 
+function normalizeActionText(actionName?: string): string {
+  return (actionName ?? '').replaceAll(/[_-]+/g, ' ')
+}
+
 function applyClassification(
   base: KlavisCapabilityClassification,
   patch: Partial<KlavisCapabilityClassification>,
@@ -501,7 +505,9 @@ export const KLAVIS_ACTION_PATTERN_RULES: KlavisActionPatternRule[] = [
     test: textMatcher(/\b(upload|attach|import|download|export)\b/i),
     apply: (base) =>
       applyClassification(base, {
-        capabilityType: /\b(download|export)\b/i.test(base.actionName ?? '')
+        capabilityType: /\b(download|export)\b/i.test(
+          normalizeActionText(base.actionName),
+        )
           ? 'file_download'
           : 'file_upload',
         riskLevel: 'medium',
@@ -552,10 +558,10 @@ export const KLAVIS_ACTION_PATTERN_RULES: KlavisActionPatternRule[] = [
     apply: (base) =>
       applyClassification(base, {
         capabilityType: /\b(search|find|lookup|query)\b/i.test(
-          base.actionName ?? '',
+          normalizeActionText(base.actionName),
         )
           ? 'search'
-          : /\b(list)\b/i.test(base.actionName ?? '')
+          : /\b(list)\b/i.test(normalizeActionText(base.actionName))
             ? 'list'
             : 'read',
         riskLevel: base.policyFamily === 'financial' ? 'medium' : 'low',

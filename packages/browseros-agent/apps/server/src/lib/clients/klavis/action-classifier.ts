@@ -14,6 +14,10 @@ import {
   KLAVIS_SERVER_PROFILES,
   KLAVIS_STATIC_TOOL_CLASSIFICATIONS,
 } from './action-classification-registry'
+import {
+  getGeneratedCatalogEntry,
+  getGeneratedCatalogForServer,
+} from './generated-tool-catalog'
 
 export function normalizeKlavisSegment(value: string | undefined): string {
   return (value ?? '')
@@ -40,6 +44,19 @@ export function classifyKlavisToolName(
     return known
   }
 
+  const normalizedToolName = normalizeKlavisSegment(toolName)
+  const matches = []
+  for (const server of KLAVIS_SERVER_PROFILES.keys()) {
+    const entry = getGeneratedCatalogEntry(server, normalizedToolName)
+    if (entry) matches.push(entry)
+  }
+  if (matches.length > 0) {
+    return classifyKlavisExternalAction({
+      serverName: matches[0].serverName,
+      actionName: matches[0].toolName,
+    })
+  }
+
   return {
     surface: 'strata_tool',
     normalizedKey: `strata_tool:${toolName}`,
@@ -60,7 +77,19 @@ export function classifyKlavisExternalAction(
 ): KlavisCapabilityClassification {
   const normalizedCategory = normalizeKlavisSegment(action.categoryName)
   const normalizedAction = normalizeKlavisSegment(action.actionName)
-  const combinedText = `${normalizedCategory} ${normalizedAction}`.trim()
+  const generatedEntry = getGeneratedCatalogEntry(
+    action.serverName,
+    normalizedAction,
+  )
+  const generatedCatalog = getGeneratedCatalogForServer(action.serverName)
+  const combinedText = [
+    normalizedCategory,
+    normalizedAction,
+    generatedEntry?.normalizedSearchText,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .trim()
   const profile = KLAVIS_SERVER_PROFILES.get(action.serverName)
 
   const base = {
@@ -73,6 +102,10 @@ export function classifyKlavisExternalAction(
     policyFamily: profile?.defaultPolicyFamily ?? 'unknown',
     riskLevel: profile?.defaultRiskLevel ?? 'unknown',
     effectType: profile?.defaultEffectType ?? 'unknown',
+    notes:
+      generatedEntry && generatedCatalog
+        ? `Matched generated Klavis catalog for ${generatedCatalog.serverName}.`
+        : undefined,
   }
 
   const matchedRule = KLAVIS_ACTION_PATTERN_RULES.find((rule) =>
