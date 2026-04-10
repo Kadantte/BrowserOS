@@ -77,7 +77,9 @@ export class OpenClawService {
   // ── Lifecycle ────────────────────────────────────────────────────────
 
   async setup(input: SetupInput, onLog?: (msg: string) => void): Promise<void> {
-    onLog?.('Checking container runtime...')
+    const logProgress = this.createProgressLogger(onLog)
+
+    logProgress('Checking container runtime...')
     const available = await this.runtime.isPodmanAvailable()
     if (!available) {
       throw new Error(
@@ -85,13 +87,13 @@ export class OpenClawService {
       )
     }
 
-    await this.runtime.ensureReady(onLog)
-    onLog?.('Container runtime ready')
+    await this.runtime.ensureReady(logProgress)
+    logProgress('Container runtime ready')
 
     await mkdir(this.openclawDir, { recursive: true })
     await mkdir(join(this.openclawDir, 'workspace'), { recursive: true })
 
-    onLog?.('Copying compose file...')
+    logProgress('Copying compose file...')
     await this.runtime.copyComposeFile(COMPOSE_RESOURCE)
 
     this.token = crypto.randomUUID()
@@ -102,7 +104,7 @@ export class OpenClawService {
       providerKeys,
     })
     await this.runtime.writeEnvFile(envContent)
-    onLog?.('Generated .env file')
+    logProgress('Generated .env file')
 
     const config = buildBootstrapConfig({
       gatewayPort: this.port,
@@ -111,16 +113,16 @@ export class OpenClawService {
       modelId: input.modelId,
     })
     await this.writeBootstrapConfig(config)
-    onLog?.('Generated openclaw.json')
+    logProgress('Generated openclaw.json')
 
-    onLog?.('Pulling OpenClaw image...')
-    await this.runtime.composePull(onLog)
-    onLog?.('Image ready')
+    logProgress('Pulling OpenClaw image...')
+    await this.runtime.composePull(logProgress)
+    logProgress('Image ready')
 
-    onLog?.('Starting OpenClaw gateway...')
-    await this.runtime.composeUp(onLog)
+    logProgress('Starting OpenClaw gateway...')
+    await this.runtime.composeUp(logProgress)
 
-    onLog?.('Waiting for gateway readiness...')
+    logProgress('Waiting for gateway readiness...')
     const ready = await this.runtime.waitForReady(this.port, READY_TIMEOUT_MS)
     if (!ready) {
       this.lastError = 'Gateway did not become ready within 30 seconds'
@@ -129,10 +131,10 @@ export class OpenClawService {
       throw new Error(this.lastError)
     }
 
-    onLog?.('Connecting to gateway...')
+    logProgress('Connecting to gateway...')
     await this.connectGateway()
 
-    onLog?.('Creating main agent...')
+    logProgress('Creating main agent...')
     const model =
       input.providerType && input.modelId
         ? `${input.providerType}/${input.modelId}`
@@ -144,23 +146,30 @@ export class OpenClawService {
     })
 
     this.lastError = null
-    onLog?.(`OpenClaw gateway running at http://127.0.0.1:${this.port}`)
+    logProgress(`OpenClaw gateway running at http://127.0.0.1:${this.port}`)
     logger.info('OpenClaw setup complete', { port: this.port })
   }
 
   async start(onLog?: (msg: string) => void): Promise<void> {
-    await this.loadTokenFromEnv()
-    await this.runtime.ensureReady(onLog)
-    await this.runtime.composeUp(onLog)
+    const logProgress = this.createProgressLogger(onLog)
 
+    logProgress('Loading gateway auth token...')
+    await this.loadTokenFromEnv()
+    await this.runtime.ensureReady(logProgress)
+    logProgress('Starting OpenClaw gateway...')
+    await this.runtime.composeUp(logProgress)
+
+    logProgress('Waiting for gateway readiness...')
     const ready = await this.runtime.waitForReady(this.port, READY_TIMEOUT_MS)
     if (!ready) {
       this.lastError = 'Gateway did not become ready after start'
       throw new Error(this.lastError)
     }
 
+    logProgress('Connecting to gateway...')
     await this.connectGateway()
     this.lastError = null
+    logger.info('OpenClaw gateway started', { port: this.port })
   }
 
   async stop(): Promise<void> {
@@ -170,20 +179,26 @@ export class OpenClawService {
   }
 
   async restart(onLog?: (msg: string) => void): Promise<void> {
-    this.disconnectGateway()
-    await this.loadTokenFromEnv()
-    onLog?.('Restarting OpenClaw gateway...')
-    await this.runtime.composeRestart(onLog)
+    const logProgress = this.createProgressLogger(onLog)
 
+    this.disconnectGateway()
+    logProgress('Loading gateway auth token...')
+    await this.loadTokenFromEnv()
+    logProgress('Restarting OpenClaw gateway...')
+    await this.runtime.composeRestart(logProgress)
+
+    logProgress('Waiting for gateway readiness...')
     const ready = await this.runtime.waitForReady(this.port, READY_TIMEOUT_MS)
     if (!ready) {
       this.lastError = 'Gateway did not become ready after restart'
       throw new Error(this.lastError)
     }
 
+    logProgress('Connecting to gateway...')
     await this.connectGateway()
     this.lastError = null
-    onLog?.('Gateway restarted successfully')
+    logProgress('Gateway restarted successfully')
+    logger.info('OpenClaw gateway restarted', { port: this.port })
   }
 
   async shutdown(): Promise<void> {
@@ -265,9 +280,14 @@ export class OpenClawService {
       )
     }
 
+    logger.debug('Creating OpenClaw agent', {
+      name,
+      providerType: input.providerType,
+      hasModel: !!input.modelId,
+      hasApiKey: !!input.apiKey,
+    })
     this.ensureGatewayConnected()
 
-    // Merge new provider API key into .env if needed
     let needsRestart = false
     if (input.providerType && input.apiKey) {
       needsRestart = await this.mergeProviderKeyIfNew(
@@ -310,6 +330,7 @@ export class OpenClawService {
 
   async listAgents(): Promise<GatewayAgentEntry[]> {
     this.ensureGatewayConnected()
+    logger.debug('Listing OpenClaw agents')
     return this.gateway!.listAgents()
   }
 
@@ -318,6 +339,11 @@ export class OpenClawService {
   async chat(agentId: string, messages: ChatMessage[]): Promise<Response> {
     await this.loadTokenFromEnv()
     const url = `http://127.0.0.1:${this.port}/v1/chat/completions`
+    logger.debug('Proxying OpenClaw chat request', {
+      agentId,
+      messageCount: messages.length,
+      port: this.port,
+    })
 
     const response = await fetch(url, {
       method: 'POST',
@@ -338,6 +364,10 @@ export class OpenClawService {
       throw new Error(`OpenClaw error (${response.status}): ${errText}`)
     }
 
+    logger.debug('OpenClaw chat stream accepted', {
+      agentId,
+      status: response.status,
+    })
     return response
   }
 
@@ -355,6 +385,7 @@ export class OpenClawService {
   // ── Logs ─────────────────────────────────────────────────────────────
 
   async getLogs(tail = 100): Promise<string[]> {
+    logger.debug('Fetching OpenClaw container logs', { tail })
     return this.runtime.composeLogs(tail)
   }
 
@@ -396,6 +427,7 @@ export class OpenClawService {
 
   private async connectGateway(): Promise<void> {
     this.disconnectGateway()
+    logger.debug('Connecting OpenClaw gateway client', { port: this.port })
     this.gateway = new GatewayClient(this.port, this.token)
     await this.gateway.connect()
   }
@@ -409,6 +441,7 @@ export class OpenClawService {
 
   private ensureGatewayConnected(): void {
     if (!this.gateway?.isConnected) {
+      logger.debug('OpenClaw gateway client is not connected')
       throw new Error('Gateway WS not connected')
     }
   }
@@ -441,10 +474,12 @@ export class OpenClawService {
     }
 
     let addedNew = false
+    let updatedExisting = false
     for (const [key, value] of Object.entries(newKeys)) {
       const pattern = new RegExp(`^${key}=.*$`, 'm')
       if (pattern.test(content)) {
         content = content.replace(pattern, `${key}=${value}`)
+        updatedExisting = true
       } else {
         content = `${content.trimEnd()}\n${key}=${value}\n`
         addedNew = true
@@ -452,6 +487,11 @@ export class OpenClawService {
     }
 
     await writeFile(envPath, content, { mode: 0o600 })
+    logger.debug('Updated OpenClaw provider credentials', {
+      providerType,
+      addedNew,
+      updatedExisting,
+    })
     return addedNew
   }
 
@@ -462,9 +502,19 @@ export class OpenClawService {
       const match = content.match(/^OPENCLAW_GATEWAY_TOKEN=(.+)$/m)
       if (match) {
         this.token = match[1]
+        logger.debug('Loaded OpenClaw gateway token from env')
       }
     } catch {
-      // .env may not exist yet
+      logger.debug('OpenClaw env file not available while loading token')
+    }
+  }
+
+  private createProgressLogger(
+    onLog?: (msg: string) => void,
+  ): (msg: string) => void {
+    return (msg) => {
+      logger.debug(`OpenClaw: ${msg}`)
+      onLog?.(msg)
     }
   }
 }
