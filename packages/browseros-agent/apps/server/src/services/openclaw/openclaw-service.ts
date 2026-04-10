@@ -104,9 +104,13 @@ export class OpenClawService {
     await this.runtime.writeEnvFile(envContent)
     onLog?.('Generated .env file')
 
-    const mainAgent = makeAgentEntry('main')
+    const mainAgent = makeAgentEntry('main', {
+      providerType: input.providerType,
+      modelId: input.modelId,
+    })
     const config = buildOpenClawConfig({
       gatewayPort: this.port,
+      gatewayToken: this.token,
       agents: [mainAgent],
       providerType: input.providerType,
       modelId: input.modelId,

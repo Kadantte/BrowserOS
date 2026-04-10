@@ -33,6 +33,7 @@ export interface AgentEntry {
 
 export interface OpenClawConfigInput {
   gatewayPort: number
+  gatewayToken: string
   browserosServerPort?: number
   agents: AgentEntry[]
   providerType?: string
@@ -58,7 +59,7 @@ export function buildOpenClawConfig(
       mode: 'local',
       port: input.gatewayPort,
       bind: 'lan',
-      auth: { mode: 'token' },
+      auth: { mode: 'token', token: input.gatewayToken },
       reload: { mode: 'restart' },
       controlUi: {
         allowInsecureAuth: true,
