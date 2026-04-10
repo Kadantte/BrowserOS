@@ -35,7 +35,7 @@ export function createOpenClawRoutes() {
             status: 'running',
             port: 18789,
             agents: agents.map((a) => ({
-              id: a.id,
+              agentId: a.agentId,
               name: a.name,
               status: 'running',
             })),
