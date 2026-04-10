@@ -3,8 +3,8 @@
  * Copyright 2025 BrowserOS
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * Pure functions for building OpenClaw configuration files.
- * No side effects — callers handle file I/O.
+ * Pure functions for building OpenClaw bootstrap configuration.
+ * Config is write-once at setup — agent CRUD uses WS RPC, not config edits.
  */
 
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
@@ -23,19 +23,10 @@ export const PROVIDER_ENV_MAP: Record<string, string> = {
   mistral: 'MISTRAL_API_KEY',
 }
 
-export interface AgentEntry {
-  id: string
-  name: string
-  workspace: string
-  providerType?: string
-  modelId?: string
-}
-
-export interface OpenClawConfigInput {
+export interface BootstrapConfigInput {
   gatewayPort: number
   gatewayToken: string
   browserosServerPort?: number
-  agents: AgentEntry[]
   providerType?: string
   modelId?: string
 }
@@ -49,12 +40,22 @@ export interface EnvFileInput {
   providerKeys?: Record<string, string>
 }
 
-export function buildOpenClawConfig(
-  input: OpenClawConfigInput,
+export function buildBootstrapConfig(
+  input: BootstrapConfigInput,
 ): Record<string, unknown> {
   const serverPort = input.browserosServerPort ?? DEFAULT_PORTS.server
 
-  const config: Record<string, unknown> = {
+  const defaults: Record<string, unknown> = {
+    workspace: `${CONTAINER_HOME}/workspace`,
+    timeoutSeconds: 4200,
+    thinkingDefault: 'adaptive',
+  }
+
+  if (input.providerType && input.modelId) {
+    defaults.model = { primary: `${input.providerType}/${input.modelId}` }
+  }
+
+  return {
     gateway: {
       mode: 'local',
       port: input.gatewayPort,
@@ -74,27 +75,7 @@ export function buildOpenClawConfig(
         },
       },
     },
-    agents: {
-      defaults: {
-        workspace: `${CONTAINER_HOME}/workspace`,
-        timeoutSeconds: 4200,
-        thinkingDefault: 'adaptive',
-      },
-      list: input.agents.map((agent) => {
-        const entry: Record<string, unknown> = {
-          id: agent.id,
-          name: agent.name,
-          workspace: agent.workspace,
-          tools: { exec: { security: 'full' } },
-        }
-        if (agent.providerType && agent.modelId) {
-          entry.model = {
-            primary: `${agent.providerType}/${agent.modelId}`,
-          }
-        }
-        return entry
-      }),
-    },
+    agents: { defaults },
     tools: {
       profile: 'full',
       web: {
@@ -132,14 +113,6 @@ export function buildOpenClawConfig(
       install: { nodeManager: 'bun' },
     },
   }
-
-  if (input.providerType && input.modelId) {
-    const agentsConfig = config.agents as Record<string, unknown>
-    const defaults = agentsConfig.defaults as Record<string, unknown>
-    defaults.model = { primary: `${input.providerType}/${input.modelId}` }
-  }
-
-  return config
 }
 
 export function buildEnvFile(input: EnvFileInput): string {
@@ -158,22 +131,6 @@ export function buildEnvFile(input: EnvFileInput): string {
   }
 
   return `${lines.join('\n')}\n`
-}
-
-export function makeAgentEntry(
-  name: string,
-  provider?: { providerType?: string; modelId?: string },
-): AgentEntry {
-  return {
-    id: name,
-    name,
-    workspace:
-      name === 'main'
-        ? `${CONTAINER_HOME}/workspace`
-        : `${CONTAINER_HOME}/workspace-${name}`,
-    providerType: provider?.providerType,
-    modelId: provider?.modelId,
-  }
 }
 
 export function resolveProviderKeys(

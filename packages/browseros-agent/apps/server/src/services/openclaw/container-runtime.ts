@@ -78,10 +78,19 @@ export class ContainerRuntime {
     }
   }
 
-  async waitForHealthy(port: number, timeoutMs = 30_000): Promise<boolean> {
+  async isReady(port: number): Promise<boolean> {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}/readyz`)
+      return res.ok
+    } catch {
+      return false
+    }
+  }
+
+  async waitForReady(port: number, timeoutMs = 30_000): Promise<boolean> {
     const start = Date.now()
     while (Date.now() - start < timeoutMs) {
-      if (await this.isHealthy(port)) return true
+      if (await this.isReady(port)) return true
       await Bun.sleep(1000)
     }
     return false
