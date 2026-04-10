@@ -31,7 +31,7 @@ const COMPOSE_RESOURCE = resolve(
 const OPENCLAW_CONFIG_FILE = 'openclaw.json'
 const GATEWAY_PORT = 18789
 const HEALTH_TIMEOUT_MS = 30_000
-const CHAT_TIMEOUT_MS = TIMEOUTS.TOOL_EXECUTION * 1000
+const CHAT_TIMEOUT_MS = TIMEOUTS.TOOL_CALL
 const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/
 
 export type OpenClawStatus =

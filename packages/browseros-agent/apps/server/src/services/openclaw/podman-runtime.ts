@@ -154,8 +154,8 @@ export class PodmanRuntime {
 
     if (options?.onOutput) {
       await Promise.all([
-        this.drainStream(proc.stdout, options.onOutput),
-        this.drainStream(proc.stderr, options.onOutput),
+        this.drainStream(proc.stdout ?? null, options.onOutput),
+        this.drainStream(proc.stderr ?? null, options.onOutput),
       ])
     }
 
