@@ -41,6 +41,10 @@
       "types": "./src/types/server-config.ts",
       "default": "./src/types/server-config.ts"
     },
+    "./types/klavis-classification": {
+      "types": "./src/types/klavis-classification.ts",
+      "default": "./src/types/klavis-classification.ts"
+    },
     "./schemas/llm": {
       "types": "./src/schemas/llm.ts",
       "default": "./src/schemas/llm.ts"

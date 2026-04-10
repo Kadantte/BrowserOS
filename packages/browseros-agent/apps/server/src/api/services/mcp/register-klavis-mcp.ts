@@ -10,6 +10,10 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import type { CallToolResult, Tool } from '@modelcontextprotocol/sdk/types.js'
 import { jsonSchemaObjectToZodRawShape } from 'zod-from-json-schema'
+import {
+  classifyKlavisToolName,
+  summarizeKlavisToolExposure,
+} from '../../../lib/clients/klavis/action-classifier'
 import type { KlavisClient } from '../../../lib/clients/klavis/klavis-client'
 import { OAUTH_MCP_SERVERS } from '../../../lib/clients/klavis/oauth-mcp-servers'
 import { logger } from '../../../lib/logger'
@@ -80,6 +84,9 @@ export async function connectKlavisProxy(
   logger.info('Klavis proxy connected', {
     toolCount: tools.length,
     serverCount: allServers.length,
+    classifications: summarizeKlavisToolExposure(
+      tools.map((tool) => tool.name),
+    ),
   })
 
   return {
@@ -97,6 +104,7 @@ export function registerKlavisTools(
 ): void {
   for (const tool of handle.tools) {
     const inputSchema = handle.inputSchemas.get(tool.name)
+    const classification = classifyKlavisToolName(tool.name)
 
     mcpServer.registerTool(
       tool.name,
@@ -112,6 +120,8 @@ export function registerKlavisTools(
           metrics.log('tool_executed', {
             tool_name: tool.name,
             source: 'mcp',
+            capability_type: classification.capabilityType,
+            risk_level: classification.riskLevel,
             duration_ms: Math.round(performance.now() - startTime),
             success: !result.isError,
           })
@@ -124,6 +134,8 @@ export function registerKlavisTools(
           metrics.log('tool_executed', {
             tool_name: tool.name,
             source: 'mcp',
+            capability_type: classification.capabilityType,
+            risk_level: classification.riskLevel,
             duration_ms: Math.round(performance.now() - startTime),
             success: false,
             error_message: errorText,
