@@ -11,11 +11,16 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
+import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
 import { getOpenClawDir } from '../../lib/browseros-dir'
 import { logger } from '../../lib/logger'
 import { ContainerRuntime } from './container-runtime'
-import { type GatewayAgentEntry, GatewayClient } from './gateway-client'
+import {
+  ensureClientIdentity,
+  type GatewayAgentEntry,
+  GatewayClient,
+  type OpenClawStreamEvent,
+} from './gateway-client'
 import {
   buildBootstrapConfig,
   buildEnvFile,
@@ -30,7 +35,6 @@ const COMPOSE_RESOURCE = resolve(
 const OPENCLAW_CONFIG_FILE = 'openclaw.json'
 const GATEWAY_PORT = 18789
 const READY_TIMEOUT_MS = 30_000
-const CHAT_TIMEOUT_MS = TIMEOUTS.TOOL_CALL
 const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/
 
 export type OpenClawStatus =
@@ -55,11 +59,6 @@ export interface SetupInput {
   modelId?: string
 }
 
-export interface ChatMessage {
-  role: 'user' | 'assistant' | 'system'
-  content: string
-}
-
 export class OpenClawService {
   private runtime: ContainerRuntime
   private gateway: GatewayClient | null = null
@@ -67,11 +66,13 @@ export class OpenClawService {
   private port = GATEWAY_PORT
   private token: string
   private lastError: string | null = null
+  private browserosServerPort: number
 
-  constructor() {
+  constructor(browserosServerPort?: number) {
     this.openclawDir = getOpenClawDir()
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
     this.token = crypto.randomUUID()
+    this.browserosServerPort = browserosServerPort ?? DEFAULT_PORTS.server
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────
@@ -109,6 +110,7 @@ export class OpenClawService {
     const config = buildBootstrapConfig({
       gatewayPort: this.port,
       gatewayToken: this.token,
+      browserosServerPort: this.browserosServerPort,
       providerType: input.providerType,
       modelId: input.modelId,
     })
@@ -131,19 +133,41 @@ export class OpenClawService {
       throw new Error(this.lastError)
     }
 
+    // Generate client device identity for WS auth
+    logProgress('Generating client device identity...')
+    ensureClientIdentity(this.openclawDir)
+
+    // Attempt WS connect — this triggers a pending pair request
+    logProgress('Pairing client device...')
+    try {
+      await this.connectGateway()
+    } catch {
+      // Expected: "pairing required" — now approve via CLI
+    }
+
+    // Approve the pending device via the openclaw CLI inside the container
+    await this.approvePendingDevice(logProgress)
+
     logProgress('Connecting to gateway...')
     await this.connectGateway()
 
-    logProgress('Creating main agent...')
-    const model =
-      input.providerType && input.modelId
-        ? `${input.providerType}/${input.modelId}`
-        : undefined
-    await this.gateway!.createAgent({
-      name: 'main',
-      workspace: GatewayClient.agentWorkspace('main'),
-      model,
-    })
+    // Ensure main agent exists (gateway may auto-create it)
+    const existingAgents = await this.gateway!.listAgents()
+    const hasMain = existingAgents.some((a) => a.agentId === 'main')
+    if (!hasMain) {
+      logProgress('Creating main agent...')
+      const model =
+        input.providerType && input.modelId
+          ? `${input.providerType}/${input.modelId}`
+          : undefined
+      await this.gateway!.createAgent({
+        name: 'main',
+        workspace: GatewayClient.agentWorkspace('main'),
+        model,
+      })
+    } else {
+      logProgress('Main agent already exists')
+    }
 
     this.lastError = null
     logProgress(`OpenClaw gateway running at http://127.0.0.1:${this.port}`)
@@ -334,41 +358,16 @@ export class OpenClawService {
     return this.gateway!.listAgents()
   }
 
-  // ── Chat Proxy (HTTP) ───────────────────────────────────────────────
+  // ── Chat Stream (WS) ─────────────────────────────────────────────────
 
-  async chat(agentId: string, messages: ChatMessage[]): Promise<Response> {
-    await this.loadTokenFromEnv()
-    const url = `http://127.0.0.1:${this.port}/v1/chat/completions`
-    logger.debug('Proxying OpenClaw chat request', {
-      agentId,
-      messageCount: messages.length,
-      port: this.port,
-    })
-
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${this.token}`,
-      },
-      body: JSON.stringify({
-        model: `openclaw/${agentId}`,
-        stream: true,
-        messages,
-      }),
-      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
-    })
-
-    if (!response.ok) {
-      const errText = await response.text()
-      throw new Error(`OpenClaw error (${response.status}): ${errText}`)
-    }
-
-    logger.debug('OpenClaw chat stream accepted', {
-      agentId,
-      status: response.status,
-    })
-    return response
+  chatStream(
+    agentId: string,
+    sessionKey: string,
+    message: string,
+  ): ReadableStream<OpenClawStreamEvent> {
+    this.ensureGatewayConnected()
+    logger.debug('Starting OpenClaw chat stream', { agentId, sessionKey })
+    return this.gateway!.chatStream(agentId, sessionKey, message)
   }
 
   // ── Provider Keys ────────────────────────────────────────────────────
@@ -425,10 +424,64 @@ export class OpenClawService {
 
   // ── Internal ─────────────────────────────────────────────────────────
 
+  /**
+   * Approves the latest pending device pair request via the openclaw CLI
+   * running inside the container. This is needed because the gateway requires
+   * Ed25519 device identity and approval before granting operator scopes.
+   */
+  private async approvePendingDevice(
+    logProgress: (msg: string) => void,
+  ): Promise<void> {
+    // List pending devices to get the request ID
+    const output: string[] = []
+    await this.runtime.execInContainer(
+      [
+        'node',
+        'dist/index.js',
+        'devices',
+        'list',
+        '--json',
+        '--token',
+        this.token,
+      ],
+      (line) => output.push(line),
+    )
+
+    const jsonStr = output.join('\n')
+    const data = JSON.parse(jsonStr)
+    const pending = data.pending as Array<{ requestId: string }> | undefined
+
+    if (!pending?.length) {
+      logger.warn('No pending device pair requests found')
+      throw new Error('No pending device pair requests to approve')
+    }
+
+    const requestId = pending[0].requestId
+    logProgress(`Approving device pair request ${requestId.slice(0, 8)}...`)
+
+    const code = await this.runtime.execInContainer([
+      'node',
+      'dist/index.js',
+      'devices',
+      'approve',
+      requestId,
+      '--token',
+      this.token,
+      '--json',
+    ])
+
+    if (code !== 0) {
+      logger.warn('Device approval command exited with code', { code })
+      throw new Error('Failed to approve client device pairing')
+    }
+
+    logProgress('Client device approved')
+  }
+
   private async connectGateway(): Promise<void> {
     this.disconnectGateway()
     logger.debug('Connecting OpenClaw gateway client', { port: this.port })
-    this.gateway = new GatewayClient(this.port, this.token)
+    this.gateway = new GatewayClient(this.port, this.token, this.openclawDir)
     await this.gateway.connect()
   }
 
@@ -521,7 +574,9 @@ export class OpenClawService {
 
 let service: OpenClawService | null = null
 
-export function getOpenClawService(): OpenClawService {
-  if (!service) service = new OpenClawService()
+export function getOpenClawService(
+  browserosServerPort?: number,
+): OpenClawService {
+  if (!service) service = new OpenClawService(browserosServerPort)
   return service
 }
