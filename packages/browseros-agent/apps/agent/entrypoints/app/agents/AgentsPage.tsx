@@ -6,6 +6,7 @@ import {
   Plus,
   RefreshCw,
   Square,
+  TerminalSquare,
   Trash2,
 } from 'lucide-react'
 import { type FC, useEffect, useState } from 'react'
@@ -28,6 +29,7 @@ import {
 } from '@/components/ui/select'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { AgentChat } from './AgentChat'
+import { AgentTerminal } from './AgentTerminal'
 import {
   type AgentEntry,
   createAgent,
@@ -76,6 +78,7 @@ export const AgentsPage: FC = () => {
 
   const [actionInProgress, setActionInProgress] = useState(false)
   const [chatAgent, setChatAgent] = useState<AgentEntry | null>(null)
+  const [terminalAgent, setTerminalAgent] = useState<AgentEntry | null>(null)
   const [error, setError] = useState<string | null>(null)
 
   const compatibleProviders = providers.filter(
@@ -169,6 +172,16 @@ export const AgentsPage: FC = () => {
     } finally {
       setActionInProgress(false)
     }
+  }
+
+  if (terminalAgent) {
+    return (
+      <AgentTerminal
+        agentId={terminalAgent.agentId}
+        agentName={terminalAgent.name}
+        onBack={() => setTerminalAgent(null)}
+      />
+    )
   }
 
   if (chatAgent) {
@@ -340,6 +353,14 @@ export const AgentsPage: FC = () => {
                     >
                       <MessageSquare className="mr-1 size-4" />
                       Chat
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setTerminalAgent(agent)}
+                    >
+                      <TerminalSquare className="mr-1 size-4" />
+                      Terminal
                     </Button>
                     {agent.agentId !== 'main' && (
                       <Button

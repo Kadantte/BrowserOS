@@ -20,6 +20,11 @@ import { initializeOAuth } from '../lib/clients/oauth'
 import { getDb } from '../lib/db'
 import { logger } from '../lib/logger'
 import { Sentry } from '../lib/sentry'
+import { getPodmanRuntime } from '../services/openclaw/podman-runtime'
+import {
+  TerminalSessionManager,
+  type TerminalWsData,
+} from '../services/terminal/terminal-session'
 import { createChatRoutes } from './routes/chat'
 import { createCreditsRoutes } from './routes/credits'
 import { createHealthRoute } from './routes/health'
@@ -35,12 +40,15 @@ import { createShutdownRoute } from './routes/shutdown'
 import { createSkillsRoutes } from './routes/skills'
 import { createSoulRoutes } from './routes/soul'
 import { createStatusRoute } from './routes/status'
+import { handleTerminalWebSocketRequest } from './routes/terminal'
 import {
   connectKlavisProxy,
   type KlavisProxyHandle,
 } from './services/klavis/strata-proxy'
 import type { Env, HttpServerConfig } from './types'
 import { defaultCorsConfig } from './utils/cors'
+
+const CONTAINER_NAME = 'browseros-openclaw-openclaw-gateway-1'
 
 async function assertPortAvailable(port: number): Promise<void> {
   const net = await import('node:net')
@@ -213,11 +221,40 @@ export async function createHttpServer(config: HttpServerConfig) {
 
   await assertPortAvailable(port)
 
-  const server = Bun.serve({
-    fetch: (request, server) => app.fetch(request, { server }),
+  const terminalManager = new TerminalSessionManager()
+  const podmanPath = getPodmanRuntime().getPodmanPath()
+
+  const server = Bun.serve<TerminalWsData>({
+    fetch: (request, server) => {
+      const terminalResponse = handleTerminalWebSocketRequest(request, server)
+      if (terminalResponse !== null) return terminalResponse
+      return app.fetch(request, { server })
+    },
     port,
     hostname: host,
     idleTimeout: 0,
+    websocket: {
+      open(ws) {
+        terminalManager.create(ws, podmanPath, CONTAINER_NAME)
+      },
+      message(ws, message) {
+        if (typeof message === 'string') {
+          terminalManager.write(ws, message)
+        } else {
+          try {
+            const ctrl = JSON.parse(new TextDecoder().decode(message))
+            if (ctrl.type === 'resize') {
+              terminalManager.resize(ws, ctrl.cols, ctrl.rows)
+            }
+          } catch {
+            // Ignore malformed control messages
+          }
+        }
+      },
+      close(ws) {
+        terminalManager.destroy(ws)
+      },
+    },
   })
 
   logger.info('Consolidated HTTP Server started', { port, host })

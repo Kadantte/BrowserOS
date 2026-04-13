@@ -69,6 +69,7 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
             <CommandGroup>
               {agents.map((agent) => {
                 const isSelected = selectedAgentId === agent.agentId
+                const modelLabel = getModelDisplayName(agent.model)
                 return (
                   <CommandItem
                     key={agent.agentId}
@@ -91,11 +92,11 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
                     <span className="flex-1 truncate text-sm">
                       {agent.name}
                     </span>
-                    {getModelDisplayName(agent.model) && (
+                    {modelLabel ? (
                       <span className="text-muted-foreground text-xs">
-                        {getModelDisplayName(agent.model)}
+                        {modelLabel}
                       </span>
-                    )}
+                    ) : null}
                     {isSelected && (
                       <Check className="size-3.5 text-[var(--accent-orange)]" />
                     )}

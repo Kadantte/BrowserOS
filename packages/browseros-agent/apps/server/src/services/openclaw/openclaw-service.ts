@@ -158,6 +158,7 @@ export class OpenClawService {
     await this.connectGateway()
 
     // Ensure main agent exists (gateway may auto-create it)
+    // biome-ignore lint/style/noNonNullAssertion: gateway is guaranteed connected after connectGateway()
     const existingAgents = await this.gateway!.listAgents()
     const hasMain = existingAgents.some((a) => a.agentId === 'main')
     if (!hasMain) {
@@ -166,6 +167,7 @@ export class OpenClawService {
         input.providerType && input.modelId
           ? `${input.providerType}/${input.modelId}`
           : undefined
+      // biome-ignore lint/style/noNonNullAssertion: gateway is connected
       await this.gateway!.createAgent({
         name: 'main',
         workspace: GatewayClient.agentWorkspace('main'),
@@ -335,6 +337,7 @@ export class OpenClawService {
         ? `${input.providerType}/${input.modelId}`
         : undefined
 
+    // biome-ignore lint/style/noNonNullAssertion: ensureGatewayConnected() guards above
     const agent = await this.gateway!.createAgent({
       name,
       workspace: GatewayClient.agentWorkspace(name),
@@ -354,6 +357,7 @@ export class OpenClawService {
     }
 
     this.ensureGatewayConnected()
+    // biome-ignore lint/style/noNonNullAssertion: ensureGatewayConnected() guards above
     await this.gateway!.deleteAgent(agentId)
     logger.info('Agent removed via WS RPC', { agentId })
   }
@@ -361,6 +365,7 @@ export class OpenClawService {
   async listAgents(): Promise<GatewayAgentEntry[]> {
     this.ensureGatewayConnected()
     logger.debug('Listing OpenClaw agents')
+    // biome-ignore lint/style/noNonNullAssertion: ensureGatewayConnected() guards above
     return this.gateway!.listAgents()
   }
 
@@ -373,6 +378,7 @@ export class OpenClawService {
   ): ReadableStream<OpenClawStreamEvent> {
     this.ensureGatewayConnected()
     logger.debug('Starting OpenClaw chat stream', { agentId, sessionKey })
+    // biome-ignore lint/style/noNonNullAssertion: ensureGatewayConnected() guards above
     return this.gateway!.chatStream(agentId, sessionKey, message)
   }
 
