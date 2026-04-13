@@ -170,12 +170,18 @@ export function createOpenClawRoutes() {
         return stream(c, async (s) => {
           const reader = eventStream.getReader()
           const encoder = new TextEncoder()
-          while (true) {
-            const { done, value } = await reader.read()
-            if (done) break
-            await s.write(encoder.encode(`data: ${JSON.stringify(value)}\n\n`))
+          try {
+            while (true) {
+              const { done, value } = await reader.read()
+              if (done) break
+              await s.write(
+                encoder.encode(`data: ${JSON.stringify(value)}\n\n`),
+              )
+            }
+            await s.write(encoder.encode('data: [DONE]\n\n'))
+          } finally {
+            await reader.cancel()
           }
-          await s.write(encoder.encode('data: [DONE]\n\n'))
         })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)

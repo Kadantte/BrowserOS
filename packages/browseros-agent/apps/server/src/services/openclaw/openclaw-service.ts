@@ -141,8 +141,14 @@ export class OpenClawService {
     logProgress('Pairing client device...')
     try {
       await this.connectGateway()
-    } catch {
-      // Expected: "pairing required" — now approve via CLI
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      if (
+        !msg.includes('pairing required') &&
+        !msg.includes('signature expired')
+      ) {
+        throw err
+      }
     }
 
     // Approve the pending device via the openclaw CLI inside the container
@@ -479,7 +485,7 @@ export class OpenClawService {
   ): Promise<void> {
     // List pending devices to get the request ID
     const output: string[] = []
-    await this.runtime.execInContainer(
+    const listCode = await this.runtime.execInContainer(
       [
         'node',
         'dist/index.js',
@@ -492,10 +498,21 @@ export class OpenClawService {
       (line) => output.push(line),
     )
 
-    const jsonStr = output.join('\n')
-    const data = JSON.parse(jsonStr)
-    const pending = data.pending as Array<{ requestId: string }> | undefined
+    if (listCode !== 0) {
+      throw new Error(`Failed to list pending devices (exit ${listCode})`)
+    }
 
+    const jsonStr = output.join('\n')
+    let data: { pending?: Array<{ requestId: string }> }
+    try {
+      data = JSON.parse(jsonStr)
+    } catch {
+      throw new Error(
+        `Failed to parse device list output: ${jsonStr.slice(0, 200)}`,
+      )
+    }
+
+    const pending = data.pending
     if (!pending?.length) {
       logger.warn('No pending device pair requests found')
       throw new Error('No pending device pair requests to approve')

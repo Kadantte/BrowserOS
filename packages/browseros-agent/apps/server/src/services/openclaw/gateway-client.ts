@@ -421,15 +421,14 @@ export class GatewayClient {
     const pendingRequests = this.pendingRequests
     const fullSessionKey = `agent:${agentId}:browseros-${sessionKey}`
     const idempotencyKey = globalThis.crypto.randomUUID()
+    const originalOnMessage = ws.onmessage
+
+    const restore = () => {
+      ws.onmessage = originalOnMessage
+    }
 
     return new ReadableStream<OpenClawStreamEvent>({
       start: (controller) => {
-        const originalOnMessage = ws.onmessage
-
-        const restore = () => {
-          ws.onmessage = originalOnMessage
-        }
-
         const subscribeId = globalThis.crypto.randomUUID()
         const agentReqId = globalThis.crypto.randomUUID()
 
@@ -608,6 +607,9 @@ export class GatewayClient {
             },
           }),
         )
+      },
+      cancel: () => {
+        restore()
       },
     })
   }
