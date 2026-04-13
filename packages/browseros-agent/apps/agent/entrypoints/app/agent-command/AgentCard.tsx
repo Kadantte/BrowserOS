@@ -1,4 +1,4 @@
-import { Bot } from 'lucide-react'
+import { Bot, Sparkles } from 'lucide-react'
 import type { FC } from 'react'
 import type { AgentCardData } from '@/lib/agent-conversations/types'
 import { cn } from '@/lib/utils'
@@ -9,21 +9,27 @@ interface AgentCardProps {
   active?: boolean
 }
 
-function statusDotClass(status: AgentCardData['status']) {
-  if (status === 'working') return 'bg-amber-500 animate-pulse'
-  if (status === 'error') return 'bg-destructive'
-  return 'bg-emerald-500'
-}
-
-function formatTimestamp(ts?: number): string {
-  if (!ts) return ''
-  const diff = Date.now() - ts
+function formatTimestamp(timestamp?: number): string {
+  if (!timestamp) return 'No activity yet'
+  const diff = Date.now() - timestamp
   const minutes = Math.floor(diff / 60000)
   if (minutes < 1) return 'just now'
   if (minutes < 60) return `${minutes}m ago`
   const hours = Math.floor(minutes / 60)
   if (hours < 24) return `${hours}h ago`
   return `${Math.floor(hours / 24)}d ago`
+}
+
+function getStatusLabel(status: AgentCardData['status']): string {
+  if (status === 'working') return 'Working'
+  if (status === 'error') return 'Error'
+  return 'Ready'
+}
+
+function getStatusTone(status: AgentCardData['status']): string {
+  if (status === 'working') return 'bg-amber-500'
+  if (status === 'error') return 'bg-destructive'
+  return 'bg-emerald-500'
 }
 
 export const AgentCardExpanded: FC<AgentCardProps> = ({
@@ -35,38 +41,46 @@ export const AgentCardExpanded: FC<AgentCardProps> = ({
     type="button"
     onClick={onClick}
     className={cn(
-      'flex w-48 shrink-0 flex-col gap-2 rounded-xl border p-4 text-left transition-all hover:shadow-md',
+      'group flex min-h-32 w-full min-w-0 flex-col rounded-2xl border p-4 text-left shadow-sm transition-all duration-200',
       active
-        ? 'border-[var(--accent-orange)] bg-[var(--accent-orange)]/5'
-        : 'border-border bg-card hover:border-[var(--accent-orange)]/50',
+        ? 'border-[var(--accent-orange)]/60 bg-[var(--accent-orange)]/10 shadow-[0_14px_34px_-20px_var(--accent-orange)]'
+        : 'border-border/60 bg-card/85 hover:border-[var(--accent-orange)]/35 hover:bg-card hover:shadow-md',
     )}
   >
-    <div className="flex items-center justify-between">
-      <div className="flex size-8 items-center justify-center rounded-lg bg-[var(--accent-orange)]/10 text-[var(--accent-orange)]">
-        <Bot className="size-4" />
+    <div className="flex items-start justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-orange)]/12 text-[var(--accent-orange)]">
+          <Bot className="size-5" />
+        </div>
+        <div className="min-w-0">
+          <div className="truncate font-semibold text-sm">{agent.name}</div>
+          <div className="truncate text-muted-foreground text-xs">
+            {agent.model ?? 'OpenClaw agent'}
+          </div>
+        </div>
       </div>
-      <span
-        className={cn('size-2 rounded-full', statusDotClass(agent.status))}
-      />
+      <div className="flex items-center gap-2 rounded-full border border-border/60 bg-background/70 px-2.5 py-1 text-[11px] text-muted-foreground">
+        <span
+          className={cn('size-2 rounded-full', getStatusTone(agent.status))}
+        />
+        <span>{getStatusLabel(agent.status)}</span>
+      </div>
     </div>
-    <div className="font-medium text-sm">{agent.name}</div>
-    {agent.lastMessage ? (
-      <div className="flex items-center justify-between gap-2">
-        <span className="truncate text-muted-foreground text-xs">
-          {agent.lastMessage}
-        </span>
-        <span className="shrink-0 text-muted-foreground text-xs">
-          {formatTimestamp(agent.lastMessageTimestamp)}
-        </span>
-      </div>
-    ) : (
-      <span className="text-muted-foreground text-xs">
-        No conversations yet
+
+    <div className="mt-4 flex-1">
+      <p className="line-clamp-2 text-foreground/90 text-sm">
+        {agent.lastMessage ??
+          'Start a conversation to see recent work and summaries.'}
+      </p>
+    </div>
+
+    <div className="mt-4 flex items-center justify-between gap-3 text-muted-foreground text-xs">
+      <span>{formatTimestamp(agent.lastMessageTimestamp)}</span>
+      <span className="inline-flex items-center gap-1">
+        <Sparkles className="size-3" />
+        Open conversation
       </span>
-    )}
-    {agent.model && (
-      <span className="text-muted-foreground/60 text-xs">{agent.model}</span>
-    )}
+    </div>
   </button>
 )
 
@@ -79,12 +93,18 @@ export const AgentCardCompact: FC<AgentCardProps> = ({
     type="button"
     onClick={onClick}
     className={cn(
-      'rounded-full border px-3 py-1.5 text-sm transition-all',
+      'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors',
       active
         ? 'border-[var(--accent-orange)] bg-[var(--accent-orange)] text-white'
-        : 'border-border bg-card text-foreground hover:border-[var(--accent-orange)]/50',
+        : 'border-border/60 bg-card/85 text-foreground hover:border-[var(--accent-orange)]/35 hover:text-[var(--accent-orange)]',
     )}
   >
-    {agent.name}
+    <span
+      className={cn(
+        'size-2 rounded-full',
+        active ? 'bg-white/90' : getStatusTone(agent.status),
+      )}
+    />
+    <span className="truncate">{agent.name}</span>
   </button>
 )

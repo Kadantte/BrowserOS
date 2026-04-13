@@ -1,103 +1,81 @@
-import type { ServerWebSocket } from 'bun'
 import { logger } from '../../lib/logger'
 
-const CONTAINER_HOME = '/home/node/.openclaw'
+export const TERMINAL_HOME_DIR = '/home/node/.openclaw'
+const DEFAULT_COLS = 80
+const DEFAULT_ROWS = 24
+const TERMINAL_NAME = 'xterm-256color'
 
-export interface TerminalWsData {
-  agentId: string
+interface TerminalSessionDeps {
+  containerName: string
+  podmanPath: string
+  workingDir: string
+  onExit: (exitCode: number) => void
+  onOutput: (data: string) => void
 }
 
-interface Session {
-  proc: ReturnType<typeof Bun.spawn>
+export interface TerminalSession {
+  close(): void
+  resize(cols: number, rows: number): void
+  writeInput(data: string): void
 }
 
-export class TerminalSessionManager {
-  private sessions = new Map<ServerWebSocket<TerminalWsData>, Session>()
+export function buildTerminalExecCommand(
+  podmanPath: string,
+  containerName: string,
+  workingDir: string,
+): string[] {
+  return [podmanPath, 'exec', '-it', '-w', workingDir, containerName, '/bin/sh']
+}
 
-  create(
-    ws: ServerWebSocket<TerminalWsData>,
-    podmanPath: string,
-    containerName: string,
-  ): void {
-    const { agentId } = ws.data
-    const workspace =
-      agentId === 'main'
-        ? `${CONTAINER_HOME}/workspace`
-        : `${CONTAINER_HOME}/workspace-${agentId}`
-
-    const proc = Bun.spawn(
-      [
-        podmanPath,
-        'exec',
-        '-it',
-        containerName,
-        '/bin/sh',
-        '-c',
-        `cd ${workspace} 2>/dev/null; exec /bin/sh`,
-      ],
-      {
-        terminal: {
-          cols: 80,
-          rows: 24,
-          data(_terminal, data) {
-            try {
-              ws.send(data)
-            } catch {
-              // WebSocket may have closed
-            }
-          },
+export function createTerminalSession(
+  deps: TerminalSessionDeps,
+): TerminalSession {
+  const decoder = new TextDecoder()
+  const proc = Bun.spawn(
+    buildTerminalExecCommand(
+      deps.podmanPath,
+      deps.containerName,
+      deps.workingDir,
+    ),
+    {
+      terminal: {
+        cols: DEFAULT_COLS,
+        rows: DEFAULT_ROWS,
+        data(_terminal, data) {
+          const chunk = decoder.decode(data, { stream: true })
+          if (chunk) deps.onOutput(chunk)
         },
-        env: { ...process.env, TERM: 'xterm-256color' },
       },
-    )
+      env: { ...process.env, TERM: TERMINAL_NAME },
+    },
+  )
+  let closed = false
 
-    proc.exited.then(() => {
-      if (this.sessions.has(ws)) {
-        this.sessions.delete(ws)
-        try {
-          ws.close()
-        } catch {
-          // Already closed
-        }
+  void proc.exited.then((exitCode) => {
+    const trailing = decoder.decode()
+    if (trailing) deps.onOutput(trailing)
+    deps.onExit(exitCode)
+  })
+
+  logger.debug('Terminal session created', { workingDir: deps.workingDir })
+
+  return {
+    writeInput(data) {
+      proc.terminal?.write(data)
+    },
+    resize(cols, rows) {
+      proc.terminal?.resize(cols, rows)
+    },
+    close() {
+      if (closed) return
+      closed = true
+      try {
+        proc.terminal?.close()
+        proc.kill()
+      } catch {
+        logger.debug('Terminal session cleanup failed')
       }
-    })
-
-    this.sessions.set(ws, { proc })
-    logger.debug('Terminal session created', { agentId })
-  }
-
-  write(ws: ServerWebSocket<TerminalWsData>, data: string): void {
-    const session = this.sessions.get(ws)
-    if (!session?.proc.terminal) return
-    session.proc.terminal.write(data)
-  }
-
-  resize(
-    ws: ServerWebSocket<TerminalWsData>,
-    cols: number,
-    rows: number,
-  ): void {
-    const session = this.sessions.get(ws)
-    if (!session?.proc.terminal) return
-    session.proc.terminal.resize(cols, rows)
-  }
-
-  destroy(ws: ServerWebSocket<TerminalWsData>): void {
-    const session = this.sessions.get(ws)
-    if (!session) return
-    this.sessions.delete(ws)
-    try {
-      session.proc.terminal?.close()
-      session.proc.kill()
-    } catch {
-      // Best effort cleanup
-    }
-    logger.debug('Terminal session destroyed')
-  }
-
-  destroyAll(): void {
-    for (const [ws] of this.sessions) {
-      this.destroy(ws)
-    }
+      logger.debug('Terminal session destroyed')
+    },
   }
 }

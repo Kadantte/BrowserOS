@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Plus } from 'lucide-react'
+import { Bot, Check, ChevronDown, Plus } from 'lucide-react'
 import type { FC } from 'react'
 import { useState } from 'react'
 import { Button } from '@/components/ui/button'
@@ -44,24 +44,30 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
   status,
 }) => {
   const [open, setOpen] = useState(false)
-  const selectedAgent = agents.find((a) => a.agentId === selectedAgentId)
+  const selectedAgent = agents.find(
+    (agent) => agent.agentId === selectedAgentId,
+  )
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <Button
           variant="ghost"
-          size="sm"
-          className="gap-2 text-muted-foreground hover:text-foreground"
+          className={cn(
+            'flex items-center gap-2 rounded-lg px-3 py-1.5 font-medium text-sm transition-all',
+            'bg-transparent text-muted-foreground hover:bg-accent hover:text-accent-foreground',
+            'data-[state=open]:bg-accent',
+          )}
         >
+          <Bot className="h-4 w-4" />
           <span className={cn('size-2 rounded-full', getStatusDot(status))} />
-          <span className="max-w-[120px] truncate text-sm">
+          <span className="max-w-32 truncate">
             {selectedAgent?.name ?? 'Select agent'}
           </span>
-          <ChevronDown className="size-3" />
+          <ChevronDown className="h-3 w-3" />
         </Button>
       </PopoverTrigger>
-      <PopoverContent side="top" align="start" className="w-52 p-0">
+      <PopoverContent side="bottom" align="start" className="w-72 p-0">
         <Command>
           <CommandInput placeholder="Search agents..." className="h-9" />
           <CommandList>
@@ -79,46 +85,45 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
                       setOpen(false)
                     }}
                     className={cn(
-                      'flex w-full items-center gap-3 rounded-md p-2',
+                      'flex w-full items-center gap-3 rounded-md px-3 py-2',
                       isSelected && 'bg-[var(--accent-orange)]/10',
                     )}
                   >
-                    <span
-                      className={cn(
-                        'size-2 rounded-full',
-                        getStatusDot(status),
-                      )}
-                    />
-                    <span className="flex-1 truncate text-sm">
-                      {agent.name}
-                    </span>
-                    {modelLabel ? (
-                      <span className="text-muted-foreground text-xs">
-                        {modelLabel}
+                    <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-orange)]/10 text-[var(--accent-orange)]">
+                      <Bot className="size-4" />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <span className="block truncate font-medium text-sm">
+                        {agent.name}
                       </span>
+                      {modelLabel ? (
+                        <span className="block truncate text-muted-foreground text-xs">
+                          {modelLabel}
+                        </span>
+                      ) : null}
+                    </div>
+                    {isSelected ? (
+                      <Check className="size-4 shrink-0 text-[var(--accent-orange)]" />
                     ) : null}
-                    {isSelected && (
-                      <Check className="size-3.5 text-[var(--accent-orange)]" />
-                    )}
                   </CommandItem>
                 )
               })}
             </CommandGroup>
-            {onCreateAgent && (
+            {onCreateAgent ? (
               <div className="border-border border-t p-1">
                 <button
                   type="button"
-                  className="flex w-full items-center gap-3 rounded-md p-2 text-muted-foreground text-sm hover:bg-accent hover:text-foreground"
+                  className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-muted-foreground text-sm transition-colors hover:bg-accent hover:text-foreground"
                   onClick={() => {
                     onCreateAgent()
                     setOpen(false)
                   }}
                 >
                   <Plus className="size-4" />
-                  Create Agent
+                  <span>Create agent</span>
                 </button>
               </div>
-            )}
+            ) : null}
           </CommandList>
         </Command>
       </PopoverContent>

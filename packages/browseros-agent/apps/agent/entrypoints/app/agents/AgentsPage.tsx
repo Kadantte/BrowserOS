@@ -78,7 +78,7 @@ export const AgentsPage: FC = () => {
 
   const [actionInProgress, setActionInProgress] = useState(false)
   const [chatAgent, setChatAgent] = useState<AgentEntry | null>(null)
-  const [terminalAgent, setTerminalAgent] = useState<AgentEntry | null>(null)
+  const [showTerminal, setShowTerminal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const compatibleProviders = providers.filter(
@@ -174,14 +174,8 @@ export const AgentsPage: FC = () => {
     }
   }
 
-  if (terminalAgent) {
-    return (
-      <AgentTerminal
-        agentId={terminalAgent.agentId}
-        agentName={terminalAgent.name}
-        onBack={() => setTerminalAgent(null)}
-      />
-    )
+  if (showTerminal) {
+    return <AgentTerminal onBack={() => setShowTerminal(false)} />
   }
 
   if (chatAgent) {
@@ -233,6 +227,10 @@ export const AgentsPage: FC = () => {
                 title="Stop gateway"
               >
                 <Square className="size-4" />
+              </Button>
+              <Button variant="outline" onClick={() => setShowTerminal(true)}>
+                <TerminalSquare className="mr-1 size-4" />
+                Terminal
               </Button>
               <Button onClick={() => setCreateOpen(true)}>
                 <Plus className="mr-1 size-4" />
@@ -353,14 +351,6 @@ export const AgentsPage: FC = () => {
                     >
                       <MessageSquare className="mr-1 size-4" />
                       Chat
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setTerminalAgent(agent)}
-                    >
-                      <TerminalSquare className="mr-1 size-4" />
-                      Terminal
                     </Button>
                     {agent.agentId !== 'main' && (
                       <Button

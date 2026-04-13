@@ -1,30 +1,94 @@
-import type { TerminalWsData } from '../../services/terminal/terminal-session'
+import { Hono } from 'hono'
+import { upgradeWebSocket } from 'hono/bun'
+import { logger } from '../../lib/logger'
+import {
+  parseTerminalClientMessage,
+  serializeTerminalServerMessage,
+} from '../../services/terminal/terminal-protocol'
+import {
+  createTerminalSession,
+  TERMINAL_HOME_DIR,
+  type TerminalSession,
+} from '../../services/terminal/terminal-session'
+import type { Env } from '../types'
 
 export const TERMINAL_WS_PATH = '/terminal/ws'
 
-interface UpgradeServer {
-  upgrade(
-    request: Request,
-    options: {
-      data: TerminalWsData
-    },
-  ): boolean
+interface TerminalRouteDeps {
+  containerName: string
+  podmanPath: string
 }
 
-export function handleTerminalWebSocketRequest(
-  request: Request,
-  server: UpgradeServer,
-): Response | undefined | null {
-  const url = new URL(request.url)
-  if (request.method !== 'GET' || url.pathname !== TERMINAL_WS_PATH) return null
+function safeSend(ws: { send(data: string): void }, data: string): void {
+  try {
+    ws.send(data)
+  } catch {}
+}
 
-  const upgradeHeader = request.headers.get('upgrade')
-  if (!upgradeHeader || upgradeHeader.toLowerCase() !== 'websocket') {
-    return new Response('WebSocket upgrade required', { status: 426 })
+function sendOutput(ws: { send(data: string): void }, data: string): void {
+  safeSend(ws, serializeTerminalServerMessage({ type: 'output', data }))
+}
+
+function sendError(ws: { send(data: string): void }, message: string): void {
+  safeSend(ws, serializeTerminalServerMessage({ type: 'error', message }))
+}
+
+function sendExit(ws: { send(data: string): void }, exitCode: number): void {
+  safeSend(ws, serializeTerminalServerMessage({ type: 'exit', exitCode }))
+}
+
+function createSocketEvents(deps: TerminalRouteDeps) {
+  let session: TerminalSession | null = null
+
+  return {
+    onOpen(_event: Event, ws: { send(data: string): void; close(): void }) {
+      try {
+        session = createTerminalSession({
+          containerName: deps.containerName,
+          podmanPath: deps.podmanPath,
+          workingDir: TERMINAL_HOME_DIR,
+          onOutput(data) {
+            sendOutput(ws, data)
+          },
+          onExit(exitCode) {
+            sendExit(ws, exitCode)
+            ws.close()
+          },
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        logger.warn('Failed to start terminal session', { error: message })
+        sendError(ws, message)
+        ws.close()
+      }
+    },
+    onMessage(event: MessageEvent, _ws: { send(data: string): void }) {
+      const message = parseTerminalClientMessage(event.data)
+      if (!session || !message) return
+
+      if (message.type === 'input') {
+        session.writeInput(message.data)
+      } else {
+        session.resize(message.cols, message.rows)
+      }
+    },
+    onClose() {
+      session?.close()
+      session = null
+    },
+    onError(_event: Event, ws: { send(data: string): void; close(): void }) {
+      if (!session) return
+      session.close()
+      session = null
+      sendError(ws, 'Terminal connection error')
+      ws.close()
+    },
   }
+}
 
-  const agentId = url.searchParams.get('agentId') || 'main'
-  if (server.upgrade(request, { data: { agentId } })) return undefined
-
-  return new Response('WebSocket upgrade failed', { status: 426 })
+export function createTerminalRoutes(deps: TerminalRouteDeps) {
+  return new Hono<Env>().get(
+    '/ws',
+    upgradeWebSocket(() => createSocketEvents(deps)),
+  )
 }

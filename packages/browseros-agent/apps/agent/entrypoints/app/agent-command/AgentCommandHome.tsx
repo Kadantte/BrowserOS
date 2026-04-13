@@ -2,62 +2,104 @@ import { ArrowRight } from 'lucide-react'
 import { type FC, useEffect, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Button } from '@/components/ui/button'
-import {
-  type AgentEntry,
-  getModelDisplayName,
-} from '@/entrypoints/app/agents/useOpenClaw'
+import { Card, CardContent } from '@/components/ui/card'
+import type { AgentEntry } from '@/entrypoints/app/agents/useOpenClaw'
+import { ImportDataHint } from '@/entrypoints/newtab/index/ImportDataHint'
 import { NewTabBranding } from '@/entrypoints/newtab/index/NewTabBranding'
-import { getLatestConversation } from '@/lib/agent-conversations/storage'
-import type { AgentCardData } from '@/lib/agent-conversations/types'
+import { NewTabTip } from '@/entrypoints/newtab/index/NewTabTip'
+import { ScheduleResults } from '@/entrypoints/newtab/index/ScheduleResults'
+import { SignInHint } from '@/entrypoints/newtab/index/SignInHint'
+import { TopSites } from '@/entrypoints/newtab/index/TopSites'
+import { useActiveHint } from '@/entrypoints/newtab/index/useActiveHint'
 import { AgentCardDock } from './AgentCardDock'
 import { useAgentCommandData } from './agent-command-layout'
 import { ConversationInput } from './ConversationInput'
+import { useAgentCardData } from './useAgentCardData'
+
+function AgentCommandSetupState({
+  onOpenAgents,
+}: {
+  onOpenAgents: () => void
+}) {
+  return (
+    <Card className="border-border/60 bg-card/85 shadow-sm">
+      <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+        <p className="max-w-xl text-muted-foreground text-sm">
+          Set up OpenClaw agents to turn your new tab into an agent command
+          center.
+        </p>
+        <Button onClick={onOpenAgents} className="gap-2">
+          Open Agent Setup
+          <ArrowRight className="size-4" />
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function EmptyAgentsState({ onOpenAgents }: { onOpenAgents: () => void }) {
+  return (
+    <Card className="border-border/60 bg-card/85 shadow-sm">
+      <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+        <p className="max-w-xl text-muted-foreground text-sm">
+          OpenClaw is running, but you do not have any agents yet.
+        </p>
+        <Button variant="outline" onClick={onOpenAgents}>
+          Create your first agent
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
+
+function OpenClawUnavailableState({
+  onOpenAgents,
+}: {
+  onOpenAgents: () => void
+}) {
+  return (
+    <Card className="border-border/60 bg-card/85 shadow-sm">
+      <CardContent className="flex flex-col items-center gap-4 p-6 text-center">
+        <p className="max-w-xl text-muted-foreground text-sm">
+          OpenClaw is unavailable right now. Open the Agents page to restart the
+          gateway or review setup.
+        </p>
+        <Button onClick={onOpenAgents} className="gap-2">
+          Open Agent Setup
+          <ArrowRight className="size-4" />
+        </Button>
+      </CardContent>
+    </Card>
+  )
+}
 
 export const AgentCommandHome: FC = () => {
   const navigate = useNavigate()
+  const activeHint = useActiveHint()
   const { status, agents } = useAgentCommandData()
+  const [mounted, setMounted] = useState(false)
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-  const [cardData, setCardData] = useState<AgentCardData[]>([])
+  const cardData = useAgentCardData(agents, status?.status)
 
-  // Auto-select first agent
   useEffect(() => {
-    if (!selectedAgentId && agents.length > 0) {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (agents.length === 0) {
+      if (selectedAgentId) {
+        setSelectedAgentId(null)
+      }
+      return
+    }
+
+    if (
+      !selectedAgentId ||
+      !agents.some((agent) => agent.agentId === selectedAgentId)
+    ) {
       setSelectedAgentId(agents[0].agentId)
     }
   }, [agents, selectedAgentId])
-
-  // Build card data with last message from storage
-  useEffect(() => {
-    async function loadCardData() {
-      const data = await Promise.all(
-        agents.map(async (agent) => {
-          const conv = await getLatestConversation(agent.agentId)
-          const lastTurn = conv?.turns[conv.turns.length - 1]
-          const lastTextPart = lastTurn?.parts.findLast(
-            (p) => p.kind === 'text',
-          )
-          return {
-            agentId: agent.agentId,
-            name: agent.name,
-            model: getModelDisplayName(agent.model),
-            status:
-              status?.status === 'running'
-                ? ('idle' as const)
-                : status?.status === 'error'
-                  ? ('error' as const)
-                  : ('idle' as const),
-            lastMessage:
-              lastTextPart?.kind === 'text'
-                ? lastTextPart.text.slice(0, 80)
-                : undefined,
-            lastMessageTimestamp: lastTurn?.timestamp,
-          }
-        }),
-      )
-      setCardData(data)
-    }
-    if (agents.length > 0) loadCardData()
-  }, [agents, status?.status])
 
   const handleSend = (text: string) => {
     if (!selectedAgentId) return
@@ -68,22 +110,26 @@ export const AgentCommandHome: FC = () => {
     setSelectedAgentId(agent.agentId)
   }
 
-  const handleCardClick = (agentId: string) => {
-    navigate(`/home/agents/${agentId}`)
-  }
-
-  const isSetup = status?.status && status.status !== 'uninitialized'
+  const openClawStatus = status?.status
+  const isSetup = openClawStatus != null && openClawStatus !== 'uninitialized'
+  const shouldShowUnavailableState =
+    openClawStatus != null &&
+    openClawStatus !== 'running' &&
+    openClawStatus !== 'uninitialized' &&
+    cardData.length === 0
 
   return (
-    <div className="absolute inset-0 flex flex-col items-center justify-center gap-6 px-4">
-      <NewTabBranding />
+    <div className="pt-[max(25vh,16px)]">
+      <div className="relative w-full space-y-8 md:w-3xl">
+        <NewTabBranding />
 
-      <div className="w-full max-w-2xl">
         <ConversationInput
+          variant="home"
           agents={agents}
           selectedAgentId={selectedAgentId}
           onSelectAgent={handleSelectAgent}
           onSend={handleSend}
+          onCreateAgent={() => navigate('/agents')}
           streaming={false}
           disabled={status?.status !== 'running'}
           status={status?.status}
@@ -93,35 +139,44 @@ export const AgentCommandHome: FC = () => {
               : 'OpenClaw is not running...'
           }
         />
+
+        {mounted ? <NewTabTip /> : null}
+
+        {isSetup ? (
+          shouldShowUnavailableState ? (
+            <OpenClawUnavailableState
+              onOpenAgents={() => navigate('/agents')}
+            />
+          ) : cardData.length > 0 ? (
+            <section className="space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="font-semibold text-base">Agents</h2>
+                  <p className="text-muted-foreground text-sm">
+                    Pick up where your agents left off.
+                  </p>
+                </div>
+              </div>
+              <AgentCardDock
+                agents={cardData}
+                activeAgentId={selectedAgentId ?? undefined}
+                onSelectAgent={(agentId) => navigate(`/home/agents/${agentId}`)}
+                onCreateAgent={() => navigate('/agents')}
+              />
+            </section>
+          ) : (
+            <EmptyAgentsState onOpenAgents={() => navigate('/agents')} />
+          )
+        ) : (
+          <AgentCommandSetupState onOpenAgents={() => navigate('/agents')} />
+        )}
+
+        {mounted ? <TopSites /> : null}
+        {mounted ? <ScheduleResults /> : null}
       </div>
 
-      {isSetup && cardData.length > 0 && (
-        <div className="w-full max-w-3xl">
-          <AgentCardDock
-            agents={cardData}
-            activeAgentId={selectedAgentId ?? undefined}
-            onSelectAgent={handleCardClick}
-            onCreateAgent={() => navigate('/agents')}
-          />
-        </div>
-      )}
-
-      {!isSetup && (
-        <div className="flex flex-col items-center gap-3 text-center">
-          <p className="text-muted-foreground text-sm">
-            Set up AI agents to automate browser tasks
-          </p>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => navigate('/agents')}
-            className="gap-2"
-          >
-            Get Started
-            <ArrowRight className="size-3.5" />
-          </Button>
-        </div>
-      )}
+      {activeHint === 'signin' ? <SignInHint /> : null}
+      {activeHint === 'import' ? <ImportDataHint /> : null}
     </div>
   )
 }
