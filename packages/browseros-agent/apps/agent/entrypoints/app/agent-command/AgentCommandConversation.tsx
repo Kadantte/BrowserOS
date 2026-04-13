@@ -1,14 +1,12 @@
 import { Bot, Home, RotateCcw } from 'lucide-react'
-import { type FC, useEffect, useMemo, useRef } from 'react'
+import { type FC, useEffect, useRef } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import type { AgentEntry } from '@/entrypoints/app/agents/useOpenClaw'
 import { cn } from '@/lib/utils'
-import { AgentCardDock } from './AgentCardDock'
 import { useAgentCommandData } from './agent-command-layout'
 import { ConversationInput } from './ConversationInput'
 import { ConversationMessage } from './ConversationMessage'
-import { useAgentCardData } from './useAgentCardData'
 import { useAgentConversation } from './useAgentConversation'
 
 function ConversationHeader({
@@ -23,7 +21,7 @@ function ConversationHeader({
   onReset: () => void
 }) {
   return (
-    <div className="overflow-hidden rounded-[1.75rem] border border-border/60 bg-card/90 shadow-lg backdrop-blur">
+    <div className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/95 shadow-sm backdrop-blur">
       <div className="flex items-center justify-between gap-3 px-5 py-4">
         <div className="flex min-w-0 items-center gap-3">
           <Button
@@ -35,7 +33,7 @@ function ConversationHeader({
           >
             <Home className="size-4" />
           </Button>
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-[var(--accent-orange)]/12 text-[var(--accent-orange)]">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
             <Bot className="size-5" />
           </div>
           <div className="min-w-0">
@@ -62,8 +60,8 @@ function ConversationHeader({
 function EmptyConversationState({ agentName }: { agentName: string }) {
   return (
     <div className="flex min-h-full items-center justify-center py-10">
-      <div className="max-w-md rounded-[1.75rem] border border-border/60 bg-card/80 px-8 py-10 text-center shadow-sm backdrop-blur">
-        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-[var(--accent-orange)]/12 text-[var(--accent-orange)]">
+      <div className="max-w-md rounded-[1.5rem] border border-border/60 bg-card/90 px-8 py-10 text-center shadow-sm backdrop-blur">
+        <div className="mx-auto flex size-14 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
           <Bot className="size-6" />
         </div>
         <h2 className="mt-4 font-semibold text-lg">{agentName}</h2>
@@ -100,16 +98,6 @@ export const AgentCommandConversation: FC = () => {
   const agentName = agent?.name || resolvedAgentId || 'Agent'
   const { turns, streaming, loading, send, resetConversation } =
     useAgentConversation(resolvedAgentId, agentName)
-  const cardData = useAgentCardData(agents, status?.status)
-  const dockAgents = useMemo(
-    () =>
-      cardData.map((entry) =>
-        entry.agentId === resolvedAgentId && streaming
-          ? { ...entry, status: 'working' as const }
-          : entry,
-      ),
-    [cardData, resolvedAgentId, streaming],
-  )
   const lastTurn = turns[turns.length - 1]
   const lastTurnPartCount = lastTurn?.parts.length ?? 0
 
@@ -150,7 +138,7 @@ export const AgentCommandConversation: FC = () => {
 
   return (
     <div className="absolute inset-0 overflow-hidden">
-      <div className="fade-in slide-in-from-bottom-5 mx-auto flex h-full w-full max-w-4xl animate-in flex-col gap-4 px-4 pt-4 pb-2 duration-300">
+      <div className="fade-in slide-in-from-bottom-5 mx-auto flex h-full w-full max-w-3xl animate-in flex-col gap-3 px-4 pt-4 pb-2 duration-300">
         <ConversationHeader
           agentName={agentName}
           status={statusCopy}
@@ -158,24 +146,10 @@ export const AgentCommandConversation: FC = () => {
           onReset={resetConversation}
         />
 
-        {dockAgents.length > 0 ? (
-          <div className="fade-in-0 slide-in-from-top-2 animate-in duration-200">
-            <AgentCardDock
-              agents={dockAgents}
-              compact
-              activeAgentId={resolvedAgentId}
-              onSelectAgent={(selectedAgentId) =>
-                navigate(`/home/agents/${selectedAgentId}`)
-              }
-              onCreateAgent={() => navigate('/agents')}
-            />
-          </div>
-        ) : null}
-
         <main
           ref={scrollRef}
           className={cn(
-            'styled-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-[1.75rem] border border-border/50 bg-card/55 px-4 py-4 shadow-sm backdrop-blur',
+            'styled-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden rounded-[1.5rem] border border-border/50 bg-card/85 px-5 py-5 shadow-sm',
             '[&_[data-streamdown="code-block"]]:!max-w-full [&_[data-streamdown="table-wrapper"]]:!max-w-full [&_[data-streamdown="code-block"]]:overflow-x-auto [&_[data-streamdown="table-wrapper"]]:overflow-x-auto',
           )}
         >
@@ -186,7 +160,7 @@ export const AgentCommandConversation: FC = () => {
           ) : turns.length === 0 ? (
             <EmptyConversationState agentName={agentName} />
           ) : (
-            <div className="mx-auto w-full max-w-3xl space-y-4">
+            <div className="w-full space-y-4">
               {turns.map((turn, index) => (
                 <ConversationMessage
                   key={turn.id}
@@ -198,7 +172,7 @@ export const AgentCommandConversation: FC = () => {
           )}
         </main>
 
-        <div className="mx-auto w-full max-w-3xl flex-shrink-0">
+        <div className="w-full flex-shrink-0">
           <ConversationInput
             variant="conversation"
             agents={agents}

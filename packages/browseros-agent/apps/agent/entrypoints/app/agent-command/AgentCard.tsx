@@ -1,4 +1,4 @@
-import { Bot, Sparkles } from 'lucide-react'
+import { Bot } from 'lucide-react'
 import type { FC } from 'react'
 import type { AgentCardData } from '@/lib/agent-conversations/types'
 import { cn } from '@/lib/utils'
@@ -43,13 +43,20 @@ export const AgentCardExpanded: FC<AgentCardProps> = ({
     className={cn(
       'group flex min-h-32 w-full min-w-0 flex-col rounded-2xl border p-4 text-left shadow-sm transition-all duration-200',
       active
-        ? 'border-[var(--accent-orange)]/60 bg-[var(--accent-orange)]/10 shadow-[0_14px_34px_-20px_var(--accent-orange)]'
-        : 'border-border/60 bg-card/85 hover:border-[var(--accent-orange)]/35 hover:bg-card hover:shadow-md',
+        ? 'border-border/80 bg-card shadow-md ring-1 ring-[var(--accent-orange)]/20'
+        : 'border-border/60 bg-card/85 hover:border-border hover:bg-card hover:shadow-md',
     )}
   >
     <div className="flex items-start justify-between gap-3">
       <div className="flex min-w-0 items-center gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[var(--accent-orange)]/12 text-[var(--accent-orange)]">
+        <div
+          className={cn(
+            'flex size-10 shrink-0 items-center justify-center rounded-xl',
+            active
+              ? 'bg-[var(--accent-orange)]/10 text-[var(--accent-orange)]'
+              : 'bg-muted text-muted-foreground',
+          )}
+        >
           <Bot className="size-5" />
         </div>
         <div className="min-w-0">
@@ -76,10 +83,7 @@ export const AgentCardExpanded: FC<AgentCardProps> = ({
 
     <div className="mt-4 flex items-center justify-between gap-3 text-muted-foreground text-xs">
       <span>{formatTimestamp(agent.lastMessageTimestamp)}</span>
-      <span className="inline-flex items-center gap-1">
-        <Sparkles className="size-3" />
-        Open conversation
-      </span>
+      <span>Open conversation</span>
     </div>
   </button>
 )
@@ -95,14 +99,14 @@ export const AgentCardCompact: FC<AgentCardProps> = ({
     className={cn(
       'inline-flex items-center gap-2 rounded-full border px-3 py-2 text-sm transition-colors',
       active
-        ? 'border-[var(--accent-orange)] bg-[var(--accent-orange)] text-white'
-        : 'border-border/60 bg-card/85 text-foreground hover:border-[var(--accent-orange)]/35 hover:text-[var(--accent-orange)]',
+        ? 'border-border bg-card shadow-sm ring-1 ring-[var(--accent-orange)]/20'
+        : 'border-border/60 bg-card/85 text-foreground hover:border-border hover:bg-card',
     )}
   >
     <span
       className={cn(
         'size-2 rounded-full',
-        active ? 'bg-white/90' : getStatusTone(agent.status),
+        active ? 'bg-[var(--accent-orange)]' : getStatusTone(agent.status),
       )}
     />
     <span className="truncate">{agent.name}</span>

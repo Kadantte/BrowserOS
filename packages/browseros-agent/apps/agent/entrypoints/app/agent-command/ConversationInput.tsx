@@ -10,10 +10,6 @@ import {
 } from 'lucide-react'
 import { type FC, type ReactNode, useEffect, useState } from 'react'
 import { AppSelector } from '@/components/elements/AppSelector'
-import {
-  GlowingBorder,
-  GlowingElement,
-} from '@/components/elements/glowing-border'
 import { TabPickerPopover } from '@/components/elements/tab-picker-popover'
 import { WorkspaceSelector } from '@/components/elements/workspace-selector'
 import { Button } from '@/components/ui/button'
@@ -125,6 +121,7 @@ function ContextControls({
   selectedAgentId,
   selectedTabs,
   onToggleTab,
+  showAgentSelector,
   status,
 }: {
   agents: AgentEntry[]
@@ -133,6 +130,7 @@ function ContextControls({
   selectedAgentId: string | null
   selectedTabs: chrome.tabs.Tab[]
   onToggleTab: (tab: chrome.tabs.Tab) => void
+  showAgentSelector: boolean
   status?: string
 }) {
   const { supports } = useCapabilities()
@@ -150,13 +148,15 @@ function ContextControls({
   return (
     <div className="flex items-center justify-between border-border/50 border-t px-5 py-3">
       <div className="flex items-center gap-1">
-        <AgentSelector
-          agents={agents}
-          selectedAgentId={selectedAgentId}
-          onSelectAgent={onSelectAgent}
-          onCreateAgent={onCreateAgent}
-          status={status}
-        />
+        {showAgentSelector ? (
+          <AgentSelector
+            agents={agents}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={onSelectAgent}
+            onCreateAgent={onCreateAgent}
+            status={status}
+          />
+        ) : null}
         {supports(Feature.WORKSPACE_FOLDER_SUPPORT) ? (
           <WorkspaceSelector>
             <Button
@@ -234,28 +234,15 @@ function ContextControls({
 
 function HomeShell({ children }: { children: ReactNode }) {
   return (
-    <div
-      className="relative overflow-hidden bg-border/50 p-[2px]"
-      style={{ borderRadius: '1.5rem' }}
-    >
-      <div className="absolute inset-0" style={{ borderRadius: '1.5rem' }}>
-        <GlowingBorder duration={2000} delay={0} rx="1.5rem" ry="1.5rem">
-          <GlowingElement />
-        </GlowingBorder>
-      </div>
-      <div
-        className="relative border-[var(--accent-orange)]/10 bg-card shadow-lg"
-        style={{ borderRadius: 'calc(1.5rem - 2px)' }}
-      >
-        {children}
-      </div>
+    <div className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/95 shadow-sm backdrop-blur">
+      {children}
     </div>
   )
 }
 
 function ConversationShell({ children }: { children: ReactNode }) {
   return (
-    <div className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/95 shadow-lg backdrop-blur">
+    <div className="overflow-hidden rounded-[1.5rem] border border-border/60 bg-card/95 shadow-sm backdrop-blur">
       {children}
     </div>
   )
@@ -361,6 +348,7 @@ export const ConversationInput: FC<ConversationInputProps> = ({
         selectedAgentId={selectedAgentId}
         selectedTabs={selectedTabs}
         onToggleTab={toggleTab}
+        showAgentSelector={variant === 'home'}
         status={status}
       />
     </Shell>
