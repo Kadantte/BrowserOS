@@ -1,6 +1,10 @@
+import {
+  OPENCLAW_CONTAINER_HOME,
+  OPENCLAW_TERMINAL_SHELL,
+} from '@browseros/shared/constants/openclaw'
 import { logger } from '../../lib/logger'
 
-export const TERMINAL_HOME_DIR = '/home/node/.openclaw'
+export const TERMINAL_HOME_DIR = OPENCLAW_CONTAINER_HOME
 const DEFAULT_COLS = 80
 const DEFAULT_ROWS = 24
 const TERMINAL_NAME = 'xterm-256color'
@@ -24,7 +28,15 @@ export function buildTerminalExecCommand(
   containerName: string,
   workingDir: string,
 ): string[] {
-  return [podmanPath, 'exec', '-it', '-w', workingDir, containerName, '/bin/sh']
+  return [
+    podmanPath,
+    'exec',
+    '-it',
+    '-w',
+    workingDir,
+    containerName,
+    OPENCLAW_TERMINAL_SHELL,
+  ]
 }
 
 export function createTerminalSession(

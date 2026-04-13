@@ -1,3 +1,7 @@
+import {
+  OPENCLAW_CONTAINER_HOME,
+  OPENCLAW_TERMINAL_SHELL,
+} from '@browseros/shared/constants/openclaw'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal } from '@xterm/xterm'
@@ -16,7 +20,7 @@ type TerminalServerMessage =
   | { type: 'exit'; exitCode: number }
   | { type: 'error'; message: string }
 
-const TERMINAL_HOME_DIR = '/home/node/.openclaw'
+const TERMINAL_HOME_DIR = OPENCLAW_CONTAINER_HOME
 const TERMINAL_FONT_FAMILY =
   '"Geist Mono", Menlo, Monaco, "Courier New", monospace'
 
@@ -261,7 +265,7 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({ onBack }) => {
                 {TERMINAL_HOME_DIR}
               </div>
               <div className="font-mono text-[11px] text-muted-foreground">
-                fish
+                {OPENCLAW_TERMINAL_SHELL.split('/').pop()}
               </div>
             </div>
 

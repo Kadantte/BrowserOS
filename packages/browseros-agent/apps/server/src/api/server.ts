@@ -10,6 +10,7 @@
  * - MCP HTTP routes (using @hono/mcp transport)
  */
 
+import { OPENCLAW_GATEWAY_CONTAINER_NAME } from '@browseros/shared/constants/openclaw'
 import { Hono } from 'hono'
 import { websocket } from 'hono/bun'
 import { cors } from 'hono/cors'
@@ -44,8 +45,7 @@ import {
 } from './services/klavis/strata-proxy'
 import type { Env, HttpServerConfig } from './types'
 import { defaultCorsConfig } from './utils/cors'
-
-const CONTAINER_NAME = 'browseros-openclaw-openclaw-gateway-1'
+import { requireTrustedAppOrigin } from './utils/request-auth'
 
 async function assertPortAvailable(port: number): Promise<void> {
   const net = await import('node:net')
@@ -106,6 +106,20 @@ export async function createHttpServer(config: HttpServerConfig) {
       )
     }
   }
+
+  const clawRoutes = new Hono<Env>()
+    .use('/*', requireTrustedAppOrigin())
+    .route('/', createOpenClawRoutes())
+
+  const terminalRoutes = new Hono<Env>()
+    .use('/*', requireTrustedAppOrigin())
+    .route(
+      '/',
+      createTerminalRoutes({
+        containerName: OPENCLAW_GATEWAY_CONTAINER_NAME,
+        podmanPath: getPodmanRuntime().getPodmanPath(),
+      }),
+    )
 
   const app = new Hono<Env>()
     .use('/*', cors(defaultCorsConfig))
@@ -176,7 +190,7 @@ export async function createHttpServer(config: HttpServerConfig) {
         browserosId,
       }),
     )
-    .route('/claw', createOpenClawRoutes())
+    .route('/claw', clawRoutes)
 
   // Error handler
   app.onError((err, c) => {
@@ -218,15 +232,7 @@ export async function createHttpServer(config: HttpServerConfig) {
 
   await assertPortAvailable(port)
 
-  const podmanPath = getPodmanRuntime().getPodmanPath()
-
-  app.route(
-    '/terminal',
-    createTerminalRoutes({
-      containerName: CONTAINER_NAME,
-      podmanPath,
-    }),
-  )
+  app.route('/terminal', terminalRoutes)
 
   const server = Bun.serve({
     fetch: (request, server) => app.fetch(request, { server }),
