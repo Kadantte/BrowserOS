@@ -1,0 +1,18 @@
+const HIDE_FOCUS_GRID_PATHS = new Set([
+  '/home/soul',
+  '/home/memory',
+  '/home/skills',
+  '/home/chat',
+])
+
+export function isAgentCommandPath(pathname: string): boolean {
+  return pathname === '/home' || pathname.startsWith('/home/agents/')
+}
+
+export function shouldHideFocusGrid(pathname: string): boolean {
+  return HIDE_FOCUS_GRID_PATHS.has(pathname) || isAgentCommandPath(pathname)
+}
+
+export function shouldUseChatSession(pathname: string): boolean {
+  return pathname === '/home/chat'
+}

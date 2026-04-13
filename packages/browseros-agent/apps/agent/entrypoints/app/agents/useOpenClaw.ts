@@ -5,7 +5,12 @@ export interface AgentEntry {
   agentId: string
   name: string
   workspace: string
-  model?: string
+  model?: unknown
+}
+
+export function getModelDisplayName(model: unknown): string | undefined {
+  if (typeof model === 'string') return model.split('/').pop()
+  return undefined
 }
 
 export interface OpenClawStatus {
