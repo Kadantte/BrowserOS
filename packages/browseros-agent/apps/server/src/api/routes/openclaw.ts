@@ -15,13 +15,23 @@ import type {
 } from '@browseros/shared/types/role-aware-agents'
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
+import { getOpenClawDir } from '../../lib/browseros-dir'
 import {
   OpenClawAgentAlreadyExistsError,
   OpenClawAgentNotFoundError,
   OpenClawInvalidAgentNameError,
   OpenClawProtectedAgentError,
 } from '../services/openclaw/errors'
-import { getOpenClawService } from '../services/openclaw/openclaw-service'
+import {
+  getOpenClawService,
+  type OpenClawAgentEntry,
+} from '../services/openclaw/openclaw-service'
+import { OpenClawProgramMaterializer } from '../services/openclaw/program-materializer'
+import { OpenClawProgramStorage } from '../services/openclaw/program-storage'
+import {
+  validateCreateProgramInput,
+  validateUpdateProgramInput,
+} from '../services/openclaw/program-validation'
 
 function isValidBoundaryMode(
   value: unknown,
@@ -38,6 +48,19 @@ function isValidCustomRoleBoundary(value: unknown): boolean {
     typeof boundary.description === 'string' &&
     isValidBoundaryMode(boundary.defaultMode)
   )
+}
+
+const openclawProgramStorage = new OpenClawProgramStorage(getOpenClawDir())
+const openclawProgramMaterializer = new OpenClawProgramMaterializer(
+  getOpenClawDir(),
+  openclawProgramStorage,
+)
+
+async function findOpenClawAgent(
+  agentId: string,
+): Promise<OpenClawAgentEntry | null> {
+  const agents = await getOpenClawService().listAgents()
+  return agents.find((agent) => agent.agentId === agentId) ?? null
 }
 
 export function createOpenClawRoutes() {
@@ -127,6 +150,116 @@ export function createOpenClawRoutes() {
       try {
         const agents = await getOpenClawService().listAgents()
         return c.json({ agents })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ error: message }, 500)
+      }
+    })
+
+    .get('/agents/:id/programs', async (c) => {
+      try {
+        const agent = await findOpenClawAgent(c.req.param('id'))
+        if (!agent) {
+          return c.json({ error: 'Agent not found' }, 404)
+        }
+
+        const programs = await openclawProgramStorage.listPrograms(agent.name)
+        return c.json({ programs })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ error: message }, 500)
+      }
+    })
+
+    .post('/agents/:id/programs', async (c) => {
+      try {
+        const agent = await findOpenClawAgent(c.req.param('id'))
+        if (!agent) {
+          return c.json({ error: 'Agent not found' }, 404)
+        }
+
+        const input = validateCreateProgramInput(await c.req.json())
+        const program = await openclawProgramStorage.createProgram(agent, input)
+        await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        return c.json({ program }, 201)
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (
+          message.includes('required') ||
+          message.includes('must be') ||
+          message.includes('invalid')
+        ) {
+          return c.json({ error: message }, 400)
+        }
+        return c.json({ error: message }, 500)
+      }
+    })
+
+    .patch('/agents/:id/programs/:programId', async (c) => {
+      try {
+        const agent = await findOpenClawAgent(c.req.param('id'))
+        if (!agent) {
+          return c.json({ error: 'Agent not found' }, 404)
+        }
+
+        const input = validateUpdateProgramInput(await c.req.json())
+        const program = await openclawProgramStorage.updateProgram(
+          agent.name,
+          c.req.param('programId'),
+          input,
+        )
+        if (!program) {
+          return c.json({ error: 'Program not found' }, 404)
+        }
+
+        await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        return c.json({ program })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        if (
+          message.includes('required') ||
+          message.includes('must be') ||
+          message.includes('invalid') ||
+          message.includes('At least one')
+        ) {
+          return c.json({ error: message }, 400)
+        }
+        return c.json({ error: message }, 500)
+      }
+    })
+
+    .delete('/agents/:id/programs/:programId', async (c) => {
+      try {
+        const agent = await findOpenClawAgent(c.req.param('id'))
+        if (!agent) {
+          return c.json({ error: 'Agent not found' }, 404)
+        }
+
+        const deleted = await openclawProgramStorage.deleteProgram(
+          agent.name,
+          c.req.param('programId'),
+        )
+        if (!deleted) {
+          return c.json({ error: 'Program not found' }, 404)
+        }
+
+        await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        return c.json({ success: true })
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ error: message }, 500)
+      }
+    })
+
+    .get('/agents/:id/program-runs', async (c) => {
+      try {
+        const agent = await findOpenClawAgent(c.req.param('id'))
+        if (!agent) {
+          return c.json({ error: 'Agent not found' }, 404)
+        }
+
+        const runs = await openclawProgramStorage.listRuns(agent.name)
+        return c.json({ runs })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return c.json({ error: message }, 500)
