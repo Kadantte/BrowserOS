@@ -351,7 +351,7 @@ describe('ChatService Klavis session rebuilds', () => {
     expect(secondAgent.messages).toHaveLength(2)
     const rebuiltMessage = secondAgent.messages[1]?.parts[0]?.text ?? ''
     expect(rebuiltMessage).toContain(
-      'Connected app integrations changed during this conversation.',
+      'Klavis app integration tools are now available for the following connected apps: slack.',
     )
     expect(rebuiltMessage).not.toContain('klavis:pending')
     expect(rebuiltMessage).not.toContain('klavis:connected')

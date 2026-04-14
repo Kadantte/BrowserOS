@@ -92,13 +92,15 @@ export class ChatService {
         mcpServerKey,
       )
 
+      const oldParts = (previousMcpKey ?? '').split(',').filter(Boolean)
+      const newParts = mcpServerKey.split(',').filter(Boolean)
+      const oldKlavisState = oldParts.find((s) => s.startsWith('klavis:'))
+      const newKlavisState = newParts.find((s) => s.startsWith('klavis:'))
       const oldServers = new Set(
-        (previousMcpKey ?? '')
-          .split(',')
-          .filter((s) => s && !s.startsWith('klavis:')),
+        oldParts.filter((s) => !s.startsWith('klavis:')),
       )
       const newServers = new Set(
-        mcpServerKey.split(',').filter((s) => s && !s.startsWith('klavis:')),
+        newParts.filter((s) => !s.startsWith('klavis:')),
       )
       const added = [...newServers].filter((s) => !oldServers.has(s))
       const removed = [...oldServers].filter((s) => !newServers.has(s))
@@ -115,9 +117,19 @@ export class ChatService {
         )
       }
       if (parts.length === 0) {
-        parts.push(
-          'Connected app integrations changed during this conversation. Use only tools that are currently registered.',
-        )
+        if (
+          oldKlavisState === 'klavis:pending' &&
+          newKlavisState === 'klavis:connected' &&
+          newServers.size > 0
+        ) {
+          parts.push(
+            `Klavis app integration tools are now available for the following connected apps: ${[...newServers].join(', ')}.`,
+          )
+        } else {
+          parts.push(
+            'Connected app integrations changed during this conversation. Use only tools that are currently registered.',
+          )
+        }
       }
       contextChanges.push(parts.join(' '))
     }

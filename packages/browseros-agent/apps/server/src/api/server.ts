@@ -91,12 +91,12 @@ export async function createHttpServer(config: HttpServerConfig) {
 
   // Connect Klavis proxy in background with retry — browser tools available immediately
   const klavisRef: KlavisProxyRef = { handle: null }
-  if (browserosId) {
-    connectKlavisInBackground(klavisRef, {
-      klavisClient: new KlavisClient(),
-      browserosId,
-    })
-  }
+  const stopKlavisBackground = browserosId
+    ? connectKlavisInBackground(klavisRef, {
+        klavisClient: new KlavisClient(),
+        browserosId,
+      })
+    : () => {}
 
   const clawRoutes = new Hono<Env>()
     .use('/*', requireTrustedAppOrigin())
@@ -120,6 +120,7 @@ export async function createHttpServer(config: HttpServerConfig) {
       createShutdownRoute({
         onShutdown: () => {
           tokenManager?.stopCallbackServer()
+          stopKlavisBackground()
           klavisRef.handle?.close().catch((err) =>
             logger.warn('Failed to close Klavis proxy transport', {
               error: err instanceof Error ? err.message : String(err),

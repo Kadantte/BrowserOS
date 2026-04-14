@@ -146,6 +146,14 @@ export class AiSdkAgent {
       browserContext: config.browserContext,
     })
     const { clients, tools: customMcpTools } = await createMcpClients(specs)
+    const collidingToolNames = Object.keys(customMcpTools).filter(
+      (name) => name in klavisTools,
+    )
+    if (collidingToolNames.length > 0) {
+      logger.warn('Custom MCP tools override Klavis tools', {
+        toolNames: collidingToolNames,
+      })
+    }
     const rawExternalMcpTools = { ...klavisTools, ...customMcpTools }
 
     // Wrap external MCP tools (Klavis, custom) with metrics

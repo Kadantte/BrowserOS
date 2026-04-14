@@ -118,7 +118,6 @@ const connectorInputSchema = {
       `The name of the service to check. Available: ${serverDescriptions}`,
     ),
 } as unknown as Record<string, never>
-
 function klavisResultToModelOutput(output: unknown) {
   const result = output as CallToolResult
 
