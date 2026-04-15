@@ -69,4 +69,5 @@ export interface UpdateAgentProgramInput {
   schedule?: BrowserOSProgramSchedule
   enabled?: boolean
   standingOrders?: BrowserOSStandingOrder[]
+  lastRunAt?: string
 }

@@ -39,6 +39,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { AgentChat } from './AgentChat'
 import { AgentTerminal } from './AgentTerminal'
+import { AgentProgramsPage } from './programs/AgentProgramsPage'
 import {
   type AgentEntry,
   type OpenClawStatus,
@@ -317,6 +318,7 @@ export const AgentsPage: FC = () => {
   })
 
   const [chatAgent, setChatAgent] = useState<AgentEntry | null>(null)
+  const [programAgent, setProgramAgent] = useState<AgentEntry | null>(null)
   const [showTerminal, setShowTerminal] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -548,6 +550,15 @@ export const AgentsPage: FC = () => {
         agentId={chatAgent.agentId}
         agentName={chatAgent.name}
         onBack={() => setChatAgent(null)}
+      />
+    )
+  }
+
+  if (programAgent) {
+    return (
+      <AgentProgramsPage
+        agent={programAgent}
+        onBack={() => setProgramAgent(null)}
       />
     )
   }
@@ -805,6 +816,15 @@ export const AgentsPage: FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => setProgramAgent(agent)}
+                      disabled={!gatewayUiState.canManageAgents}
+                    >
+                      <Wrench className="mr-1 size-4" />
+                      Programs
+                    </Button>
                     <Button
                       variant="ghost"
                       size="sm"

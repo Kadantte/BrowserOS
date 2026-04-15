@@ -18,6 +18,10 @@ import type {
   BrowserOSAgentRoleSummary,
   BrowserOSCustomRoleInput,
 } from '@browseros/shared/types/role-aware-agents'
+import type {
+  BrowserOSAgentProgram,
+  BrowserOSProgramRun,
+} from '@browseros/shared/types/role-programs'
 import { getOpenClawDir } from '../../../lib/browseros-dir'
 import { logger } from '../../../lib/logger'
 import { ContainerRuntime } from './container-runtime'
@@ -43,6 +47,7 @@ import {
   resolveProviderModel,
 } from './openclaw-config'
 import { getPodmanRuntime } from './podman-runtime'
+import { OpenClawProgramStorage } from './program-storage'
 import {
   buildRoleBootstrapFiles,
   resolveRoleTemplate,
@@ -116,12 +121,14 @@ export class OpenClawService {
   private lastGatewayError: string | null = null
   private lastRecoveryReason: OpenClawGatewayRecoveryReason | null = null
   private gatewayReconnectPromise: Promise<void> | null = null
+  private programStorage: OpenClawProgramStorage
 
   constructor(browserosServerPort?: number) {
     this.openclawDir = getOpenClawDir()
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
     this.token = crypto.randomUUID()
     this.browserosServerPort = browserosServerPort ?? DEFAULT_PORTS.server
+    this.programStorage = new OpenClawProgramStorage(this.openclawDir)
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────
@@ -493,6 +500,82 @@ export class OpenClawService {
     return this.gateway!.chatStream(agentId, sessionKey, message)
   }
 
+  async runProgramOnce(
+    agentId: string,
+    program: BrowserOSAgentProgram,
+  ): Promise<BrowserOSProgramRun> {
+    const agent = await this.findAgentById(agentId)
+    if (!agent) {
+      throw new OpenClawAgentNotFoundError(agentId)
+    }
+
+    const runId = crypto.randomUUID()
+    const sessionKey = crypto.randomUUID()
+    const startedAt = new Date().toISOString()
+
+    await this.programStorage.appendRun(agent.name, {
+      id: runId,
+      programId: program.id,
+      agentId,
+      startedAt,
+      status: 'running',
+      trigger: 'manual',
+      sessionKey,
+    })
+
+    try {
+      const stream = await this.chatStream(agentId, sessionKey, program.prompt)
+      const result = await this.collectProgramRunResult(stream)
+      const completedAt = new Date().toISOString()
+      const summary =
+        result.finalResult
+          ?.split('\n')
+          .find((line) => line.trim())
+          ?.trim() ?? `Completed ${program.name}`
+
+      const updatedRun = await this.programStorage.updateRun(
+        agent.name,
+        runId,
+        {
+          completedAt,
+          status: 'completed',
+          finalResult: result.finalResult,
+          summary: summary.slice(0, 280),
+          sessionKey: result.sessionKey ?? sessionKey,
+        },
+      )
+
+      await this.programStorage.updateProgram(agent.name, program.id, {
+        lastRunAt: completedAt,
+      })
+
+      if (!updatedRun) {
+        throw new Error('Program run record disappeared during completion')
+      }
+
+      return updatedRun
+    } catch (error) {
+      const completedAt = new Date().toISOString()
+      const message = error instanceof Error ? error.message : String(error)
+
+      const updatedRun = await this.programStorage.updateRun(
+        agent.name,
+        runId,
+        {
+          completedAt,
+          status: 'failed',
+          error: message,
+        },
+      )
+
+      if (updatedRun) {
+        return updatedRun
+      }
+
+      throw error
+    }
+  }
+
   // ── Provider Keys ────────────────────────────────────────────────────
 
   async updateProviderKeys(input: {
@@ -604,6 +687,58 @@ export class OpenClawService {
         })
         throw retryError
       }
+    }
+  }
+
+  private async findAgentById(
+    agentId: string,
+  ): Promise<OpenClawAgentEntry | null> {
+    const agents = await this.listAgents()
+    return agents.find((agent) => agent.agentId === agentId) ?? null
+  }
+
+  private async collectProgramRunResult(
+    stream: ReadableStream<OpenClawStreamEvent>,
+  ): Promise<{ finalResult: string; sessionKey?: string }> {
+    const reader = stream.getReader()
+    let text = ''
+    let finalText: string | null = null
+    let sessionKey: string | undefined
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+
+        switch (value.type) {
+          case 'text-delta':
+            text += (value.data.text as string) ?? ''
+            break
+          case 'done':
+            finalText = ((value.data.text as string) ?? '').trim() || null
+            break
+          case 'lifecycle':
+            if (typeof value.data.sessionKey === 'string') {
+              sessionKey = value.data.sessionKey
+            }
+            break
+          case 'error': {
+            const message =
+              (value.data.message as string) ??
+              (value.data.error as string) ??
+              'Program run failed'
+            throw new Error(message)
+          }
+        }
+      }
+    } finally {
+      await reader.cancel()
+    }
+
+    const resolvedText = finalText ?? text.trim()
+    return {
+      finalResult: resolvedText,
+      sessionKey,
     }
   }
 

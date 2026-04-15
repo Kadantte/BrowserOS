@@ -2,6 +2,12 @@ import type {
   BrowserOSAgentRoleId,
   BrowserOSCustomRoleInput,
 } from '@browseros/shared/types/role-aware-agents'
+import type {
+  BrowserOSAgentProgram,
+  BrowserOSProgramRun,
+  CreateAgentProgramInput,
+  UpdateAgentProgramInput,
+} from '@browseros/shared/types/role-programs'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAgentServerUrl } from '@/lib/browseros/helpers'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
@@ -78,6 +84,9 @@ export interface OpenClawSetupInput {
   modelId?: string
 }
 
+export interface AgentProgramEntry extends BrowserOSAgentProgram {}
+export interface AgentProgramRunEntry extends BrowserOSProgramRun {}
+
 export function getModelDisplayName(model: unknown): string | undefined {
   if (typeof model === 'string') return model.split('/').pop()
   return undefined
@@ -87,6 +96,8 @@ export const OPENCLAW_QUERY_KEYS = {
   status: 'openclaw-status',
   agents: 'openclaw-agents',
   roles: 'openclaw-roles',
+  programs: 'openclaw-programs',
+  programRuns: 'openclaw-program-runs',
 } as const
 
 async function clawFetch<T>(
@@ -127,12 +138,52 @@ async function fetchOpenClawRoles(
   return data.roles ?? []
 }
 
+async function fetchOpenClawPrograms(
+  baseUrl: string,
+  agentId: string,
+): Promise<AgentProgramEntry[]> {
+  const data = await clawFetch<{ programs: AgentProgramEntry[] }>(
+    baseUrl,
+    `/agents/${agentId}/programs`,
+  )
+  return data.programs ?? []
+}
+
+async function fetchOpenClawProgramRuns(
+  baseUrl: string,
+  agentId: string,
+): Promise<AgentProgramRunEntry[]> {
+  const data = await clawFetch<{ runs: AgentProgramRunEntry[] }>(
+    baseUrl,
+    `/agents/${agentId}/program-runs`,
+  )
+  return data.runs ?? []
+}
+
 async function invalidateOpenClawQueries(
   queryClient: ReturnType<typeof useQueryClient>,
 ): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: [OPENCLAW_QUERY_KEYS.status] }),
     queryClient.invalidateQueries({ queryKey: [OPENCLAW_QUERY_KEYS.agents] }),
+  ])
+}
+
+async function invalidateAgentProgramQueries(
+  queryClient: ReturnType<typeof useQueryClient>,
+  baseUrl: string,
+  agentId: string,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({
+      queryKey: [OPENCLAW_QUERY_KEYS.programs, baseUrl, agentId],
+    }),
+    queryClient.invalidateQueries({
+      queryKey: [OPENCLAW_QUERY_KEYS.programRuns, baseUrl, agentId],
+    }),
+    queryClient.invalidateQueries({
+      queryKey: [OPENCLAW_QUERY_KEYS.agents, baseUrl],
+    }),
   ])
 }
 
@@ -201,6 +252,49 @@ export function useOpenClawRoles() {
   }
 }
 
+export function useOpenClawPrograms(agentId: string | null, enabled = true) {
+  const {
+    baseUrl,
+    isLoading: urlLoading,
+    error: urlError,
+  } = useAgentServerUrl()
+
+  const query = useQuery<AgentProgramEntry[], Error>({
+    queryKey: [OPENCLAW_QUERY_KEYS.programs, baseUrl, agentId],
+    queryFn: () => fetchOpenClawPrograms(baseUrl as string, agentId as string),
+    enabled: !!baseUrl && !urlLoading && !!agentId && enabled,
+  })
+
+  return {
+    programs: query.data ?? [],
+    loading: query.isLoading || urlLoading,
+    error: query.error ?? urlError,
+    refetch: query.refetch,
+  }
+}
+
+export function useOpenClawProgramRuns(agentId: string | null, enabled = true) {
+  const {
+    baseUrl,
+    isLoading: urlLoading,
+    error: urlError,
+  } = useAgentServerUrl()
+
+  const query = useQuery<AgentProgramRunEntry[], Error>({
+    queryKey: [OPENCLAW_QUERY_KEYS.programRuns, baseUrl, agentId],
+    queryFn: () =>
+      fetchOpenClawProgramRuns(baseUrl as string, agentId as string),
+    enabled: !!baseUrl && !urlLoading && !!agentId && enabled,
+  })
+
+  return {
+    runs: query.data ?? [],
+    loading: query.isLoading || urlLoading,
+    error: query.error ?? urlError,
+    refetch: query.refetch,
+  }
+}
+
 export function useOpenClawMutations() {
   const { baseUrl, isLoading: urlLoading } = useAgentServerUrl()
   const queryClient = useQueryClient()
@@ -213,6 +307,8 @@ export function useOpenClawMutations() {
   }
 
   const onSuccess = () => invalidateOpenClawQueries(queryClient)
+  const invalidateProgramsFor = (agentId: string) =>
+    invalidateAgentProgramQueries(queryClient, ensureBaseUrl(), agentId)
 
   const setupMutation = useMutation({
     mutationFn: async (input: OpenClawSetupInput) =>
@@ -278,6 +374,88 @@ export function useOpenClawMutations() {
     onSuccess,
   })
 
+  const createProgramMutation = useMutation({
+    mutationFn: async ({
+      agentId,
+      input,
+    }: {
+      agentId: string
+      input: CreateAgentProgramInput
+    }) =>
+      clawFetch<{ program: AgentProgramEntry }>(
+        ensureBaseUrl(),
+        `/agents/${agentId}/programs`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: async (_data, variables) =>
+      invalidateProgramsFor(variables.agentId),
+  })
+
+  const updateProgramMutation = useMutation({
+    mutationFn: async ({
+      agentId,
+      programId,
+      input,
+    }: {
+      agentId: string
+      programId: string
+      input: UpdateAgentProgramInput
+    }) =>
+      clawFetch<{ program: AgentProgramEntry }>(
+        ensureBaseUrl(),
+        `/agents/${agentId}/programs/${programId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        },
+      ),
+    onSuccess: async (_data, variables) =>
+      invalidateProgramsFor(variables.agentId),
+  })
+
+  const deleteProgramMutation = useMutation({
+    mutationFn: async ({
+      agentId,
+      programId,
+    }: {
+      agentId: string
+      programId: string
+    }) =>
+      clawFetch<{ success: boolean }>(
+        ensureBaseUrl(),
+        `/agents/${agentId}/programs/${programId}`,
+        {
+          method: 'DELETE',
+        },
+      ),
+    onSuccess: async (_data, variables) =>
+      invalidateProgramsFor(variables.agentId),
+  })
+
+  const runProgramMutation = useMutation({
+    mutationFn: async ({
+      agentId,
+      programId,
+    }: {
+      agentId: string
+      programId: string
+    }) =>
+      clawFetch<{ run: AgentProgramRunEntry }>(
+        ensureBaseUrl(),
+        `/agents/${agentId}/programs/${programId}/run`,
+        {
+          method: 'POST',
+        },
+      ),
+    onSuccess: async (_data, variables) =>
+      invalidateProgramsFor(variables.agentId),
+  })
+
   return {
     setupOpenClaw: setupMutation.mutateAsync,
     createAgent: createMutation.mutateAsync,
@@ -286,6 +464,10 @@ export function useOpenClawMutations() {
     stopOpenClaw: stopMutation.mutateAsync,
     restartOpenClaw: restartMutation.mutateAsync,
     reconnectOpenClaw: reconnectMutation.mutateAsync,
+    createProgram: createProgramMutation.mutateAsync,
+    updateProgram: updateProgramMutation.mutateAsync,
+    deleteProgram: deleteProgramMutation.mutateAsync,
+    runProgram: runProgramMutation.mutateAsync,
     actionInProgress:
       setupMutation.isPending ||
       createMutation.isPending ||
@@ -293,11 +475,19 @@ export function useOpenClawMutations() {
       startMutation.isPending ||
       stopMutation.isPending ||
       restartMutation.isPending ||
-      reconnectMutation.isPending,
+      reconnectMutation.isPending ||
+      createProgramMutation.isPending ||
+      updateProgramMutation.isPending ||
+      deleteProgramMutation.isPending ||
+      runProgramMutation.isPending,
     settingUp: setupMutation.isPending,
     creating: createMutation.isPending,
     deleting: deleteMutation.isPending,
     reconnecting: reconnectMutation.isPending,
+    creatingProgram: createProgramMutation.isPending,
+    updatingProgram: updateProgramMutation.isPending,
+    deletingProgram: deleteProgramMutation.isPending,
+    runningProgram: runProgramMutation.isPending,
   }
 }
 

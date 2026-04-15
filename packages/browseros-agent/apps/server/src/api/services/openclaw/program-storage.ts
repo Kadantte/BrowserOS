@@ -125,9 +125,12 @@ export class OpenClawProgramStorage {
   }
 
   async listRuns(agentName: string): Promise<BrowserOSProgramRun[]> {
-    return readJsonFile<BrowserOSProgramRun[]>(
+    const runs = await readJsonFile<BrowserOSProgramRun[]>(
       this.getProgramRunsFile(agentName),
       [],
+    )
+    return [...runs].sort((left, right) =>
+      right.startedAt.localeCompare(left.startedAt),
     )
   }
 
@@ -136,5 +139,36 @@ export class OpenClawProgramStorage {
     runs: BrowserOSProgramRun[],
   ): Promise<void> {
     await writeJsonFile(this.getProgramRunsFile(agentName), runs)
+  }
+
+  async appendRun(
+    agentName: string,
+    run: BrowserOSProgramRun,
+  ): Promise<BrowserOSProgramRun> {
+    const runs = await this.listRuns(agentName)
+    await this.writeRuns(agentName, [run, ...runs])
+    return run
+  }
+
+  async updateRun(
+    agentName: string,
+    runId: string,
+    input: Partial<BrowserOSProgramRun>,
+  ): Promise<BrowserOSProgramRun | null> {
+    const runs = await this.listRuns(agentName)
+    const current = runs.find((run) => run.id === runId)
+    if (!current) return null
+
+    const nextRun: BrowserOSProgramRun = {
+      ...current,
+      ...input,
+    }
+
+    await this.writeRuns(
+      agentName,
+      runs.map((run) => (run.id === runId ? nextRun : run)),
+    )
+
+    return nextRun
   }
 }

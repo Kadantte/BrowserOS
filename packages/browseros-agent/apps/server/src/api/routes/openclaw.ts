@@ -266,6 +266,36 @@ export function createOpenClawRoutes() {
       }
     })
 
+    .post('/agents/:id/programs/:programId/run', async (c) => {
+      try {
+        const agent = await findOpenClawAgent(c.req.param('id'))
+        if (!agent) {
+          return c.json({ error: 'Agent not found' }, 404)
+        }
+
+        const program = await openclawProgramStorage.getProgram(
+          agent.name,
+          c.req.param('programId'),
+        )
+        if (!program) {
+          return c.json({ error: 'Program not found' }, 404)
+        }
+
+        const run = await getOpenClawService().runProgramOnce(
+          agent.agentId,
+          program,
+        )
+        await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        return c.json({ run })
+      } catch (err) {
+        if (err instanceof OpenClawAgentNotFoundError) {
+          return c.json({ error: err.message }, 404)
+        }
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ error: message }, 500)
+      }
+    })
+
     .get('/roles', async (c) => {
       return c.json({
         roles: BROWSEROS_ROLE_TEMPLATES.map((role) => ({
