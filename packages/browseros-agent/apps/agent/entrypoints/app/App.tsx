@@ -112,7 +112,9 @@ export const App: FC = () => {
           {/* Primary nav routes */}
           <Route path="connect-apps" element={<ConnectMCP />} />
           <Route path="scheduled" element={<ScheduledTasksPage />} />
-          <Route path="agents" element={<AgentsPage />} />
+          {alphaEnabled ? (
+            <Route path="agents" element={<AgentsPage />} />
+          ) : null}
           {alphaEnabled ? (
             <Route path="admin" element={<AdminDashboardPage />} />
           ) : null}
