@@ -37,6 +37,7 @@ export interface BrowserOSAgentProgram {
   createdAt: string
   updatedAt: string
   lastRunAt?: string
+  nextRunAt?: string
 }
 
 export interface BrowserOSProgramRun {
@@ -70,4 +71,5 @@ export interface UpdateAgentProgramInput {
   enabled?: boolean
   standingOrders?: BrowserOSStandingOrder[]
   lastRunAt?: string
+  nextRunAt?: string
 }

@@ -15,6 +15,12 @@ interface ProgramStorageAgent {
   }
 }
 
+interface UpdateProgramOptions {
+  touchUpdatedAt?: boolean
+}
+
+const MAX_PROGRAM_RUNS_PER_AGENT = 100
+
 async function readJsonFile<T>(filePath: string, fallback: T): Promise<T> {
   try {
     const content = await readFile(filePath, 'utf-8')
@@ -33,6 +39,12 @@ function sortPrograms(programs: BrowserOSAgentProgram[]) {
   return [...programs].sort((left, right) =>
     left.createdAt.localeCompare(right.createdAt),
   )
+}
+
+function normalizeRuns(runs: BrowserOSProgramRun[]) {
+  return [...runs]
+    .sort((left, right) => right.startedAt.localeCompare(left.startedAt))
+    .slice(0, MAX_PROGRAM_RUNS_PER_AGENT)
 }
 
 export class OpenClawProgramStorage {
@@ -95,6 +107,7 @@ export class OpenClawProgramStorage {
     agentName: string,
     programId: string,
     input: UpdateAgentProgramInput,
+    options?: UpdateProgramOptions,
   ): Promise<BrowserOSAgentProgram | null> {
     const programs = await this.listPrograms(agentName)
     const current = programs.find((program) => program.id === programId)
@@ -103,7 +116,10 @@ export class OpenClawProgramStorage {
     const nextProgram: BrowserOSAgentProgram = {
       ...current,
       ...input,
-      updatedAt: new Date().toISOString(),
+      updatedAt:
+        options?.touchUpdatedAt === false
+          ? current.updatedAt
+          : new Date().toISOString(),
     }
 
     await writeJsonFile(
@@ -129,16 +145,14 @@ export class OpenClawProgramStorage {
       this.getProgramRunsFile(agentName),
       [],
     )
-    return [...runs].sort((left, right) =>
-      right.startedAt.localeCompare(left.startedAt),
-    )
+    return normalizeRuns(runs)
   }
 
   async writeRuns(
     agentName: string,
     runs: BrowserOSProgramRun[],
   ): Promise<void> {
-    await writeJsonFile(this.getProgramRunsFile(agentName), runs)
+    await writeJsonFile(this.getProgramRunsFile(agentName), normalizeRuns(runs))
   }
 
   async appendRun(

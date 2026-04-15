@@ -47,6 +47,11 @@ import {
   resolveProviderModel,
 } from './openclaw-config'
 import { getPodmanRuntime } from './podman-runtime'
+import { OpenClawProgramMaterializer } from './program-materializer'
+import {
+  OpenClawProgramScheduler,
+  type OpenClawSchedulerSnapshot,
+} from './program-scheduler'
 import { OpenClawProgramStorage } from './program-storage'
 import {
   buildRoleBootstrapFiles,
@@ -95,6 +100,7 @@ export interface OpenClawStatusResponse {
   controlPlaneStatus: OpenClawControlPlaneStatus
   lastGatewayError: string | null
   lastRecoveryReason: OpenClawGatewayRecoveryReason | null
+  scheduler: OpenClawSchedulerSnapshot
 }
 
 export interface OpenClawAgentEntry extends GatewayAgentEntry {
@@ -122,6 +128,8 @@ export class OpenClawService {
   private lastRecoveryReason: OpenClawGatewayRecoveryReason | null = null
   private gatewayReconnectPromise: Promise<void> | null = null
   private programStorage: OpenClawProgramStorage
+  private programMaterializer: OpenClawProgramMaterializer
+  private scheduler: OpenClawProgramScheduler
 
   constructor(browserosServerPort?: number) {
     this.openclawDir = getOpenClawDir()
@@ -129,6 +137,16 @@ export class OpenClawService {
     this.token = crypto.randomUUID()
     this.browserosServerPort = browserosServerPort ?? DEFAULT_PORTS.server
     this.programStorage = new OpenClawProgramStorage(this.openclawDir)
+    this.programMaterializer = new OpenClawProgramMaterializer(
+      this.openclawDir,
+      this.programStorage,
+    )
+    this.scheduler = new OpenClawProgramScheduler(
+      this.programStorage,
+      this.programMaterializer,
+      (agentId, program, trigger) => this.runProgram(agentId, program, trigger),
+      async () => this.listAgents(),
+    )
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────
@@ -215,6 +233,8 @@ export class OpenClawService {
       logProgress('Main agent already exists')
     }
 
+    await this.startScheduler()
+
     this.lastError = null
     logProgress(`OpenClaw gateway running at http://127.0.0.1:${this.port}`)
     logger.info('OpenClaw setup complete', { port: this.port })
@@ -238,11 +258,13 @@ export class OpenClawService {
 
     logProgress('Connecting to gateway...')
     await this.connectGatewayResiliently(logProgress)
+    await this.startScheduler()
     this.lastError = null
     logger.info('OpenClaw gateway started', { port: this.port })
   }
 
   async stop(): Promise<void> {
+    await this.scheduler.stop()
     this.disconnectGateway()
     await this.runtime.composeStop()
     logger.info('OpenClaw container stopped')
@@ -251,6 +273,7 @@ export class OpenClawService {
   async restart(onLog?: (msg: string) => void): Promise<void> {
     const logProgress = this.createProgressLogger(onLog)
 
+    await this.scheduler.stop()
     this.disconnectGateway()
     logProgress('Loading gateway auth token...')
     await this.loadTokenFromEnv()
@@ -266,6 +289,7 @@ export class OpenClawService {
 
     logProgress('Connecting to gateway...')
     await this.connectGatewayResiliently(logProgress)
+    await this.startScheduler()
     this.lastError = null
     logProgress('Gateway restarted successfully')
     logger.info('OpenClaw gateway restarted', { port: this.port })
@@ -293,6 +317,7 @@ export class OpenClawService {
   }
 
   async shutdown(): Promise<void> {
+    await this.scheduler.stop()
     this.disconnectGateway()
     try {
       await this.runtime.composeStop()
@@ -318,6 +343,7 @@ export class OpenClawService {
         controlPlaneStatus: 'disconnected',
         lastGatewayError: null,
         lastRecoveryReason: null,
+        scheduler: this.scheduler.getSnapshot(),
       }
     }
 
@@ -334,6 +360,7 @@ export class OpenClawService {
         controlPlaneStatus: 'disconnected',
         lastGatewayError: this.lastGatewayError,
         lastRecoveryReason: this.lastRecoveryReason,
+        scheduler: this.scheduler.getSnapshot(),
       }
     }
 
@@ -366,6 +393,7 @@ export class OpenClawService {
         : 'disconnected',
       lastGatewayError: this.lastGatewayError,
       lastRecoveryReason: this.lastRecoveryReason,
+      scheduler: this.scheduler.getSnapshot(),
     }
   }
 
@@ -501,9 +529,10 @@ export class OpenClawService {
     return this.gateway!.chatStream(agentId, sessionKey, message)
   }
 
-  async runProgramOnce(
+  async runProgram(
     agentId: string,
     program: BrowserOSAgentProgram,
+    trigger: 'manual' | 'schedule' | 'retry',
   ): Promise<BrowserOSProgramRun> {
     const agent = await this.findAgentById(agentId)
     if (!agent) {
@@ -520,7 +549,7 @@ export class OpenClawService {
       agentId,
       startedAt,
       status: 'running',
-      trigger: 'manual',
+      trigger,
       sessionKey,
     })
 
@@ -546,14 +575,20 @@ export class OpenClawService {
         },
       )
 
-      await this.programStorage.updateProgram(agent.name, program.id, {
-        lastRunAt: completedAt,
-      })
+      await this.programStorage.updateProgram(
+        agent.name,
+        program.id,
+        {
+          lastRunAt: completedAt,
+        },
+        { touchUpdatedAt: false },
+      )
 
       if (!updatedRun) {
         throw new Error('Program run record disappeared during completion')
       }
 
+      await this.refreshScheduledProgramsForAgent(agent.name)
       return updatedRun
     } catch (error) {
       const completedAt = new Date().toISOString()
@@ -570,10 +605,29 @@ export class OpenClawService {
       )
 
       if (updatedRun) {
+        await this.refreshScheduledProgramsForAgent(agent.name)
         return updatedRun
       }
 
       throw error
+    }
+  }
+
+  async runProgramOnce(
+    agentId: string,
+    program: BrowserOSAgentProgram,
+  ): Promise<BrowserOSProgramRun> {
+    return this.runProgram(agentId, program, 'manual')
+  }
+
+  async refreshScheduledProgramsForAgent(agentName: string): Promise<void> {
+    try {
+      await this.scheduler.refreshAgent(agentName)
+    } catch (error) {
+      logger.warn('Failed to refresh scheduled programs for agent', {
+        agentName,
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 
@@ -625,6 +679,7 @@ export class OpenClawService {
       }
 
       await this.connectGatewayResiliently()
+      await this.startScheduler()
       logger.info('OpenClaw gateway auto-started')
     } catch (err) {
       logger.warn('OpenClaw auto-start failed', {
@@ -740,6 +795,16 @@ export class OpenClawService {
     return {
       finalResult: resolvedText,
       sessionKey,
+    }
+  }
+
+  private async startScheduler(): Promise<void> {
+    try {
+      await this.scheduler.start()
+    } catch (error) {
+      logger.warn('Failed to start OpenClaw program scheduler', {
+        error: error instanceof Error ? error.message : String(error),
+      })
     }
   }
 

@@ -181,6 +181,7 @@ export function createOpenClawRoutes() {
         const input = validateCreateProgramInput(await c.req.json())
         const program = await openclawProgramStorage.createProgram(agent, input)
         await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        await getOpenClawService().refreshScheduledProgramsForAgent(agent.name)
         return c.json({ program }, 201)
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -213,6 +214,7 @@ export function createOpenClawRoutes() {
         }
 
         await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        await getOpenClawService().refreshScheduledProgramsForAgent(agent.name)
         return c.json({ program })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -244,6 +246,7 @@ export function createOpenClawRoutes() {
         }
 
         await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        await getOpenClawService().refreshScheduledProgramsForAgent(agent.name)
         return c.json({ success: true })
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
@@ -286,6 +289,7 @@ export function createOpenClawRoutes() {
           program,
         )
         await openclawProgramMaterializer.syncAgentPrograms(agent.name)
+        await getOpenClawService().refreshScheduledProgramsForAgent(agent.name)
         return c.json({ run })
       } catch (err) {
         if (err instanceof OpenClawAgentNotFoundError) {

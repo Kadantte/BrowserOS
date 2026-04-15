@@ -47,6 +47,10 @@ export interface OpenClawStatus {
   port: number | null
   agentCount: number
   error: string | null
+  scheduler?: {
+    running: boolean
+    activeProgramCount: number
+  }
   controlPlaneStatus:
     | 'disconnected'
     | 'connecting'

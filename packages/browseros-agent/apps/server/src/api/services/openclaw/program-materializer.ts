@@ -28,6 +28,7 @@ function buildProgramsMd(programs: BrowserOSAgentProgram[]): string {
           (program) => `## ${program.name}
 - Status: ${program.enabled ? 'enabled' : 'disabled'}
 - Schedule: ${describeSchedule(program)}
+- Next run: ${program.nextRunAt ?? 'not scheduled'}
 - Goal: ${program.description}
 - Prompt: ${program.prompt}
 `,
@@ -76,6 +77,8 @@ function buildProgramsMetadata(
         enabled: program.enabled,
         schedule: program.schedule,
         updatedAt: program.updatedAt,
+        lastRunAt: program.lastRunAt,
+        nextRunAt: program.nextRunAt,
       })),
     },
     null,
