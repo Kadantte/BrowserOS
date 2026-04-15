@@ -16,14 +16,6 @@ async function executeAct(
 
   const url = `${ctx.baseUrl}/sdk/act`
 
-  const browserContextForAct = ctx.browserContext
-    ? {
-        windowId: ctx.browserContext.windowId,
-        enabledMcpServers: ctx.browserContext.enabledMcpServers,
-        customMcpServers: ctx.browserContext.customMcpServers,
-      }
-    : undefined
-
   let response: Response
   try {
     response = await fetch(url, {
@@ -33,7 +25,7 @@ async function executeAct(
         instruction,
         context: options?.context,
         maxSteps: options?.maxSteps,
-        browserContext: browserContextForAct,
+        browserContext: ctx.browserContext,
         llm: ctx.llmConfig,
         sessionId: ctx.sessionId,
       }),
