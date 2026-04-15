@@ -430,11 +430,12 @@ export class OpenClawService {
       throw error
     }
 
-    if (input.roleId || input.customRole) {
-      await this.writeRoleBootstrapFiles(
-        name,
-        input.roleId ? resolveRoleTemplate(input.roleId) : input.customRole!,
-      )
+    const roleTemplate = input.roleId
+      ? resolveRoleTemplate(input.roleId)
+      : input.customRole
+
+    if (roleTemplate) {
+      await this.writeRoleBootstrapFiles(name, roleTemplate)
     }
 
     const roleSummary = input.roleId
