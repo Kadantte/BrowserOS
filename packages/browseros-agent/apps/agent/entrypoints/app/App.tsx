@@ -85,7 +85,10 @@ export const App: FC = () => {
         {/* Main app with sidebar */}
         <Route element={<SidebarLayout />}>
           {/* Home routes */}
-          <Route path="home" element={<NewTabLayout />}>
+          <Route
+            path="home"
+            element={<NewTabLayout useChatSessionOnHome={!alphaEnabled} />}
+          >
             {alphaEnabled ? (
               <>
                 <Route element={<AgentCommandLayout />}>
