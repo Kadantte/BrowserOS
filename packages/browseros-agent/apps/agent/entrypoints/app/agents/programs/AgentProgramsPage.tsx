@@ -191,8 +191,8 @@ export function AgentProgramsPage({ agent, onBack }: AgentProgramsPageProps) {
           <div>
             <CardTitle className="text-base">Programs</CardTitle>
             <p className="text-muted-foreground text-sm">
-              Save schedules now and use manual runs to validate the workflow.
-              Automatic schedule execution lands in the next milestone.
+              Define reusable responsibilities for this agent. Programs can run
+              on schedule or be triggered manually for validation.
             </p>
           </div>
           <Button
