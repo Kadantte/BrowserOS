@@ -44,7 +44,7 @@ export const UsagePage: FC = () => {
   }
 
   const credits = data?.credits ?? 0
-  const total = data?.dailyLimit ?? 100
+  const total = data?.dailyLimit ?? 50
   const percentage = Math.min((credits / total) * 100, 100)
 
   return (
