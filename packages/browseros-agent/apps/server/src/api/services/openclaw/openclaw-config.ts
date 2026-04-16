@@ -183,10 +183,9 @@ export function buildBootstrapConfig(
       mode: 'local',
       port: input.gatewayPort,
       bind: 'lan',
-      auth: { mode: 'token', token: input.gatewayToken },
+      auth: { mode: 'none' as const },
       reload: { mode: 'restart' },
       controlUi: {
-        allowInsecureAuth: true,
         allowedOrigins: [
           `http://127.0.0.1:${input.gatewayPort}`,
           `http://localhost:${input.gatewayPort}`,
@@ -252,7 +251,6 @@ export function buildEnvFile(input: EnvFileInput): string {
   const lines: string[] = [
     `OPENCLAW_IMAGE=${input.image ?? OPENCLAW_IMAGE}`,
     `OPENCLAW_GATEWAY_PORT=${input.port ?? OPENCLAW_GATEWAY_PORT}`,
-    `OPENCLAW_GATEWAY_TOKEN=${input.token}`,
     `OPENCLAW_CONFIG_DIR=${input.configDir}`,
     `TZ=${input.timezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone}`,
   ]
