@@ -214,7 +214,7 @@ jobs:
               lines.append("| Suite | Passed | Failed | Skipped |")
               lines.append("|-------|--------|--------|---------|")
               for s in suites:
-                  icon = ":white_check_mark:" if s["failed"] == 0 and s["total"] > 0 else ":x:"
+                  icon = ":white_check_mark:" if s["failed"] == 0 and s["total"] > 0 else ":warning:" if s["total"] == 0 else ":x:"
                   lines.append(f"| {icon} `{s['name']}` | {s['passed']}/{s['total']} | {s['failed']} | {s['skipped']} |")
 
           if failed_cases:
