@@ -6,7 +6,6 @@ services:
     environment:
       - HOME=/home/node
       - NODE_ENV=production
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
       - OPENCLAW_GATEWAY_BIND=lan
       - TZ=${TZ}
       - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
@@ -28,7 +27,6 @@ services:
       - lan
       - --port
       - "18789"
-      - --allow-unconfigured
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://127.0.0.1:18789/healthz"]
       interval: 30s
