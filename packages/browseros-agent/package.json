@@ -30,7 +30,7 @@
     "test": "bun run test:tools && bun run test:integration",
     "test:tools": "bun run --filter @browseros/server test:tools",
     "test:integration": "bun run --filter @browseros/server test:integration",
-    "test:sdk": "echo 'Skipping SDK tests temporarily: extract service unavailable'",
+    "test:sdk": "echo 'SDK tests disabled: test environment does not provide the extract/verify LLM service'",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "bunx biome check",
     "lint:fix": "bunx biome check --write --unsafe",
