@@ -116,6 +116,7 @@ export class GatewayClient {
         this._connected = false
         this.rejectAllPending('WebSocket closed')
         this.ws = null
+        if (!settled) reject(new Error('WebSocket closed during handshake'))
       }
 
       this.ws!.onopen = () => {
