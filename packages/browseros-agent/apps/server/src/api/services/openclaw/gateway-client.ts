@@ -65,7 +65,6 @@ export class GatewayClient {
 
   constructor(
     private readonly port: number,
-    private readonly openclawDir: string,
     private readonly version = '1.0.0',
   ) {}
 
@@ -262,16 +261,13 @@ function parseFrame(data: unknown): WsFrame | null {
   }
 }
 
-export async function connectWithRetry(
-  port: number,
-  openclawDir: string,
-): Promise<GatewayClient> {
+export async function connectWithRetry(port: number): Promise<GatewayClient> {
   let attempt = 0
   let delay = RECONNECT_BASE_MS
   let lastError: Error | null = null
   while (attempt < RECONNECT_MAX_ATTEMPTS) {
     try {
-      const client = new GatewayClient(port, openclawDir)
+      const client = new GatewayClient(port)
       await client.connect()
       return client
     } catch (err) {

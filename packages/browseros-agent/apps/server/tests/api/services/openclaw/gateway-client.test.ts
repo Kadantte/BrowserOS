@@ -37,7 +37,7 @@ describe('GatewayClient (full-trust mode)', () => {
       }
     })
 
-    const client = new GatewayClient(mock.port, '/tmp/openclaw-test')
+    const client = new GatewayClient(mock.port)
     await client.connect()
 
     expect(captured).toBeTruthy()
@@ -69,7 +69,7 @@ describe('GatewayClient (full-trust mode)', () => {
       }
     })
 
-    const client = new GatewayClient(mock.port, '/tmp/openclaw-test')
+    const client = new GatewayClient(mock.port)
     await client.connect()
     const agents = await client.listAgents()
     expect(agents).toEqual([])

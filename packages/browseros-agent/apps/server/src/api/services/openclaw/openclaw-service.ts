@@ -579,7 +579,7 @@ export class OpenClawService {
     this.lastGatewayError = null
     try {
       logger.info('Connecting OpenClaw control plane', { port: this.port })
-      const client = await connectWithRetry(this.port, this.openclawDir)
+      const client = await connectWithRetry(this.port)
       this.gateway = client
       this.controlPlaneStatus = 'connected'
       logger.info('OpenClaw gateway control plane connected', {
