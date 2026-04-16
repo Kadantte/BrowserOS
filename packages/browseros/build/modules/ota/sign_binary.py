@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Platform-specific binary signing for OTA binaries"""
 
+import os
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
@@ -182,7 +184,6 @@ def notarize_macos_binary(
     notarize_zip: Optional[Path] = None
     try:
         fd, tmp_path = tempfile.mkstemp(suffix=".zip")
-        import os
         os.close(fd)
         notarize_zip = Path(tmp_path)
 
@@ -307,7 +308,6 @@ def sign_windows_binary(
 
         signed_file = temp_output_dir / binary_path.name
         if signed_file.exists():
-            import shutil
             shutil.move(str(signed_file), str(binary_path))
 
         try:
@@ -357,8 +357,15 @@ def sign_server_bundle_macos(
         log_error(f"bin dir not found: {bin_dir}")
         return False
 
-    files = [p for p in sorted(bin_dir.rglob("*")) if p.is_file()]
-    unknowns = [p for p in files if macos_sign_spec_for(p) is None]
+    # Only Mach-O-style executables need signing; any future data/config file
+    # shipped under resources/bin/ (plists, shell completion, etc.) is not a
+    # codesign target and must not trigger the unknown-binary guard.
+    executables = [
+        p
+        for p in sorted(bin_dir.rglob("*"))
+        if p.is_file() and not p.is_symlink() and os.access(p, os.X_OK)
+    ]
+    unknowns = [p for p in executables if macos_sign_spec_for(p) is None]
     if unknowns:
         log_error(
             "Unknown executables found under resources/bin/ not registered in "
@@ -368,7 +375,7 @@ def sign_server_bundle_macos(
             log_error(f"  - {path.relative_to(resources_dir)}")
         return False
 
-    for path in files:
+    for path in executables:
         spec = macos_sign_spec_for(path)
         assert spec is not None  # unknowns filtered above
 
@@ -394,12 +401,17 @@ def sign_server_bundle_macos(
 
 
 def sign_server_bundle_windows(resources_dir: Path, env: EnvConfig) -> bool:
-    """Sign each Windows binary enumerated in ``WINDOWS_SERVER_BINARIES``."""
+    """Sign each Windows binary enumerated in ``WINDOWS_SERVER_BINARIES``.
+
+    A missing expected binary is a hard error: publishing an incomplete
+    Windows bundle would ship a broken OTA update without a pipeline signal.
+    Symmetric with the macOS bundle's unknown-file guard.
+    """
     bin_dir = resources_dir / "bin"
     for path in expected_windows_binary_paths(bin_dir):
         if not path.exists():
-            log_warning(f"Windows binary missing (skipping): {path}")
-            continue
+            log_error(f"Windows binary missing (cannot sign): {path}")
+            return False
         if not sign_windows_binary(path, env):
             return False
     return True

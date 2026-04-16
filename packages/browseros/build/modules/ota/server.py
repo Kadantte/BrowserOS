@@ -10,7 +10,6 @@ from ...common.module import CommandModule, ValidationError
 from ...common.context import Context
 from ...common.utils import (
     log_info,
-    log_error,
     log_success,
     log_warning,
     IS_MACOS,
@@ -88,11 +87,8 @@ class ServerOTAModule(CommandModule):
             return [p for p in SERVER_PLATFORMS if p["name"] in requested]
         return SERVER_PLATFORMS
 
-    def _download_artifacts(self, ctx: Context) -> Path:
-        """Download server artifact zips from R2 latest/ and extract them."""
-        download_dir = Path(tempfile.mkdtemp(prefix="ota_artifacts_"))
-        self._download_dir = download_dir
-
+    def _download_artifacts(self, ctx: Context, download_dir: Path) -> None:
+        """Download and extract server artifact zips from R2 into ``download_dir``."""
         r2_client = get_r2_client(ctx.env)
         if not r2_client:
             raise RuntimeError("Failed to create R2 client")
@@ -116,74 +112,85 @@ class ServerOTAModule(CommandModule):
             zip_path.unlink()
 
         log_success(f"Downloaded {len(platforms)} artifact(s)")
-        return download_dir
 
     def execute(self, context: Context) -> None:
         ctx = context
         log_info(f"\n🚀 BrowserOS Server OTA v{self.version} ({self.channel})")
         log_info("=" * 70)
 
-        # Download artifacts from R2
-        binaries_dir = self._download_artifacts(ctx)
+        with tempfile.TemporaryDirectory(prefix="ota_artifacts_") as dl, \
+             tempfile.TemporaryDirectory(prefix="ota_staging_") as st:
+            binaries_dir = Path(dl)
+            temp_dir = Path(st)
+            log_info(f"Temp directory: {temp_dir}")
 
-        platforms = self._get_platforms()
-        temp_dir = Path(tempfile.mkdtemp())
-        log_info(f"Temp directory: {temp_dir}")
+            self._download_artifacts(ctx, binaries_dir)
+            signed_artifacts = self._build_platform_artifacts(
+                ctx, binaries_dir, temp_dir
+            )
+            self._finalize_release(ctx, signed_artifacts)
 
+    def _build_platform_artifacts(
+        self, ctx: Context, binaries_dir: Path, temp_dir: Path
+    ) -> List[SignedArtifact]:
+        """Sign + zip + Sparkle-sign each platform; fail fast on any error.
+
+        Any per-platform failure raises ``RuntimeError`` so a broken
+        credential or unregistered binary cannot silently omit a platform
+        from a published release.
+        """
         signed_artifacts: List[SignedArtifact] = []
 
-        for platform in platforms:
+        for platform in self._get_platforms():
             log_info(f"\n📦 Processing {platform['name']}...")
 
             source_resources = find_server_resources_dir(binaries_dir, platform)
             if not source_resources:
-                log_warning(
-                    f"Resources dir not found for {platform['name']}, skipping"
+                raise RuntimeError(
+                    f"Resources dir not found for {platform['name']}"
                 )
-                continue
 
             staging_resources = temp_dir / platform["name"] / "resources"
             shutil.copytree(source_resources, staging_resources)
 
             if not self._sign_bundle(staging_resources, platform, ctx):
-                log_warning(f"Skipping {platform['name']} due to signing failure")
-                continue
+                raise RuntimeError(f"Signing failed for {platform['name']}")
 
             zip_name = f"browseros_server_{self.version}_{platform['name']}.zip"
             zip_path = temp_dir / zip_name
 
             if not create_server_bundle_zip(staging_resources, zip_path):
-                log_error(f"Failed to create bundle for {platform['name']}")
-                continue
+                raise RuntimeError(f"Failed to create bundle for {platform['name']}")
 
             if platform["os"] == "macos" and IS_MACOS():
                 if not notarize_macos_zip(zip_path, ctx.env):
-                    log_error(f"Notarization failed for {platform['name']}")
-                    continue
+                    raise RuntimeError(
+                        f"Notarization failed for {platform['name']}"
+                    )
 
             log_info(f"Signing {zip_name} with Sparkle...")
             signature, length = sparkle_sign_file(zip_path, ctx.env)
-
             if not signature:
-                log_error(f"Failed to sign zip for {platform['name']}")
-                continue
+                raise RuntimeError(f"Sparkle signing failed for {platform['name']}")
 
             log_success(f"  {platform['name']}: {length} bytes")
-
-            artifact = SignedArtifact(
+            signed_artifacts.append(SignedArtifact(
                 platform=platform["name"],
                 zip_path=zip_path,
                 signature=signature,
                 length=length,
                 os=platform["os"],
                 arch=platform["arch"],
-            )
-            signed_artifacts.append(artifact)
+            ))
 
         if not signed_artifacts:
-            log_error("No artifacts were processed successfully")
-            raise RuntimeError("OTA failed - no artifacts")
+            raise RuntimeError("OTA failed - no artifacts processed")
+        return signed_artifacts
 
+    def _finalize_release(
+        self, ctx: Context, signed_artifacts: List[SignedArtifact]
+    ) -> None:
+        """Write the appcast, upload every signed zip to R2, and surface URLs."""
         log_info("\n📝 Generating appcast...")
         appcast_path = get_appcast_path(self.channel)
         existing_appcast = parse_existing_appcast(appcast_path)
