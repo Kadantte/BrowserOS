@@ -413,7 +413,7 @@ export class OpenClawService {
         : false
 
     if (configChanged || keysChanged) {
-      logger.info('OpenClaw provider config changed while creating agent', {
+      logger.info('Provider config changed, restarting gateway', {
         name,
         configChanged,
         keysChanged,
@@ -786,13 +786,19 @@ export class OpenClawService {
       const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
       const pattern = new RegExp(`^${escapedKey}=.*$`, 'm')
       if (pattern.test(content)) {
-        content = content.replace(pattern, `${key}=${value}`)
-        updatedExisting = true
+        const prev = content.match(pattern)?.[0]
+        const next = `${key}=${value}`
+        if (prev !== next) {
+          content = content.replace(pattern, next)
+          updatedExisting = true
+        }
       } else {
         content = `${content.trimEnd()}\n${key}=${value}\n`
         addedNew = true
       }
     }
+
+    if (!addedNew && !updatedExisting) return false
 
     await writeFile(envPath, content, { mode: 0o600 })
     logger.debug('Updated OpenClaw provider credentials', {
@@ -800,7 +806,7 @@ export class OpenClawService {
       addedNew,
       updatedExisting,
     })
-    return addedNew || updatedExisting
+    return true
   }
 
   private async mergeProviderConfigIfChanged(input: {
