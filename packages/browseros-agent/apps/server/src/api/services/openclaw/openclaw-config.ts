@@ -35,7 +35,6 @@ export interface OpenClawProviderInput {
 
 export interface BootstrapConfigInput {
   gatewayPort: number
-  gatewayToken: string
   browserosServerPort?: number
   providerType?: string
   providerName?: string
@@ -46,7 +45,6 @@ export interface BootstrapConfigInput {
 export interface EnvFileInput {
   image?: string
   port?: number
-  token: string
   configDir: string
   timezone?: string
   providerKeys?: Record<string, string>

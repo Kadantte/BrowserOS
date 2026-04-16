@@ -102,7 +102,6 @@ export class OpenClawService {
   private gateway: GatewayClient | null = null
   private openclawDir: string
   private port = OPENCLAW_GATEWAY_PORT
-  private token: string
   private lastError: string | null = null
   private browserosServerPort: number
   private controlPlaneStatus: OpenClawControlPlaneStatus = 'disconnected'
@@ -113,7 +112,6 @@ export class OpenClawService {
   constructor(browserosServerPort?: number) {
     this.openclawDir = getOpenClawDir()
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
-    this.token = crypto.randomUUID()
     this.browserosServerPort = browserosServerPort ?? DEFAULT_PORTS.server
   }
 
@@ -148,10 +146,8 @@ export class OpenClawService {
     logProgress('Copying compose file...')
     await this.runtime.copyComposeFile(COMPOSE_RESOURCE)
 
-    this.token = crypto.randomUUID()
     const providerKeys = resolveProviderKeys(input)
     const envContent = buildEnvFile({
-      token: this.token,
       configDir: this.openclawDir,
       providerKeys,
     })
@@ -163,7 +159,6 @@ export class OpenClawService {
 
     const config = buildBootstrapConfig({
       gatewayPort: this.port,
-      gatewayToken: this.token,
       browserosServerPort: this.browserosServerPort,
       providerType: input.providerType,
       providerName: input.providerName,
