@@ -23,15 +23,14 @@ from .common import (
     sparkle_sign_file,
     generate_server_appcast,
     parse_existing_appcast,
-    create_server_zip,
+    create_server_bundle_zip,
     get_appcast_path,
-    find_server_binary,
+    find_server_resources_dir,
 )
 from .sign_binary import (
-    sign_macos_binary,
     notarize_macos_binary,
-    sign_windows_binary,
-    get_entitlements_path,
+    sign_server_bundle_macos,
+    sign_server_bundle_windows,
 )
 from ..storage import get_r2_client, upload_file_to_r2, download_file_from_r2
 from ..storage.download import extract_artifact_zip
@@ -136,26 +135,32 @@ class ServerOTAModule(CommandModule):
         for platform in platforms:
             log_info(f"\n📦 Processing {platform['name']}...")
 
-            source_binary = find_server_binary(binaries_dir, platform)
-            if not source_binary:
-                log_warning(f"Binary not found for {platform['name']}, skipping")
+            source_resources = find_server_resources_dir(binaries_dir, platform)
+            if not source_resources:
+                log_warning(
+                    f"Resources dir not found for {platform['name']}, skipping"
+                )
                 continue
 
-            # Copy binary to temp to preserve original
-            temp_binary = temp_dir / platform["binary"]
-            shutil.copy2(source_binary, temp_binary)
+            staging_resources = temp_dir / platform["name"] / "resources"
+            shutil.copytree(source_resources, staging_resources)
 
-            if not self._sign_binary(temp_binary, platform, ctx):
+            if not self._sign_bundle(staging_resources, platform, ctx):
                 log_warning(f"Skipping {platform['name']} due to signing failure")
                 continue
 
             zip_name = f"browseros_server_{self.version}_{platform['name']}.zip"
             zip_path = temp_dir / zip_name
-            is_windows = platform["os"] == "windows"
 
-            if not create_server_zip(temp_binary, zip_path, is_windows):
-                log_error(f"Failed to create zip for {platform['name']}")
+            if not create_server_bundle_zip(staging_resources, zip_path):
+                log_error(f"Failed to create bundle for {platform['name']}")
                 continue
+
+            if platform["os"] == "macos" and IS_MACOS():
+                log_info(f"Notarizing {zip_name}...")
+                if not notarize_macos_binary(zip_path, ctx.env):
+                    log_error(f"Notarization failed for {platform['name']}")
+                    continue
 
             log_info(f"Signing {zip_name} with Sparkle...")
             signature, length = sparkle_sign_file(zip_path, ctx.env)
@@ -219,27 +224,27 @@ class ServerOTAModule(CommandModule):
         log_info(f"\nAppcast saved to: {appcast_path}")
         log_info("\n📋 Next step: Run 'browseros ota server release-appcast' to make the release live")
 
-    def _sign_binary(self, binary_path: Path, platform: dict, ctx: Context) -> bool:
-        """Sign binary based on platform"""
+    def _sign_bundle(
+        self, staging_resources: Path, platform: dict, ctx: Context
+    ) -> bool:
+        """Codesign every binary in the staged resources tree for a platform.
+
+        macOS notarization happens separately, on the outer Sparkle zip.
+        """
         os_type = platform["os"]
 
         if os_type == "macos":
             if not IS_MACOS():
-                log_warning(f"macOS signing requires macOS - skipping {platform['name']}")
+                log_warning(
+                    f"macOS signing requires macOS - leaving {platform['name']} unsigned"
+                )
                 return True
+            return sign_server_bundle_macos(
+                staging_resources, ctx.env, ctx.get_entitlements_dir()
+            )
 
-            entitlements = get_entitlements_path(ctx.root_dir)
-            if not sign_macos_binary(binary_path, ctx.env, entitlements):
-                return False
+        if os_type == "windows":
+            return sign_server_bundle_windows(staging_resources, ctx.env)
 
-            log_info("Notarizing...")
-            return notarize_macos_binary(binary_path, ctx.env)
-
-        elif os_type == "windows":
-            return sign_windows_binary(binary_path, ctx.env)
-
-        elif os_type == "linux":
-            log_info(f"No code signing for Linux binaries")
-            return True
-
+        log_info("No code signing for Linux binaries")
         return True

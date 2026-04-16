@@ -4,9 +4,13 @@
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from ...common.env import EnvConfig
+from ...common.server_binaries import (
+    expected_windows_binary_paths,
+    macos_sign_spec_for,
+)
 from ...common.utils import (
     log_info,
     log_error,
@@ -21,16 +25,17 @@ def sign_macos_binary(
     binary_path: Path,
     env: Optional[EnvConfig] = None,
     entitlements_path: Optional[Path] = None,
+    *,
+    identifier: Optional[str] = None,
+    options: str = "runtime",
 ) -> bool:
-    """Sign a macOS binary with codesign
+    """Sign a macOS binary with codesign.
 
-    Args:
-        binary_path: Path to binary to sign
-        env: Environment config with certificate name
-        entitlements_path: Optional path to entitlements plist
-
-    Returns:
-        True on success, False on failure
+    ``identifier`` defaults to ``com.browseros.<stem>`` to preserve the
+    previous single-binary signature shape. Callers that have a shared sign
+    table (see ``common/server_binaries.py``) should pass identifier and
+    options derived from that table so OTA-signed and Chromium-build-signed
+    binaries share the same code identifier.
     """
     if not IS_MACOS():
         log_error("macOS signing requires macOS")
@@ -46,13 +51,14 @@ def sign_macos_binary(
 
     log_info(f"Signing {binary_path.name}...")
 
+    resolved_identifier = identifier or f"com.browseros.{binary_path.stem}"
     cmd = [
         "codesign",
         "--sign", certificate_name,
         "--force",
         "--timestamp",
-        "--identifier", f"com.browseros.{binary_path.stem}",
-        "--options", "runtime",
+        "--identifier", resolved_identifier,
+        "--options", options,
     ]
 
     if entitlements_path and entitlements_path.exists():
@@ -306,3 +312,73 @@ def get_entitlements_path(root_dir: Path) -> Optional[Path]:
             return candidate
 
     return None
+
+
+def sign_server_bundle_macos(
+    resources_dir: Path,
+    env: EnvConfig,
+    entitlements_root: Path,
+) -> bool:
+    """Codesign every known binary under ``resources_dir/bin/**``.
+
+    Unknown executables are a hard error: every regular file under
+    ``resources/bin/`` must have an entry in ``MACOS_SERVER_BINARIES``.
+    This prevents silently shipping an unsigned binary when a new
+    third-party dep is added to the agent build without being registered
+    in the shared sign table.
+    """
+    bin_dir = resources_dir / "bin"
+    if not bin_dir.is_dir():
+        log_error(f"bin dir not found: {bin_dir}")
+        return False
+
+    unknowns: List[Path] = []
+    for path in sorted(bin_dir.rglob("*")):
+        if not path.is_file():
+            continue
+
+        spec = macos_sign_spec_for(path)
+        if spec is None:
+            unknowns.append(path)
+            continue
+
+        entitlements_path: Optional[Path] = None
+        if spec.entitlements:
+            entitlements_path = entitlements_root / spec.entitlements
+            if not entitlements_path.exists():
+                log_error(
+                    f"Missing entitlements for {path.name}: {entitlements_path}"
+                )
+                return False
+
+        if not sign_macos_binary(
+            path,
+            env,
+            entitlements_path,
+            identifier=f"com.browseros.{spec.identifier_suffix}",
+            options=spec.options,
+        ):
+            return False
+
+    if unknowns:
+        log_error(
+            "Unknown executables found under resources/bin/ not registered in "
+            "MACOS_SERVER_BINARIES (see build/common/server_binaries.py):"
+        )
+        for path in unknowns:
+            log_error(f"  - {path.relative_to(resources_dir)}")
+        return False
+
+    return True
+
+
+def sign_server_bundle_windows(resources_dir: Path, env: EnvConfig) -> bool:
+    """Sign each Windows binary enumerated in ``WINDOWS_SERVER_BINARIES``."""
+    bin_dir = resources_dir / "bin"
+    for path in expected_windows_binary_paths(bin_dir):
+        if not path.exists():
+            log_warning(f"Windows binary missing (skipping): {path}")
+            continue
+        if not sign_windows_binary(path, env):
+            return False
+    return True
