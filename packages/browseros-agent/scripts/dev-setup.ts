@@ -83,15 +83,36 @@ export function buildEnvCopyPlans(
   return plans
 }
 
+export function resolvePrimaryWorktreeRoot(
+  repoRoot: string,
+  currentGitRoot: string | null,
+  primaryGitRoot: string,
+): string {
+  if (!currentGitRoot) {
+    return primaryGitRoot
+  }
+  return join(primaryGitRoot, relative(currentGitRoot, repoRoot))
+}
+
 function getPrimaryWorktreeRoot(repoRoot: string): string | null {
-  const result = spawnSync('git', ['worktree', 'list', '--porcelain'], {
+  const gitRootResult = spawnSync('git', ['rev-parse', '--show-toplevel'], {
     cwd: repoRoot,
     encoding: 'utf8',
   })
-  if (result.status !== 0) {
+  const worktreeResult = spawnSync('git', ['worktree', 'list', '--porcelain'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  })
+  if (worktreeResult.status !== 0) {
     return null
   }
-  return parsePrimaryWorktreeRoot(result.stdout)
+  const primaryGitRoot = parsePrimaryWorktreeRoot(worktreeResult.stdout)
+  if (!primaryGitRoot) {
+    return null
+  }
+  const currentGitRoot =
+    gitRootResult.status === 0 ? gitRootResult.stdout.trim() : null
+  return resolvePrimaryWorktreeRoot(repoRoot, currentGitRoot, primaryGitRoot)
 }
 
 function ensureEnvFiles(repoRoot: string, plans: EnvCopyPlan[]): void {
@@ -109,10 +130,14 @@ function ensureEnvFiles(repoRoot: string, plans: EnvCopyPlan[]): void {
 
   if (missingTargets.length > 0) {
     throw new Error(
-      `Missing required env files: ${missingTargets
+      `Missing required env files (no main-worktree or example source found): ${missingTargets
         .map((targetPath) => relative(repoRoot, targetPath))
         .join(', ')}`,
     )
+  }
+
+  if (plans.length === 0) {
+    console.log('env files already present, skipping sync')
   }
 }
 
@@ -122,8 +147,17 @@ function runStep(repoRoot: string, command: string, args: string[]): void {
     cwd: repoRoot,
     stdio: 'inherit',
   })
+  if (result.error) {
+    throw result.error
+  }
   if (result.status !== 0) {
-    throw new Error(`Command failed: ${[command, ...args].join(' ')}`)
+    const reason =
+      result.signal == null
+        ? `exit code ${result.status}`
+        : `killed by ${result.signal}`
+    throw new Error(
+      `Command failed (${reason}): ${[command, ...args].join(' ')}`,
+    )
   }
 }
 

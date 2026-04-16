@@ -2,7 +2,11 @@ import { afterEach, describe, expect, test } from 'bun:test'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { buildEnvCopyPlans, parsePrimaryWorktreeRoot } from './dev-setup'
+import {
+  buildEnvCopyPlans,
+  parsePrimaryWorktreeRoot,
+  resolvePrimaryWorktreeRoot,
+} from './dev-setup'
 
 const tempDirs: string[] = []
 
@@ -137,6 +141,46 @@ describe('buildEnvCopyPlans', () => {
     ])
   })
 
+  test('falls back to example files when there is no primary worktree root', () => {
+    const repoRoot = createTempDir()
+
+    const agentExample = writeFile(
+      repoRoot,
+      'apps/agent/.env.example',
+      'example-agent',
+    )
+    const serverExample = writeFile(
+      repoRoot,
+      'apps/server/.env.example',
+      'example-server-dev',
+    )
+    const serverProdExample = writeFile(
+      repoRoot,
+      'apps/server/.env.production.example',
+      'example-server-prod',
+    )
+
+    const plans = buildEnvCopyPlans(repoRoot, null)
+
+    expect(plans).toEqual([
+      {
+        reason: 'example',
+        source: agentExample,
+        target: join(repoRoot, 'apps/agent/.env.development'),
+      },
+      {
+        reason: 'example',
+        source: serverExample,
+        target: join(repoRoot, 'apps/server/.env.development'),
+      },
+      {
+        reason: 'example',
+        source: serverProdExample,
+        target: join(repoRoot, 'apps/server/.env.production'),
+      },
+    ])
+  })
+
   test('skips files that already exist in the current worktree', () => {
     const repoRoot = createTempDir()
     const primaryRoot = createTempDir()
@@ -174,5 +218,37 @@ describe('buildEnvCopyPlans', () => {
         target: join(repoRoot, 'apps/server/.env.production'),
       },
     ])
+  })
+
+  test('returns an empty plan when all env files already exist', () => {
+    const repoRoot = createTempDir()
+
+    writeFile(repoRoot, 'apps/agent/.env.development', 'current-agent')
+    writeFile(repoRoot, 'apps/server/.env.development', 'current-server-dev')
+    writeFile(repoRoot, 'apps/server/.env.production', 'current-server-prod')
+
+    expect(buildEnvCopyPlans(repoRoot, null)).toEqual([])
+  })
+})
+
+describe('resolvePrimaryWorktreeRoot', () => {
+  test('maps the primary git root back to the package-relative repo root', () => {
+    expect(
+      resolvePrimaryWorktreeRoot(
+        '/repo/packages/browseros-agent',
+        '/repo',
+        '/primary-worktree',
+      ),
+    ).toBe('/primary-worktree/packages/browseros-agent')
+  })
+
+  test('returns the primary git root when the current git root is unavailable', () => {
+    expect(
+      resolvePrimaryWorktreeRoot(
+        '/repo/packages/browseros-agent',
+        null,
+        '/primary-worktree',
+      ),
+    ).toBe('/primary-worktree')
   })
 })
