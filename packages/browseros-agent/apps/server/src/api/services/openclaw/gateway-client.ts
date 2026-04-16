@@ -242,11 +242,11 @@ export class GatewayClient {
   }
 
   private rejectAllPending(reason: string): void {
-    for (const [id, entry] of this.pending) {
+    for (const entry of this.pending.values()) {
       clearTimeout(entry.timer)
       entry.reject(new Error(reason))
-      this.pending.delete(id)
     }
+    this.pending.clear()
   }
 }
 
