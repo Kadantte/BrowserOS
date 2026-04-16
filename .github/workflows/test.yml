@@ -151,6 +151,7 @@ jobs:
     steps:
       - name: Download JUnit artifacts
         uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           path: junit
           pattern: junit-*
@@ -240,9 +241,10 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
 
+            const triggerSha = context.payload.pull_request.head.sha;
             const { data: pr } = await github.rest.pulls.get({ owner, repo, pull_number: issue_number });
-            if (pr.head.sha !== context.sha) {
-              core.info(`PR head has moved (${pr.head.sha} vs ${context.sha}) — skipping stale comment.`);
+            if (pr.head.sha !== triggerSha) {
+              core.info(`PR head has moved (${pr.head.sha} vs ${triggerSha}) — skipping stale comment.`);
               return;
             }
 
