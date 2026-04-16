@@ -42,7 +42,7 @@ describe('GatewayClient (full-trust mode)', () => {
 
     expect(captured).toBeTruthy()
     const params = (captured as { params: Record<string, unknown> }).params
-    expect((params.client as { id: string }).id).toBe('control-ui')
+    expect((params.client as { id: string }).id).toBe('openclaw-control-ui')
     expect(params.device).toBeUndefined()
     expect(params.auth).toBeUndefined()
     expect((params.scopes as string[]).length).toBeGreaterThan(0)
