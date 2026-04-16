@@ -28,7 +28,7 @@ from .common import (
     find_server_resources_dir,
 )
 from .sign_binary import (
-    notarize_macos_binary,
+    notarize_macos_zip,
     sign_server_bundle_macos,
     sign_server_bundle_windows,
 )
@@ -157,8 +157,7 @@ class ServerOTAModule(CommandModule):
                 continue
 
             if platform["os"] == "macos" and IS_MACOS():
-                log_info(f"Notarizing {zip_name}...")
-                if not notarize_macos_binary(zip_path, ctx.env):
+                if not notarize_macos_zip(zip_path, ctx.env):
                     log_error(f"Notarization failed for {platform['name']}")
                     continue
 

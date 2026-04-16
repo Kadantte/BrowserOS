@@ -47,7 +47,7 @@ class CreateServerBundleZipTest(unittest.TestCase):
                 },
             )
 
-    @unittest.skipIf(sys.platform == "win32", "Windows zip does not carry unix modes")
+    @unittest.skipIf(sys.platform == "win32", "file mode check is meaningless on Windows")
     def test_preserves_executable_bits(self):
         with tempfile.TemporaryDirectory() as tmp:
             resources = Path(tmp) / "darwin-arm64" / "resources"

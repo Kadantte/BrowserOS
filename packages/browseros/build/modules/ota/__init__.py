@@ -15,6 +15,7 @@ from .common import (
 from .sign_binary import (
     sign_macos_binary,
     notarize_macos_binary,
+    notarize_macos_zip,
     sign_windows_binary,
     sign_server_bundle_macos,
     sign_server_bundle_windows,
@@ -37,6 +38,7 @@ __all__ = [
     "create_server_bundle_zip",
     "sign_macos_binary",
     "notarize_macos_binary",
+    "notarize_macos_zip",
     "sign_windows_binary",
     "sign_server_bundle_macos",
     "sign_server_bundle_windows",
