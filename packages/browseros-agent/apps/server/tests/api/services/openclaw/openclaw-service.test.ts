@@ -199,6 +199,7 @@ describe('OpenClawService', () => {
     expect(await readFile(join(tempDir, '.openclaw', '.env'), 'utf-8')).toBe(
       'OPENAI_API_KEY=legacy-key\n',
     )
+    expect(existsSync(join(tempDir, '.env'))).toBe(false)
     expect(existsSync(join(tempDir, 'agents'))).toBe(false)
     expect(existsSync(join(tempDir, 'openclaw.json'))).toBe(false)
     expect(existsSync(join(tempDir, 'workspace-ops'))).toBe(false)
@@ -303,6 +304,30 @@ describe('OpenClawService', () => {
     }
 
     await service.listAgents()
+  })
+
+  it('caches the loaded gateway token across steady-state control plane calls', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(join(tempDir, '.openclaw', 'openclaw.json'), '{}')
+    const getConfig = mock(async () => 'cli-token')
+    const listAgents = mock(async () => [])
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      isReady: async () => true,
+    }
+    service.cliClient = {
+      getConfig,
+      listAgents,
+    }
+
+    await service.listAgents()
+    await service.listAgents()
+
+    expect(getConfig).toHaveBeenCalledTimes(1)
+    expect(listAgents).toHaveBeenCalledTimes(2)
   })
 
   it('writes provider credentials into the mounted state env file during setup', async () => {
@@ -569,5 +594,34 @@ describe('OpenClawService', () => {
     expect(await readFile(join(tempDir, '.openclaw', '.env'), 'utf-8')).toBe(
       'OPENAI_API_KEY=sk-test\n',
     )
+  })
+
+  it('does not persist env updates when setting the default model fails', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+
+    const setDefaultModel = mock(async () => {
+      throw new Error('container unavailable')
+    })
+    const restart = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.restart = restart
+    service.cliClient = {
+      setDefaultModel,
+    }
+
+    await expect(
+      service.updateProviderKeys({
+        providerType: 'openai',
+        apiKey: 'sk-test',
+        modelId: 'gpt-5.4-mini',
+      }),
+    ).rejects.toThrow('container unavailable')
+
+    expect(setDefaultModel).toHaveBeenCalledWith('openai/gpt-5.4-mini')
+    expect(restart).not.toHaveBeenCalled()
+    expect(existsSync(join(tempDir, '.openclaw', '.env'))).toBe(false)
   })
 })

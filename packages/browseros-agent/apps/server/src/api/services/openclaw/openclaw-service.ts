@@ -9,14 +9,7 @@
  */
 
 import { existsSync } from 'node:fs'
-import {
-  copyFile,
-  mkdir,
-  readdir,
-  readFile,
-  rename,
-  writeFile,
-} from 'node:fs/promises'
+import { mkdir, readdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
 import {
   OPENCLAW_CONTAINER_HOME,
@@ -115,6 +108,7 @@ export class OpenClawService {
   private openclawDir: string
   private port = OPENCLAW_GATEWAY_PORT
   private token: string
+  private tokenLoaded = false
   private lastError: string | null = null
   private browserosServerPort: number
   private controlPlaneStatus: OpenClawControlPlaneStatus = 'disconnected'
@@ -217,6 +211,7 @@ export class OpenClawService {
     }
 
     logProgress('Validating OpenClaw config...')
+    this.tokenLoaded = false
     await this.assertConfigValid()
     await this.loadTokenFromConfig()
 
@@ -280,6 +275,7 @@ export class OpenClawService {
 
     this.controlPlaneStatus = 'connecting'
     logProgress('Refreshing gateway auth token...')
+    this.tokenLoaded = false
     await this.loadTokenFromConfig()
     logProgress('Probing OpenClaw control plane...')
     await this.runControlPlaneCall(() => this.cliClient.probe())
@@ -315,6 +311,7 @@ export class OpenClawService {
     }
 
     logProgress('Refreshing gateway auth token...')
+    this.tokenLoaded = false
     await this.loadTokenFromConfig()
     logProgress('Probing OpenClaw control plane...')
     await this.runControlPlaneCall(() => this.cliClient.probe())
@@ -337,6 +334,7 @@ export class OpenClawService {
     }
 
     logProgress('Reloading gateway auth token...')
+    this.tokenLoaded = false
     await this.loadTokenFromConfig()
     this.controlPlaneStatus = 'reconnecting'
     logProgress('Reconnecting control plane...')
@@ -538,10 +536,10 @@ export class OpenClawService {
     modelId?: string
   }): Promise<OpenClawProviderUpdateResult> {
     const provider = resolveSupportedOpenClawProvider(input)
-    const changed = await this.writeStateEnv(provider.envValues)
     if (provider.model) {
       await this.cliClient.setDefaultModel(provider.model)
     }
+    const changed = await this.writeStateEnv(provider.envValues)
     if (changed) {
       await this.restart()
     }
@@ -591,6 +589,7 @@ export class OpenClawService {
         }
       }
 
+      this.tokenLoaded = false
       await this.loadTokenFromConfig()
       await this.runControlPlaneCall(() => this.cliClient.probe())
       logger.info('OpenClaw gateway auto-started')
@@ -738,7 +737,7 @@ export class OpenClawService {
     const legacyEnvPath = this.getLegacyRootEnvPath()
     const stateEnvPath = this.getStateEnvPath()
     if (existsSync(legacyEnvPath) && !existsSync(stateEnvPath)) {
-      await copyFile(legacyEnvPath, stateEnvPath)
+      await rename(legacyEnvPath, stateEnvPath)
       migrated = true
     }
 
@@ -855,6 +854,9 @@ export class OpenClawService {
 
   private async ensureTokenLoaded(): Promise<void> {
     await this.migrateLegacyStateIfNeeded()
+    if (this.tokenLoaded) {
+      return
+    }
     if (!existsSync(this.getStateConfigPath())) {
       return
     }
@@ -867,6 +869,7 @@ export class OpenClawService {
       const token = await this.cliClient.getConfig('gateway.auth.token')
       if (typeof token === 'string' && token) {
         this.token = token
+        this.tokenLoaded = true
         logger.info('Loaded OpenClaw gateway token from CLI config')
       }
     } catch (err) {
