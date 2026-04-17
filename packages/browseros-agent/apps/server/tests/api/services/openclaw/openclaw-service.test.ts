@@ -36,8 +36,10 @@ type MutableOpenClawService = OpenClawService & {
     createAgent?: ReturnType<typeof mock>
     getConfig?: ReturnType<typeof mock>
     listAgents?: ReturnType<typeof mock>
+  }
+  bootstrapCliClient: {
     runOnboard?: ReturnType<typeof mock>
-    setConfig?: ReturnType<typeof mock>
+    setConfigBatch?: ReturnType<typeof mock>
     setDefaultModel?: ReturnType<typeof mock>
     validateConfig?: ReturnType<typeof mock>
   }
@@ -207,10 +209,18 @@ describe('OpenClawService', () => {
 
   it('creates the main agent during setup when the gateway starts without one', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
-    const runOnboard = mock(async () => {})
-    const setConfig = mock(async () => {})
+    const steps: string[] = []
+    const runOnboard = mock(async () => {
+      steps.push('onboard')
+    })
+    const setConfigBatch = mock(async () => {
+      steps.push('batch')
+    })
     const setDefaultModel = mock(async () => {})
-    const validateConfig = mock(async () => ({ ok: true }))
+    const validateConfig = mock(async () => {
+      steps.push('validate')
+      return { ok: true }
+    })
     const getConfig = mock(async (path: string) => {
       if (path === 'gateway.auth.token') return 'cli-token'
       return null
@@ -231,17 +241,26 @@ describe('OpenClawService', () => {
       copyComposeFile: async () => {},
       writeEnvFile,
       composePull: async () => {},
-      composeRestart: async () => {},
-      composeUp: async () => {},
-      waitForReady: async () => true,
+      composeRestart: mock(async () => {
+        steps.push('restart')
+      }),
+      composeUp: mock(async () => {
+        steps.push('up')
+      }),
+      waitForReady: mock(async () => {
+        steps.push('ready')
+        return true
+      }),
     }
     service.cliClient = {
       getConfig,
       probe: mock(async () => {}),
       listAgents: mock(async () => []),
       createAgent,
+    }
+    service.bootstrapCliClient = {
       runOnboard,
-      setConfig,
+      setConfigBatch,
       setDefaultModel,
       validateConfig,
     }
@@ -254,37 +273,105 @@ describe('OpenClawService', () => {
       gatewayAuth: 'token',
       gatewayBind: 'lan',
       gatewayPort: 18789,
+      installDaemon: false,
       mode: 'local',
       nonInteractive: true,
       skipHealth: true,
     })
-    expect(setConfig).toHaveBeenCalledWith(
-      'mcp.servers.browseros.url',
-      'http://host.containers.internal:9100/mcp',
+    expect(setConfigBatch).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        {
+          path: 'mcp.servers.browseros.url',
+          value: 'http://host.containers.internal:9100/mcp',
+        },
+        {
+          path: 'mcp.servers.browseros.transport',
+          value: 'streamable-http',
+        },
+        {
+          path: 'gateway.http.endpoints.chatCompletions.enabled',
+          value: true,
+        },
+      ]),
     )
-    expect(setConfig).toHaveBeenCalledWith(
-      'mcp.servers.browseros.transport',
-      'streamable-http',
-    )
-    expect(setConfig).not.toHaveBeenCalledWith('mcp.servers.browseros', {
-      transport: 'streamable-http',
-      url: 'http://host.containers.internal:9100/mcp',
-    })
     expect(validateConfig).toHaveBeenCalled()
-    expect(getConfig).toHaveBeenCalledWith('gateway.auth.token')
     expect(createAgent).toHaveBeenCalledWith({
       name: 'main',
       model: undefined,
     })
+    expect(steps).toEqual(['onboard', 'batch', 'validate', 'up', 'ready'])
     expect(writeEnvFile).toHaveBeenCalledWith(
       expect.stringContaining(`OPENCLAW_HOST_HOME=${tempDir}`),
     )
+    expect(service.runtime.composeRestart).not.toHaveBeenCalled()
   })
 
-  it('loads the persisted gateway token through cli config before control plane calls', async () => {
+  it('applies setup-time config in one batch before the gateway starts', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    const runOnboard = mock(async () => {})
+    const setConfigBatch = mock(async () => {})
+    const validateConfig = mock(async () => ({ ok: true }))
+    const getConfig = mock(async (path: string) => {
+      if (path === 'gateway.auth.token') return 'cli-token'
+      return null
+    })
+    const createAgent = mock(async () => ({
+      agentId: 'main',
+      name: 'main',
+      workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+    }))
+    const waitForReady = mock(async () => true)
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      isPodmanAvailable: async () => true,
+      ensureReady: async () => {},
+      isReady: async () => true,
+      copyComposeFile: async () => {},
+      writeEnvFile: async () => {},
+      composePull: async () => {},
+      composeRestart: mock(async () => {}),
+      composeUp: async () => {},
+      waitForReady,
+    }
+    service.cliClient = {
+      getConfig,
+      probe: mock(async () => {}),
+      listAgents: mock(async () => []),
+      createAgent,
+    }
+    service.bootstrapCliClient = {
+      runOnboard,
+      setConfigBatch,
+      setDefaultModel: mock(async () => {}),
+      validateConfig,
+    }
+
+    await expect(service.setup({})).resolves.toBeUndefined()
+
+    expect(setConfigBatch).toHaveBeenCalledTimes(1)
+    expect(waitForReady).toHaveBeenCalledTimes(1)
+    expect(createAgent).toHaveBeenCalledWith({
+      name: 'main',
+      model: undefined,
+    })
+    expect(service.runtime.composeRestart).not.toHaveBeenCalled()
+  })
+
+  it('loads the persisted gateway token from the mounted config before control plane calls', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
     await mkdir(join(tempDir, '.openclaw'), { recursive: true })
-    await writeFile(join(tempDir, '.openclaw', 'openclaw.json'), '{}')
+    await writeFile(
+      join(tempDir, '.openclaw', 'openclaw.json'),
+      JSON.stringify({
+        gateway: {
+          auth: {
+            token: 'cli-token',
+          },
+        },
+      }),
+    )
     const service = new OpenClawService() as MutableOpenClawService
 
     service.openclawDir = tempDir
@@ -293,10 +380,6 @@ describe('OpenClawService', () => {
       isReady: async () => true,
     }
     service.cliClient = {
-      getConfig: mock(async (path: string) => {
-        expect(path).toBe('gateway.auth.token')
-        return 'cli-token'
-      }),
       listAgents: mock(async () => {
         expect(service.token).toBe('cli-token')
         return []
@@ -306,11 +389,19 @@ describe('OpenClawService', () => {
     await service.listAgents()
   })
 
-  it('caches the loaded gateway token across steady-state control plane calls', async () => {
+  it('caches the loaded gateway token from config across steady-state control plane calls', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
     await mkdir(join(tempDir, '.openclaw'), { recursive: true })
-    await writeFile(join(tempDir, '.openclaw', 'openclaw.json'), '{}')
-    const getConfig = mock(async () => 'cli-token')
+    await writeFile(
+      join(tempDir, '.openclaw', 'openclaw.json'),
+      JSON.stringify({
+        gateway: {
+          auth: {
+            token: 'cli-token',
+          },
+        },
+      }),
+    )
     const listAgents = mock(async () => [])
     const service = new OpenClawService() as MutableOpenClawService
 
@@ -319,14 +410,12 @@ describe('OpenClawService', () => {
       isReady: async () => true,
     }
     service.cliClient = {
-      getConfig,
       listAgents,
     }
 
     await service.listAgents()
     await service.listAgents()
 
-    expect(getConfig).toHaveBeenCalledTimes(1)
     expect(listAgents).toHaveBeenCalledTimes(2)
   })
 
@@ -347,10 +436,6 @@ describe('OpenClawService', () => {
       waitForReady: async () => true,
     }
     service.cliClient = {
-      runOnboard: mock(async () => {}),
-      setConfig: mock(async () => {}),
-      setDefaultModel: mock(async () => {}),
-      validateConfig: mock(async () => ({ ok: true })),
       getConfig: mock(async (path: string) =>
         path === 'gateway.auth.token' ? 'cli-token' : null,
       ),
@@ -365,6 +450,12 @@ describe('OpenClawService', () => {
       createAgent: mock(async () => {
         throw new Error('createAgent should not be called when main exists')
       }),
+    }
+    service.bootstrapCliClient = {
+      runOnboard: mock(async () => {}),
+      setConfigBatch: mock(async () => {}),
+      setDefaultModel: mock(async () => {}),
+      validateConfig: mock(async () => ({ ok: true })),
     }
 
     await service.setup({

@@ -28,6 +28,7 @@ import {
 import {
   type OpenClawAgentRecord,
   OpenClawCliClient,
+  type OpenClawConfigBatchEntry,
 } from './openclaw-cli-client'
 import {
   buildComposeEnvFile,
@@ -104,6 +105,7 @@ export interface OpenClawProviderUpdateResult {
 export class OpenClawService {
   private runtime: ContainerRuntime
   private cliClient: OpenClawCliClient
+  private bootstrapCliClient: OpenClawCliClient
   private chatClient: OpenClawHttpChatClient
   private openclawDir: string
   private port = OPENCLAW_GATEWAY_PORT
@@ -121,6 +123,10 @@ export class OpenClawService {
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
     this.token = crypto.randomUUID()
     this.cliClient = new OpenClawCliClient(this.runtime)
+    this.bootstrapCliClient = new OpenClawCliClient({
+      execInContainer: (command, onLog) =>
+        this.runtime.runGatewaySetupCommand(command, onLog),
+    })
     this.chatClient = new OpenClawHttpChatClient(
       this.port,
       async () => this.token,
@@ -181,10 +187,29 @@ export class OpenClawService {
     await this.runtime.composePull(logProgress)
     logProgress('Image ready')
 
+    logProgress('Bootstrapping OpenClaw config...')
+    await this.bootstrapCliClient.runOnboard({
+      acceptRisk: true,
+      authChoice: 'skip',
+      gatewayAuth: 'token',
+      gatewayBind: 'lan',
+      gatewayPort: this.port,
+      installDaemon: false,
+      mode: 'local',
+      nonInteractive: true,
+      skipHealth: true,
+    })
+    await this.applyBrowserosConfig()
+    if (provider.model) {
+      await this.bootstrapCliClient.setDefaultModel(provider.model)
+    }
+
+    logProgress('Validating OpenClaw config...')
+    await this.assertConfigValid(this.bootstrapCliClient)
+
     logProgress('Starting OpenClaw gateway...')
     await this.runtime.composeUp(logProgress)
     this.startGatewayLogTail()
-
     logProgress('Waiting for gateway readiness...')
     const ready = await this.runtime.waitForReady(this.port, READY_TIMEOUT_MS)
     if (!ready) {
@@ -194,40 +219,7 @@ export class OpenClawService {
       throw new Error(this.lastError)
     }
 
-    logProgress('Bootstrapping OpenClaw config...')
-    await this.cliClient.runOnboard({
-      acceptRisk: true,
-      authChoice: 'skip',
-      gatewayAuth: 'token',
-      gatewayBind: 'lan',
-      gatewayPort: this.port,
-      mode: 'local',
-      nonInteractive: true,
-      skipHealth: true,
-    })
-    await this.applyBrowserosConfig()
-    if (provider.model) {
-      await this.cliClient.setDefaultModel(provider.model)
-    }
-
-    logProgress('Validating OpenClaw config...')
     this.tokenLoaded = false
-    await this.assertConfigValid()
-    await this.loadTokenFromConfig()
-
-    logProgress('Restarting OpenClaw gateway...')
-    await this.runtime.composeRestart(logProgress)
-
-    logProgress('Waiting for gateway readiness...')
-    const restarted = await this.runtime.waitForReady(
-      this.port,
-      READY_TIMEOUT_MS,
-    )
-    if (!restarted) {
-      this.lastError = 'Gateway did not become ready after bootstrap restart'
-      throw new Error(this.lastError)
-    }
-
     this.controlPlaneStatus = 'connecting'
     logProgress('Probing OpenClaw control plane...')
     await this.runControlPlaneCall(() => this.cliClient.probe())
@@ -537,7 +529,9 @@ export class OpenClawService {
   }): Promise<OpenClawProviderUpdateResult> {
     const provider = resolveSupportedOpenClawProvider(input)
     if (provider.model) {
-      await this.cliClient.setDefaultModel(provider.model)
+      await this.applyCliMutation(() =>
+        this.cliClient.setDefaultModel(provider.model!),
+      )
     }
     const changed = await this.writeStateEnv(provider.envValues)
     if (changed) {
@@ -760,64 +754,160 @@ export class OpenClawService {
   }
 
   private async applyBrowserosConfig(): Promise<void> {
-    await this.cliClient.setConfig(
-      'agents.defaults.workspace',
-      `${OPENCLAW_CONTAINER_HOME}/workspace`,
-    )
-    await this.cliClient.setConfig('agents.defaults.timeoutSeconds', 4200)
-    await this.cliClient.setConfig(
-      'agents.defaults.thinkingDefault',
-      'adaptive',
-    )
-    await this.cliClient.setConfig('gateway.reload.mode', 'restart')
-    await this.cliClient.setConfig('gateway.controlUi.allowInsecureAuth', true)
-    await this.cliClient.setConfig('gateway.controlUi.allowedOrigins', [
-      `http://127.0.0.1:${this.port}`,
-      `http://localhost:${this.port}`,
-    ])
-    await this.cliClient.setConfig(
-      'gateway.http.endpoints.chatCompletions.enabled',
-      true,
-    )
-    await this.cliClient.setConfig('tools.profile', 'full')
-    await this.cliClient.setConfig('tools.web.search.provider', 'duckduckgo')
-    await this.cliClient.setConfig('tools.web.search.enabled', true)
-    await this.cliClient.setConfig('tools.exec.host', 'gateway')
-    await this.cliClient.setConfig('tools.exec.security', 'full')
-    await this.cliClient.setConfig('tools.exec.ask', 'off')
-    await this.cliClient.setConfig('cron.enabled', true)
-    await this.cliClient.setConfig('hooks.internal.enabled', true)
-    await this.cliClient.setConfig(
-      'hooks.internal.entries.boot-md.enabled',
-      true,
-    )
-    await this.cliClient.setConfig(
-      'hooks.internal.entries.bootstrap-extra-files.enabled',
-      true,
-    )
-    await this.cliClient.setConfig(
-      'hooks.internal.entries.session-memory.enabled',
-      true,
-    )
-    await this.cliClient.setConfig(
-      'mcp.servers.browseros.url',
-      `http://host.containers.internal:${this.browserosServerPort}/mcp`,
-    )
-    await this.cliClient.setConfig(
-      'mcp.servers.browseros.transport',
-      'streamable-http',
-    )
-    await this.cliClient.setConfig('approvals.exec.enabled', false)
-    await this.cliClient.setConfig('skills.install.nodeManager', 'bun')
+    await this.bootstrapCliClient.setConfigBatch(this.getBrowserosConfigBatch())
+  }
+
+  private getBrowserosConfigBatch(): OpenClawConfigBatchEntry[] {
+    const entries: OpenClawConfigBatchEntry[] = [
+      {
+        path: 'agents.defaults.workspace',
+        value: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+      },
+      {
+        path: 'agents.defaults.timeoutSeconds',
+        value: 4200,
+      },
+      {
+        path: 'agents.defaults.thinkingDefault',
+        value: 'adaptive',
+      },
+      {
+        path: 'gateway.controlUi.allowInsecureAuth',
+        value: true,
+      },
+      {
+        path: 'gateway.controlUi.allowedOrigins',
+        value: [
+          `http://127.0.0.1:${this.port}`,
+          `http://localhost:${this.port}`,
+        ],
+      },
+      {
+        path: 'gateway.http.endpoints.chatCompletions.enabled',
+        value: true,
+      },
+      {
+        path: 'tools.profile',
+        value: 'full',
+      },
+      {
+        path: 'tools.web.search.provider',
+        value: 'duckduckgo',
+      },
+      {
+        path: 'tools.web.search.enabled',
+        value: true,
+      },
+      {
+        path: 'tools.exec.host',
+        value: 'gateway',
+      },
+      {
+        path: 'tools.exec.security',
+        value: 'full',
+      },
+      {
+        path: 'tools.exec.ask',
+        value: 'off',
+      },
+      {
+        path: 'cron.enabled',
+        value: true,
+      },
+      {
+        path: 'hooks.internal.enabled',
+        value: true,
+      },
+      {
+        path: 'hooks.internal.entries.boot-md.enabled',
+        value: true,
+      },
+      {
+        path: 'hooks.internal.entries.bootstrap-extra-files.enabled',
+        value: true,
+      },
+      {
+        path: 'hooks.internal.entries.session-memory.enabled',
+        value: true,
+      },
+      {
+        path: 'mcp.servers.browseros.url',
+        value: `http://host.containers.internal:${this.browserosServerPort}/mcp`,
+      },
+      {
+        path: 'mcp.servers.browseros.transport',
+        value: 'streamable-http',
+      },
+      {
+        path: 'approvals.exec.enabled',
+        value: false,
+      },
+      {
+        path: 'skills.install.nodeManager',
+        value: 'bun',
+      },
+    ]
 
     if (process.env.NODE_ENV === 'development') {
-      await this.cliClient.setConfig('logging.level', 'debug')
-      await this.cliClient.setConfig('logging.consoleLevel', 'debug')
+      entries.push(
+        {
+          path: 'logging.level',
+          value: 'debug',
+        },
+        {
+          path: 'logging.consoleLevel',
+          value: 'debug',
+        },
+      )
+    }
+
+    return entries
+  }
+
+  private async applyCliMutation(action: () => Promise<void>): Promise<void> {
+    let retried = false
+
+    while (true) {
+      try {
+        await action()
+        await this.waitForGatewayAfterCliMutation()
+        return
+      } catch (error) {
+        if (!this.isRestartInterruptedCliMutation(error) || retried) {
+          throw error
+        }
+
+        logger.info(
+          'Retrying OpenClaw CLI mutation after gateway reload interrupted the command',
+          {
+            error: error instanceof Error ? error.message : String(error),
+          },
+        )
+        await this.waitForGatewayAfterCliMutation()
+        retried = true
+      }
     }
   }
 
-  private async assertConfigValid(): Promise<void> {
-    const validation = await this.cliClient.validateConfig()
+  private isRestartInterruptedCliMutation(error: unknown): boolean {
+    const message = error instanceof Error ? error.message : String(error)
+    return (
+      message.includes('Config overwrite:') && message.includes('openclaw.json')
+    )
+  }
+
+  private async waitForGatewayAfterCliMutation(): Promise<void> {
+    const ready = await this.runtime.waitForReady(this.port, READY_TIMEOUT_MS)
+    if (!ready) {
+      this.lastError = 'Gateway did not become ready after applying config'
+      throw new Error(this.lastError)
+    }
+  }
+
+  private async assertConfigValid(
+    client: OpenClawCliClient = this.cliClient,
+  ): Promise<void> {
+    const validation = await client.validateConfig()
     if (
       validation &&
       typeof validation === 'object' &&
@@ -866,14 +956,23 @@ export class OpenClawService {
 
   private async loadTokenFromConfig(): Promise<void> {
     try {
-      const token = await this.cliClient.getConfig('gateway.auth.token')
+      const config = JSON.parse(
+        await readFile(this.getStateConfigPath(), 'utf-8'),
+      ) as {
+        gateway?: {
+          auth?: {
+            token?: unknown
+          }
+        }
+      }
+      const token = config.gateway?.auth?.token
       if (typeof token === 'string' && token) {
         this.token = token
         this.tokenLoaded = true
-        logger.info('Loaded OpenClaw gateway token from CLI config')
+        logger.info('Loaded OpenClaw gateway token from mounted config')
       }
     } catch (err) {
-      logger.warn('Failed to load OpenClaw gateway token from CLI config', {
+      logger.warn('Failed to load OpenClaw gateway token from mounted config', {
         error: err instanceof Error ? err.message : String(err),
       })
     }

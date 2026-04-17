@@ -12,6 +12,11 @@ interface ContainerExecutor {
   execInContainer(command: string[], onLog?: LogFn): Promise<number>
 }
 
+export interface OpenClawConfigBatchEntry {
+  path: string
+  value: unknown
+}
+
 interface RawAgentRecord {
   id: string
   name?: string
@@ -42,6 +47,7 @@ export class OpenClawCliClient {
       gatewayPort?: number
       gatewayToken?: string
       gatewayTokenRefEnv?: string
+      installDaemon?: boolean
       mode?: 'local' | 'remote'
       nonInteractive?: boolean
       reset?: boolean
@@ -101,6 +107,11 @@ export class OpenClawCliClient {
     if (input.gatewayBind) {
       args.push('--gateway-bind', input.gatewayBind)
     }
+    if (input.installDaemon === true) {
+      args.push('--install-daemon')
+    } else if (input.installDaemon === false) {
+      args.push('--no-install-daemon')
+    }
     if (input.skipHealth) {
       args.push('--skip-health')
     }
@@ -113,6 +124,15 @@ export class OpenClawCliClient {
 
   async setConfig(path: string, value: unknown): Promise<void> {
     await this.runCommand(['config', 'set', path, formatConfigValue(value)])
+  }
+
+  async setConfigBatch(entries: OpenClawConfigBatchEntry[]): Promise<void> {
+    await this.runCommand([
+      'config',
+      'set',
+      '--batch-json',
+      JSON.stringify(entries),
+    ])
   }
 
   async getConfig(path: string): Promise<unknown> {

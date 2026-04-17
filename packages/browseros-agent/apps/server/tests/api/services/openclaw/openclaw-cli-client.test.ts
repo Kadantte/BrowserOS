@@ -25,6 +25,7 @@ describe('OpenClawCliClient', () => {
         '18789',
         '--gateway-bind',
         'lan',
+        '--no-install-daemon',
         '--skip-health',
         '--accept-risk',
       ])
@@ -39,9 +40,36 @@ describe('OpenClawCliClient', () => {
       gatewayAuth: 'token',
       gatewayPort: 18789,
       gatewayBind: 'lan',
+      installDaemon: false,
       skipHealth: true,
       acceptRisk: true,
     })
+  })
+
+  it('uses batch mode for grouped config writes', async () => {
+    const execInContainer = mock(async (command: string[]) => {
+      expect(command).toEqual([
+        'node',
+        'dist/index.js',
+        'config',
+        'set',
+        '--batch-json',
+        '[{"path":"gateway.mode","value":"local"},{"path":"gateway.http.endpoints.chatCompletions.enabled","value":true}]',
+      ])
+      return 0
+    })
+
+    const client = new OpenClawCliClient({ execInContainer })
+    await client.setConfigBatch([
+      {
+        path: 'gateway.mode',
+        value: 'local',
+      },
+      {
+        path: 'gateway.http.endpoints.chatCompletions.enabled',
+        value: true,
+      },
+    ])
   })
 
   it('runs upstream CLI commands without appending a gateway token flag', async () => {
