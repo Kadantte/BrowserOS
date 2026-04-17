@@ -225,4 +225,64 @@ describe('OpenClawCliClient', () => {
       },
     })
   })
+
+  it('skips structured JSON log lines before config get payloads', async () => {
+    const execInContainer = mock(
+      async (command: string[], onLog?: (line: string) => void) => {
+        if (command[2] === 'config' && command[3] === 'get') {
+          onLog?.(
+            JSON.stringify({
+              level: 'info',
+              message: 'reading config',
+            }),
+          )
+          onLog?.('{')
+          onLog?.('  "gateway": {')
+          onLog?.('    "mode": "local"')
+          onLog?.('  }')
+          onLog?.('}')
+        }
+        return 0
+      },
+    )
+
+    const client = new OpenClawCliClient({ execInContainer })
+    const config = await client.getConfig('gateway')
+
+    expect(config).toEqual({
+      gateway: {
+        mode: 'local',
+      },
+    })
+  })
+
+  it('skips structured JSON log lines before config validate payloads', async () => {
+    const execInContainer = mock(
+      async (command: string[], onLog?: (line: string) => void) => {
+        if (command[2] === 'config' && command[3] === 'validate') {
+          onLog?.(
+            JSON.stringify({
+              level: 'info',
+              message: 'validating config',
+            }),
+          )
+          onLog?.(
+            JSON.stringify({
+              ok: true,
+              warnings: [],
+            }),
+          )
+        }
+        return 0
+      },
+    )
+
+    const client = new OpenClawCliClient({ execInContainer })
+    const result = await client.validateConfig()
+
+    expect(result).toEqual({
+      ok: true,
+      warnings: [],
+    })
+  })
 })

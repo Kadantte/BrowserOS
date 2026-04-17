@@ -70,7 +70,7 @@ export class OpenClawCliClient {
 
   async validateConfig(): Promise<unknown> {
     const output = await this.runCommand(['config', 'validate', '--json'])
-    return parseJsonOutput<unknown>(output)
+    return parseConfigValue(output)
   }
 
   async setDefaultModel(model: string): Promise<void> {
@@ -156,17 +156,8 @@ function formatConfigValue(value: unknown): string {
 }
 
 function parseConfigValue(output: string): unknown {
-  const parsed = parseFirstMatchingJson<unknown>(output)
+  const parsed = parsePreferredMatchingJson<unknown>(output)
   return parsed ?? output
-}
-
-function parseJsonOutput<T>(output: string): T {
-  const parsed = parseFirstMatchingJson<T>(output)
-  if (parsed !== null) return parsed
-
-  throw new Error(
-    `Failed to parse OpenClaw JSON output: ${output.slice(0, 200)}`,
-  )
 }
 
 function parseAgentListOutput(
@@ -196,6 +187,35 @@ function parseFirstMatchingJson<T>(
   }
 
   return null
+}
+
+function parsePreferredMatchingJson<T>(
+  output: string,
+  predicate?: (value: unknown) => boolean,
+): T | null {
+  const candidates = collectJsonCandidates(output)
+  const parsedCandidates: Array<{ text: string; value: T }> = []
+
+  for (const candidate of candidates) {
+    const parsed = tryParseJson<T>(candidate)
+    if (parsed === null) continue
+    if (predicate && !predicate(parsed)) continue
+    parsedCandidates.push({ text: candidate, value: parsed })
+  }
+
+  if (parsedCandidates.length === 0) return null
+
+  const preferredCandidates = parsedCandidates.filter(
+    (candidate, index) =>
+      !parsedCandidates.some(
+        (other, otherIndex) =>
+          otherIndex !== index &&
+          other.text.length > candidate.text.length &&
+          other.text.includes(candidate.text),
+      ),
+  )
+
+  return preferredCandidates.at(-1)?.value ?? null
 }
 
 function collectJsonCandidates(output: string): string[] {

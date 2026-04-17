@@ -24,7 +24,7 @@ type MutableOpenClawService = OpenClawService & {
     composeUp?: () => Promise<void>
     waitForReady?: () => Promise<boolean>
   }
-  adminClient: {
+  cliClient: {
     probe?: ReturnType<typeof mock>
     createAgent?: ReturnType<typeof mock>
     listAgents?: ReturnType<typeof mock>
@@ -56,7 +56,7 @@ describe('OpenClawService', () => {
     service.runtime = {
       isReady: async () => true,
     }
-    service.adminClient = {
+    service.cliClient = {
       createAgent,
     }
 
@@ -103,7 +103,7 @@ describe('OpenClawService', () => {
       getMachineStatus: async () => ({ initialized: true, running: true }),
       isReady: async () => true,
     }
-    service.adminClient = {
+    service.cliClient = {
       listAgents: mock(async () => [
         {
           agentId: 'main',
@@ -153,7 +153,7 @@ describe('OpenClawService', () => {
       composeUp: async () => {},
       waitForReady: async () => true,
     }
-    service.adminClient = {
+    service.cliClient = {
       probe: mock(async () => {}),
       listAgents: mock(async () => []),
       createAgent,
@@ -177,7 +177,7 @@ describe('OpenClawService', () => {
     service.runtime = {
       isReady: async () => true,
     }
-    service.adminClient = {
+    service.cliClient = {
       listAgents: mock(async () => {
         expect(service.token).toBe('env-token')
         return []

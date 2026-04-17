@@ -108,7 +108,7 @@ export interface SetupInput {
 
 export class OpenClawService {
   private runtime: ContainerRuntime
-  private adminClient: OpenClawCliClient
+  private cliClient: OpenClawCliClient
   private chatClient: OpenClawHttpChatClient
   private openclawDir: string
   private port = OPENCLAW_GATEWAY_PORT
@@ -124,7 +124,7 @@ export class OpenClawService {
     this.openclawDir = getOpenClawDir()
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
     this.token = crypto.randomUUID()
-    this.adminClient = new OpenClawCliClient(this.runtime)
+    this.cliClient = new OpenClawCliClient(this.runtime)
     this.chatClient = new OpenClawHttpChatClient(
       this.port,
       async () => this.token,
@@ -208,7 +208,7 @@ export class OpenClawService {
 
     this.controlPlaneStatus = 'connecting'
     logProgress('Probing OpenClaw control plane...')
-    await this.runControlPlaneCall(() => this.adminClient.probe())
+    await this.runControlPlaneCall(() => this.cliClient.probe())
 
     const existingAgents = await this.listAgents()
     logger.info('Fetched existing OpenClaw agents after setup', {
@@ -220,7 +220,7 @@ export class OpenClawService {
     } else {
       logProgress('Creating main agent...')
       await this.runControlPlaneCall(() =>
-        this.adminClient.createAgent({
+        this.cliClient.createAgent({
           name: 'main',
           model: resolveProviderModel(input),
         }),
@@ -255,7 +255,7 @@ export class OpenClawService {
 
     this.controlPlaneStatus = 'connecting'
     logProgress('Probing OpenClaw control plane...')
-    await this.runControlPlaneCall(() => this.adminClient.probe())
+    await this.runControlPlaneCall(() => this.cliClient.probe())
     this.lastError = null
     logger.info('OpenClaw gateway started', { port: this.port })
   }
@@ -291,7 +291,7 @@ export class OpenClawService {
     }
 
     logProgress('Probing OpenClaw control plane...')
-    await this.runControlPlaneCall(() => this.adminClient.probe())
+    await this.runControlPlaneCall(() => this.cliClient.probe())
     this.lastError = null
     logProgress('Gateway restarted successfully')
     logger.info('OpenClaw gateway restarted', { port: this.port })
@@ -314,7 +314,7 @@ export class OpenClawService {
     await this.loadTokenFromEnv()
     this.controlPlaneStatus = 'reconnecting'
     logProgress('Reconnecting control plane...')
-    await this.runControlPlaneCall(() => this.adminClient.probe())
+    await this.runControlPlaneCall(() => this.cliClient.probe())
     logProgress('Control plane connected')
   }
 
@@ -373,7 +373,7 @@ export class OpenClawService {
     if (ready) {
       try {
         const agents = await this.runControlPlaneCall(() =>
-          this.adminClient.listAgents(),
+          this.cliClient.listAgents(),
         )
         agentCount = agents.length
       } catch {
@@ -442,7 +442,7 @@ export class OpenClawService {
     let agent: OpenClawAgentRecord
     try {
       agent = await this.runControlPlaneCall(() =>
-        this.adminClient.createAgent({
+        this.cliClient.createAgent({
           name,
           model,
         }),
@@ -491,9 +491,7 @@ export class OpenClawService {
 
     await this.assertGatewayReady()
     try {
-      await this.runControlPlaneCall(() =>
-        this.adminClient.deleteAgent(agentId),
-      )
+      await this.runControlPlaneCall(() => this.cliClient.deleteAgent(agentId))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       if (message.includes('not found')) {
@@ -508,7 +506,7 @@ export class OpenClawService {
     await this.assertGatewayReady()
     logger.debug('Listing OpenClaw agents')
     const agents = await this.runControlPlaneCall(() =>
-      this.adminClient.listAgents(),
+      this.cliClient.listAgents(),
     )
     return Promise.all(
       agents.map(async (agent) => ({
@@ -590,7 +588,7 @@ export class OpenClawService {
         }
       }
 
-      await this.runControlPlaneCall(() => this.adminClient.probe())
+      await this.runControlPlaneCall(() => this.cliClient.probe())
       logger.info('OpenClaw gateway auto-started')
     } catch (err) {
       logger.warn('OpenClaw auto-start failed', {
