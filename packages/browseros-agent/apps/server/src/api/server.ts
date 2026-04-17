@@ -23,6 +23,7 @@ import { getDb } from '../lib/db'
 import { logger } from '../lib/logger'
 import { Sentry } from '../lib/sentry'
 import { createAclRoutes } from './routes/acl'
+import { createAgentsRoutes } from './routes/agents'
 import { createChatRoutes } from './routes/chat'
 import { createCreditsRoutes } from './routes/credits'
 import { createHealthRoute } from './routes/health'
@@ -106,6 +107,10 @@ export async function createHttpServer(config: HttpServerConfig) {
   const clawRoutes = new Hono<Env>()
     .use('/*', requireTrustedAppOrigin())
     .route('/', createOpenClawRoutes())
+
+  const agentsRoutes = new Hono<Env>()
+    .use('/*', requireTrustedAppOrigin())
+    .route('/', createAgentsRoutes())
 
   const terminalRoutes = new Hono<Env>()
     .use('/*', requireTrustedAppOrigin())
@@ -195,6 +200,7 @@ export async function createHttpServer(config: HttpServerConfig) {
       }),
     )
     .route('/claw', clawRoutes)
+    .route('/agents', agentsRoutes)
 
   // Error handler
   app.onError((err, c) => {

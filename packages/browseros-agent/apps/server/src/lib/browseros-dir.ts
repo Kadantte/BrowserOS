@@ -25,6 +25,22 @@ export function getMemoryDir(): string {
   return join(getBrowserosDir(), PATHS.MEMORY_DIR_NAME)
 }
 
+export function getAgentsDir(): string {
+  return join(getBrowserosDir(), PATHS.AGENTS_DIR_NAME)
+}
+
+export function getAgentDir(agentId: string): string {
+  return join(getAgentsDir(), agentId)
+}
+
+export function getAgentMetadataPath(agentId: string): string {
+  return join(getAgentDir(agentId), PATHS.AGENT_METADATA_FILE_NAME)
+}
+
+export function getAgentRuntimeDir(agentId: string): string {
+  return join(getAgentDir(agentId), PATHS.AGENT_RUNTIME_DIR_NAME)
+}
+
 export function getSessionsDir(): string {
   return join(getBrowserosDir(), PATHS.SESSIONS_DIR_NAME)
 }
@@ -69,6 +85,7 @@ export function removeServerConfigSync(): void {
 
 export async function ensureBrowserosDir(): Promise<void> {
   logDevelopmentBrowserosDir()
+  await mkdir(getAgentsDir(), { recursive: true })
   await mkdir(getMemoryDir(), { recursive: true })
   await mkdir(getSkillsDir(), { recursive: true })
   await mkdir(getBuiltinSkillsDir(), { recursive: true })
