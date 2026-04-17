@@ -11,7 +11,10 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import { OPENCLAW_GATEWAY_PORT } from '@browseros/shared/constants/openclaw'
+import {
+  OPENCLAW_CONTAINER_HOME,
+  OPENCLAW_GATEWAY_PORT,
+} from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
 import type {
   BrowserOSAgentRoleId,
@@ -32,14 +35,14 @@ import {
   OpenClawCliClient,
 } from './openclaw-cli-client'
 import {
-  buildBootstrapConfig,
-  buildEnvFile,
-  deriveOpenClawApiKeyEnvVar,
-  deriveOpenClawProviderId,
-  PROVIDER_ENV_MAP,
-  resolveProviderKeys,
-  resolveProviderModel,
-} from './openclaw-config'
+  buildComposeEnvFile,
+  getHostWorkspaceDir,
+  getOpenClawStateConfigPath,
+  getOpenClawStateDir,
+  getOpenClawStateEnvPath,
+  mergeEnvContent,
+  resolveOpenClawProvider,
+} from './openclaw-env'
 import { OpenClawHttpChatClient } from './openclaw-http-chat-client'
 import type { OpenClawStreamEvent } from './openclaw-types'
 import { getPodmanRuntime } from './podman-runtime'
@@ -53,7 +56,6 @@ const COMPOSE_RESOURCE = resolve(
   import.meta.dir,
   '../../../../resources/openclaw-compose.yml',
 )
-const OPENCLAW_CONFIG_FILE = 'openclaw.json'
 const READY_TIMEOUT_MS = 30_000
 const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/
 
@@ -136,6 +138,7 @@ export class OpenClawService {
 
   async setup(input: SetupInput, onLog?: (msg: string) => void): Promise<void> {
     const logProgress = this.createProgressLogger(onLog)
+    const provider = resolveOpenClawProvider(input)
     logger.info('Starting OpenClaw setup', {
       port: this.port,
       browserosServerPort: this.browserosServerPort,
@@ -158,36 +161,26 @@ export class OpenClawService {
     logProgress('Container runtime ready')
 
     await mkdir(this.openclawDir, { recursive: true })
-    await mkdir(join(this.openclawDir, 'workspace'), { recursive: true })
+    await mkdir(this.getStateDir(), { recursive: true })
+    await mkdir(this.getHostWorkspaceDir('main'), { recursive: true })
 
     logProgress('Copying compose file...')
     await this.runtime.copyComposeFile(COMPOSE_RESOURCE)
 
-    this.token = crypto.randomUUID()
-    const providerKeys = resolveProviderKeys(input)
-    const envContent = buildEnvFile({
-      token: this.token,
-      configDir: this.openclawDir,
-      providerKeys,
+    const envContent = buildComposeEnvFile({
+      hostHome: this.openclawDir,
+      port: this.port,
     })
     await this.runtime.writeEnvFile(envContent)
     logProgress('Generated .env file')
     logger.info('Wrote OpenClaw env file', {
-      providerKeyCount: Object.keys(providerKeys).length,
+      openclawDir: this.openclawDir,
     })
 
-    const config = buildBootstrapConfig({
-      gatewayPort: this.port,
-      gatewayToken: this.token,
-      browserosServerPort: this.browserosServerPort,
-      providerType: input.providerType,
-      providerName: input.providerName,
-      baseUrl: input.baseUrl,
-      modelId: input.modelId,
+    await this.writeStateEnv(provider.envValues)
+    logger.info('Updated OpenClaw state env', {
+      providerKeyCount: Object.keys(provider.envValues).length,
     })
-    await this.writeBootstrapConfig(config)
-    logProgress('Generated openclaw.json')
-    logger.info('Generated OpenClaw bootstrap config')
 
     logProgress('Pulling OpenClaw image...')
     await this.runtime.composePull(logProgress)
@@ -203,6 +196,48 @@ export class OpenClawService {
       this.lastError = 'Gateway did not become ready within 30 seconds'
       const logs = await this.runtime.composeLogs()
       logger.error('Gateway readiness check failed', { logs })
+      throw new Error(this.lastError)
+    }
+
+    logProgress('Bootstrapping OpenClaw config...')
+    this.token = crypto.randomUUID()
+    await this.cliClient.runOnboard({
+      acceptRisk: true,
+      authChoice: 'skip',
+      gatewayAuth: 'token',
+      gatewayBind: 'lan',
+      gatewayPort: this.port,
+      gatewayToken: this.token,
+      mode: 'local',
+      nonInteractive: true,
+      skipHealth: true,
+    })
+    await this.applyBrowserosConfig()
+    if (provider.customProviderId && provider.customProviderConfig) {
+      await this.cliClient.setConfig('models.mode', 'merge')
+      await this.cliClient.setConfig(
+        `models.providers.${provider.customProviderId}`,
+        provider.customProviderConfig,
+      )
+    }
+    if (provider.model) {
+      await this.cliClient.setDefaultModel(provider.model)
+    }
+
+    logProgress('Validating OpenClaw config...')
+    await this.assertConfigValid()
+    await this.loadTokenFromConfig()
+
+    logProgress('Restarting OpenClaw gateway...')
+    await this.runtime.composeRestart(logProgress)
+
+    logProgress('Waiting for gateway readiness...')
+    const restarted = await this.runtime.waitForReady(
+      this.port,
+      READY_TIMEOUT_MS,
+    )
+    if (!restarted) {
+      this.lastError = 'Gateway did not become ready after bootstrap restart'
       throw new Error(this.lastError)
     }
 
@@ -222,7 +257,7 @@ export class OpenClawService {
       await this.runControlPlaneCall(() =>
         this.cliClient.createAgent({
           name: 'main',
-          model: resolveProviderModel(input),
+          model: provider.model,
         }),
       )
     }
@@ -238,9 +273,6 @@ export class OpenClawService {
       port: this.port,
     })
 
-    logProgress('Loading gateway auth token...')
-    await this.loadTokenFromEnv()
-    await this.ensureDevLoggingInConfig()
     await this.runtime.ensureReady(logProgress)
     logProgress('Starting OpenClaw gateway...')
     await this.runtime.composeUp(logProgress)
@@ -254,6 +286,8 @@ export class OpenClawService {
     }
 
     this.controlPlaneStatus = 'connecting'
+    logProgress('Refreshing gateway auth token...')
+    await this.loadTokenFromConfig()
     logProgress('Probing OpenClaw control plane...')
     await this.runControlPlaneCall(() => this.cliClient.probe())
     this.lastError = null
@@ -276,9 +310,6 @@ export class OpenClawService {
 
     this.controlPlaneStatus = 'reconnecting'
     this.stopGatewayLogTail()
-    logProgress('Loading gateway auth token...')
-    await this.loadTokenFromEnv()
-    await this.ensureDevLoggingInConfig()
     logProgress('Restarting OpenClaw gateway...')
     await this.runtime.composeRestart(logProgress)
     this.startGatewayLogTail()
@@ -290,6 +321,8 @@ export class OpenClawService {
       throw new Error(this.lastError)
     }
 
+    logProgress('Refreshing gateway auth token...')
+    await this.loadTokenFromConfig()
     logProgress('Probing OpenClaw control plane...')
     await this.runControlPlaneCall(() => this.cliClient.probe())
     this.lastError = null
@@ -311,7 +344,7 @@ export class OpenClawService {
     }
 
     logProgress('Reloading gateway auth token...')
-    await this.loadTokenFromEnv()
+    await this.loadTokenFromConfig()
     this.controlPlaneStatus = 'reconnecting'
     logProgress('Reconnecting control plane...')
     await this.runControlPlaneCall(() => this.cliClient.probe())
@@ -348,7 +381,7 @@ export class OpenClawService {
       }
     }
 
-    const isSetUp = existsSync(join(this.openclawDir, OPENCLAW_CONFIG_FILE))
+    const isSetUp = existsSync(this.getStateConfigPath())
     if (!isSetUp) {
       const machineStatus = await this.runtime.getMachineStatus()
       return {
@@ -423,11 +456,9 @@ export class OpenClawService {
     })
     await this.assertGatewayReady()
 
-    const configChanged = await this.mergeProviderConfigIfChanged(input)
-    const keysChanged =
-      input.providerType && input.apiKey
-        ? await this.mergeProviderKeyIfChanged(input)
-        : false
+    const provider = resolveOpenClawProvider(input)
+    const keysChanged = await this.writeStateEnv(provider.envValues)
+    const configChanged = await this.configureCustomProvider(provider)
 
     if (configChanged || keysChanged) {
       logger.info('OpenClaw provider config changed while creating agent', {
@@ -438,7 +469,7 @@ export class OpenClawService {
       await this.restart()
     }
 
-    const model = resolveProviderModel(input)
+    const model = provider.model
     let agent: OpenClawAgentRecord
     try {
       agent = await this.runControlPlaneCall(() =>
@@ -547,8 +578,9 @@ export class OpenClawService {
     apiKey: string
     modelId?: string
   }): Promise<void> {
-    await this.mergeProviderConfigIfChanged(input)
-    await this.mergeProviderKeyIfChanged(input)
+    const provider = resolveOpenClawProvider(input)
+    await this.writeStateEnv(provider.envValues)
+    await this.configureCustomProvider(provider)
     await this.restart()
     logger.info('Provider keys updated', { providerType: input.providerType })
   }
@@ -563,7 +595,7 @@ export class OpenClawService {
   // ── Auto-start on BrowserOS boot ────────────────────────────────────
 
   async tryAutoStart(): Promise<void> {
-    const isSetUp = existsSync(join(this.openclawDir, OPENCLAW_CONFIG_FILE))
+    const isSetUp = existsSync(this.getStateConfigPath())
     if (!isSetUp) return
 
     const available = await this.runtime.isPodmanAvailable()
@@ -573,7 +605,6 @@ export class OpenClawService {
     })
 
     try {
-      await this.loadTokenFromEnv()
       await this.runtime.ensureReady()
 
       if (!(await this.runtime.isReady(this.port))) {
@@ -588,6 +619,7 @@ export class OpenClawService {
         }
       }
 
+      await this.loadTokenFromConfig()
       await this.runControlPlaneCall(() => this.cliClient.probe())
       logger.info('OpenClaw gateway auto-started')
     } catch (err) {
@@ -644,35 +676,6 @@ export class OpenClawService {
     return 'unknown'
   }
 
-  private async writeBootstrapConfig(
-    config: Record<string, unknown>,
-  ): Promise<void> {
-    const configPath = join(this.openclawDir, OPENCLAW_CONFIG_FILE)
-    await writeFile(configPath, JSON.stringify(config, null, 2))
-    logger.info('Persisted OpenClaw bootstrap config')
-  }
-
-  private async ensureDevLoggingInConfig(): Promise<void> {
-    if (process.env.NODE_ENV !== 'development') return
-    const configPath = join(this.openclawDir, OPENCLAW_CONFIG_FILE)
-    if (!existsSync(configPath)) return
-    try {
-      const raw = await readFile(configPath, 'utf-8')
-      const parsed = JSON.parse(raw) as Record<string, unknown>
-      const existing = (parsed.logging ?? {}) as Record<string, unknown>
-      if (existing.level === 'debug' && existing.consoleLevel === 'debug') {
-        return
-      }
-      parsed.logging = { ...existing, level: 'debug', consoleLevel: 'debug' }
-      await writeFile(configPath, JSON.stringify(parsed, null, 2))
-      logger.info('Patched openclaw.json for dev debug logging')
-    } catch (err) {
-      logger.warn('Failed to patch openclaw.json for dev debug logging', {
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
   private startGatewayLogTail(): void {
     if (process.env.NODE_ENV !== 'development') return
     if (this.stopLogTail) return
@@ -699,10 +702,84 @@ export class OpenClawService {
   }
 
   private getHostWorkspaceDir(agentName: string): string {
-    return join(
-      this.openclawDir,
-      agentName === 'main' ? 'workspace' : `workspace-${agentName}`,
+    return getHostWorkspaceDir(this.openclawDir, agentName)
+  }
+
+  private getStateConfigPath(): string {
+    return getOpenClawStateConfigPath(this.openclawDir)
+  }
+
+  private getStateDir(): string {
+    return getOpenClawStateDir(this.openclawDir)
+  }
+
+  private getStateEnvPath(): string {
+    return getOpenClawStateEnvPath(this.openclawDir)
+  }
+
+  private async applyBrowserosConfig(): Promise<void> {
+    await this.cliClient.setConfig(
+      'agents.defaults.workspace',
+      `${OPENCLAW_CONTAINER_HOME}/workspace`,
     )
+    await this.cliClient.setConfig('agents.defaults.timeoutSeconds', 4200)
+    await this.cliClient.setConfig(
+      'agents.defaults.thinkingDefault',
+      'adaptive',
+    )
+    await this.cliClient.setConfig('gateway.reload.mode', 'restart')
+    await this.cliClient.setConfig('gateway.controlUi.allowInsecureAuth', true)
+    await this.cliClient.setConfig('gateway.controlUi.allowedOrigins', [
+      `http://127.0.0.1:${this.port}`,
+      `http://localhost:${this.port}`,
+    ])
+    await this.cliClient.setConfig(
+      'gateway.http.endpoints.chatCompletions.enabled',
+      true,
+    )
+    await this.cliClient.setConfig('tools.profile', 'full')
+    await this.cliClient.setConfig('tools.web.search.provider', 'duckduckgo')
+    await this.cliClient.setConfig('tools.web.search.enabled', true)
+    await this.cliClient.setConfig('tools.exec.host', 'gateway')
+    await this.cliClient.setConfig('tools.exec.security', 'full')
+    await this.cliClient.setConfig('tools.exec.ask', 'off')
+    await this.cliClient.setConfig('cron.enabled', true)
+    await this.cliClient.setConfig('hooks.internal.enabled', true)
+    await this.cliClient.setConfig(
+      'hooks.internal.entries.boot-md.enabled',
+      true,
+    )
+    await this.cliClient.setConfig(
+      'hooks.internal.entries.bootstrap-extra-files.enabled',
+      true,
+    )
+    await this.cliClient.setConfig(
+      'hooks.internal.entries.session-memory.enabled',
+      true,
+    )
+    await this.cliClient.setConfig('mcp.servers.browseros', {
+      transport: 'streamable-http',
+      url: `http://host.containers.internal:${this.browserosServerPort}/mcp`,
+    })
+    await this.cliClient.setConfig('approvals.exec.enabled', false)
+    await this.cliClient.setConfig('skills.install.nodeManager', 'bun')
+
+    if (process.env.NODE_ENV === 'development') {
+      await this.cliClient.setConfig('logging.level', 'debug')
+      await this.cliClient.setConfig('logging.consoleLevel', 'debug')
+    }
+  }
+
+  private async assertConfigValid(): Promise<void> {
+    const validation = await this.cliClient.validateConfig()
+    if (
+      validation &&
+      typeof validation === 'object' &&
+      'ok' in validation &&
+      validation.ok === false
+    ) {
+      throw new Error('OpenClaw config validation failed')
+    }
   }
 
   private async writeRoleBootstrapFiles(
@@ -762,151 +839,95 @@ export class OpenClawService {
     }
   }
 
-  /**
-   * Merges provider credentials into .env. Returns true when the env file
-   * changed, meaning the container should restart to pick up the update.
-   */
-  private async mergeProviderKeyIfChanged(input: {
-    providerType?: string
-    providerName?: string
-    baseUrl?: string
-    apiKey?: string
-    modelId?: string
-  }): Promise<boolean> {
-    const newKeys = resolveProviderKeys(input)
-    if (Object.keys(newKeys).length === 0) return false
+  private async writeStateEnv(
+    values: Record<string, string>,
+  ): Promise<boolean> {
+    if (Object.keys(values).length === 0) return false
 
-    const envPath = join(this.openclawDir, '.env')
+    const envPath = this.getStateEnvPath()
     let content = ''
     try {
       content = await readFile(envPath, 'utf-8')
     } catch {
-      // .env may not exist yet
+      // state env may not exist yet
     }
 
-    let addedNew = false
-    let updatedExisting = false
-    for (const [key, value] of Object.entries(newKeys)) {
-      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      const pattern = new RegExp(`^${escapedKey}=.*$`, 'm')
-      if (pattern.test(content)) {
-        content = content.replace(pattern, `${key}=${value}`)
-        updatedExisting = true
-      } else {
-        content = `${content.trimEnd()}\n${key}=${value}\n`
-        addedNew = true
-      }
-    }
+    const next = mergeEnvContent(content, values)
+    if (!next.changed) return false
 
-    await writeFile(envPath, content, { mode: 0o600 })
+    await mkdir(this.getStateDir(), { recursive: true })
+    await writeFile(envPath, next.content, { mode: 0o600 })
     logger.debug('Updated OpenClaw provider credentials', {
-      providerType: input.providerType,
-      addedNew,
-      updatedExisting,
-    })
-    return addedNew || updatedExisting
-  }
-
-  private async ensureTokenLoaded(): Promise<void> {
-    if (!existsSync(join(this.openclawDir, '.env'))) {
-      return
-    }
-
-    await this.loadTokenFromEnv()
-  }
-
-  private async mergeProviderConfigIfChanged(input: {
-    providerType?: string
-    providerName?: string
-    baseUrl?: string
-    modelId?: string
-  }): Promise<boolean> {
-    if (
-      !input.providerType ||
-      !input.baseUrl ||
-      input.providerType in PROVIDER_ENV_MAP
-    ) {
-      return false
-    }
-
-    const configPath = join(this.openclawDir, OPENCLAW_CONFIG_FILE)
-    let content = ''
-    try {
-      content = await readFile(configPath, 'utf-8')
-    } catch {
-      return false
-    }
-
-    const config = JSON.parse(content) as Record<string, unknown>
-    const models = (config.models ?? {}) as Record<string, unknown>
-    const providers = ((models.providers as
-      | Record<string, unknown>
-      | undefined) ?? {}) as Record<string, Record<string, unknown>>
-
-    const providerId = deriveOpenClawProviderId(input)
-    const existingProvider = providers[providerId] ?? {}
-    const nextProvider: Record<string, unknown> = {
-      ...existingProvider,
-      baseUrl: input.baseUrl,
-      apiKey:
-        existingProvider.apiKey ??
-        `\${${deriveOpenClawApiKeyEnvVar(providerId)}}`,
-    }
-
-    if (!existingProvider.api) {
-      nextProvider.api = 'openai-completions'
-    }
-
-    if (input.modelId) {
-      const existingModels = Array.isArray(existingProvider.models)
-        ? (existingProvider.models as Array<Record<string, unknown>>)
-        : []
-      const hasModel = existingModels.some(
-        (model) => model.id === input.modelId || model.name === input.modelId,
-      )
-      if (!hasModel) {
-        nextProvider.models = [
-          ...existingModels,
-          { id: input.modelId, name: input.modelId },
-        ]
-      }
-    }
-
-    if (
-      JSON.stringify(existingProvider) === JSON.stringify(nextProvider) &&
-      models.mode === 'merge'
-    ) {
-      return false
-    }
-
-    config.models = {
-      ...models,
-      mode: 'merge',
-      providers: {
-        ...providers,
-        [providerId]: nextProvider,
-      },
-    }
-    await this.writeBootstrapConfig(config)
-    logger.debug('Updated OpenClaw provider config', {
-      providerId,
-      providerType: input.providerType,
-      hasModel: !!input.modelId,
+      keys: Object.keys(values),
     })
     return true
   }
 
-  private async loadTokenFromEnv(): Promise<void> {
-    const envPath = join(this.openclawDir, '.env')
+  private async ensureTokenLoaded(): Promise<void> {
+    if (!existsSync(this.getStateConfigPath())) {
+      return
+    }
+
+    await this.loadTokenFromConfig()
+  }
+
+  private async configureCustomProvider(provider: {
+    customProviderConfig?: Record<string, unknown>
+    customProviderId?: string
+  }): Promise<boolean> {
+    if (!provider.customProviderId || !provider.customProviderConfig) {
+      return false
+    }
+
+    const existingMode = await this.readConfigValue('models.mode')
+    const existingProvider = await this.readConfigValue(
+      `models.providers.${provider.customProviderId}`,
+    )
+    const modeChanged = existingMode !== 'merge'
+    const providerChanged =
+      JSON.stringify(existingProvider ?? null) !==
+      JSON.stringify(provider.customProviderConfig)
+
+    if (!modeChanged && !providerChanged) {
+      return false
+    }
+
+    if (modeChanged) {
+      await this.cliClient.setConfig('models.mode', 'merge')
+    }
+    if (providerChanged) {
+      await this.cliClient.setConfig(
+        `models.providers.${provider.customProviderId}`,
+        provider.customProviderConfig,
+      )
+    }
+    logger.debug('Updated OpenClaw provider config', {
+      providerId: provider.customProviderId,
+      modeChanged,
+      providerChanged,
+    })
+    return modeChanged || providerChanged
+  }
+
+  private async loadTokenFromConfig(): Promise<void> {
     try {
-      const content = await readFile(envPath, 'utf-8')
-      const match = content.match(/^OPENCLAW_GATEWAY_TOKEN=(.+)$/m)
-      if (match) {
-        this.token = match[1]
-        logger.info('Loaded OpenClaw gateway token from env')
+      const token = await this.cliClient.getConfig('gateway.auth.token')
+      if (typeof token === 'string' && token) {
+        this.token = token
+        logger.info('Loaded OpenClaw gateway token from CLI config')
       }
+    } catch (err) {
+      logger.warn('Failed to load OpenClaw gateway token from CLI config', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
+  private async readConfigValue(path: string): Promise<unknown> {
+    try {
+      return await this.cliClient.getConfig(path)
     } catch {
-      logger.warn('OpenClaw env file not available while loading token')
+      return undefined
     }
   }
 

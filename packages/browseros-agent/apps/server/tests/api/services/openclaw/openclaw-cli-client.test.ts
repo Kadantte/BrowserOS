@@ -8,6 +8,45 @@ import { OPENCLAW_CONTAINER_HOME } from '@browseros/shared/constants/openclaw'
 import { OpenClawCliClient } from '../../../../src/api/services/openclaw/openclaw-cli-client'
 
 describe('OpenClawCliClient', () => {
+  it('passes real non-interactive onboarding flags through to the upstream cli', async () => {
+    const execInContainer = mock(async (command: string[]) => {
+      expect(command).toEqual([
+        'node',
+        'dist/index.js',
+        'onboard',
+        '--non-interactive',
+        '--mode',
+        'local',
+        '--auth-choice',
+        'skip',
+        '--gateway-auth',
+        'token',
+        '--gateway-token',
+        'gateway-token',
+        '--gateway-port',
+        '18789',
+        '--gateway-bind',
+        'lan',
+        '--skip-health',
+        '--accept-risk',
+      ])
+      return 0
+    })
+
+    const client = new OpenClawCliClient({ execInContainer })
+    await client.runOnboard({
+      nonInteractive: true,
+      mode: 'local',
+      authChoice: 'skip',
+      gatewayAuth: 'token',
+      gatewayToken: 'gateway-token',
+      gatewayPort: 18789,
+      gatewayBind: 'lan',
+      skipHealth: true,
+      acceptRisk: true,
+    })
+  })
+
   it('runs upstream CLI commands without appending a gateway token flag', async () => {
     const execInContainer = mock(
       async (command: string[], onLog?: (line: string) => void) => {

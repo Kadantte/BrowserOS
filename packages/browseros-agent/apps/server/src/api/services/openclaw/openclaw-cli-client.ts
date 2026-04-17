@@ -31,15 +31,34 @@ export class OpenClawCliClient {
 
   async runOnboard(
     input: {
-      workspace?: string
+      acceptRisk?: boolean
+      authChoice?: string
+      customBaseUrl?: string
+      customCompatibility?: 'anthropic' | 'openai-completions'
+      customModelId?: string
+      customProviderId?: string
+      gatewayAuth?: 'none' | 'password' | 'token'
+      gatewayBind?: 'auto' | 'custom' | 'lan' | 'loopback' | 'tailnet'
+      gatewayPort?: number
+      gatewayToken?: string
+      gatewayTokenRefEnv?: string
+      mode?: 'local' | 'remote'
+      nonInteractive?: boolean
       reset?: boolean
       resetScope?: 'config' | 'config+creds+sessions' | 'full'
-      nonInteractive?: boolean
-      mode?: 'local' | 'remote'
+      secretInputMode?: 'plain' | 'ref'
+      skipHealth?: boolean
+      workspace?: string
     } = {},
   ): Promise<void> {
     const args = ['onboard']
 
+    if (input.nonInteractive) {
+      args.push('--non-interactive')
+    }
+    if (input.mode) {
+      args.push('--mode', input.mode)
+    }
     if (input.workspace) {
       args.push('--workspace', input.workspace)
     }
@@ -49,11 +68,44 @@ export class OpenClawCliClient {
     if (input.resetScope) {
       args.push('--reset-scope', input.resetScope)
     }
-    if (input.nonInteractive) {
-      args.push('--non-interactive')
+    if (input.authChoice) {
+      args.push('--auth-choice', input.authChoice)
     }
-    if (input.mode) {
-      args.push('--mode', input.mode)
+    if (input.secretInputMode) {
+      args.push('--secret-input-mode', input.secretInputMode)
+    }
+    if (input.customBaseUrl) {
+      args.push('--custom-base-url', input.customBaseUrl)
+    }
+    if (input.customModelId) {
+      args.push('--custom-model-id', input.customModelId)
+    }
+    if (input.customProviderId) {
+      args.push('--custom-provider-id', input.customProviderId)
+    }
+    if (input.customCompatibility) {
+      args.push('--custom-compatibility', input.customCompatibility)
+    }
+    if (input.gatewayAuth) {
+      args.push('--gateway-auth', input.gatewayAuth)
+    }
+    if (input.gatewayToken) {
+      args.push('--gateway-token', input.gatewayToken)
+    }
+    if (input.gatewayTokenRefEnv) {
+      args.push('--gateway-token-ref-env', input.gatewayTokenRefEnv)
+    }
+    if (input.gatewayPort) {
+      args.push('--gateway-port', String(input.gatewayPort))
+    }
+    if (input.gatewayBind) {
+      args.push('--gateway-bind', input.gatewayBind)
+    }
+    if (input.skipHealth) {
+      args.push('--skip-health')
+    }
+    if (input.acceptRisk) {
+      args.push('--accept-risk')
     }
 
     await this.runCommand(args)

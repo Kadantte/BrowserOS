@@ -5,19 +5,12 @@ services:
       - "127.0.0.1:${OPENCLAW_GATEWAY_PORT:-18789}:18789"
     environment:
       - HOME=/home/node
+      - OPENCLAW_HOME=/home/node
+      - OPENCLAW_STATE_DIR=/home/node/.openclaw
       - NODE_ENV=production
-      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN}
-      - OPENCLAW_GATEWAY_BIND=lan
       - TZ=${TZ}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
-      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY:-}
-      - GROQ_API_KEY=${GROQ_API_KEY:-}
-      - MISTRAL_API_KEY=${MISTRAL_API_KEY:-}
-      - MOONSHOT_API_KEY=${MOONSHOT_API_KEY:-}
     volumes:
-      - ${OPENCLAW_CONFIG_DIR}:/home/node/.openclaw
+      - ${OPENCLAW_HOST_HOME}:/home/node
     extra_hosts:
       - "host.containers.internal:host-gateway"
     command:
