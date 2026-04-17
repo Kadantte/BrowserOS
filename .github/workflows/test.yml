@@ -30,12 +30,42 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - suite: tools
-            test_path: tests/tools
-            junit_path: test-results/tools.xml
-          - suite: integration
-            test_path: tests/server.integration.test.ts
-            junit_path: test-results/integration.xml
+          - suite: server-core
+            command: cd apps/server && bun run test:core
+            junit_path: test-results/server-core.xml
+            needs_browser: false
+          - suite: server-tools
+            command: cd apps/server && bun run test:tools
+            junit_path: test-results/server-tools.xml
+            needs_browser: true
+          - suite: server-cdp
+            command: cd apps/server && bun run test:cdp
+            junit_path: test-results/server-cdp.xml
+            needs_browser: false
+          - suite: server-integration
+            command: cd apps/server && bun run test:integration
+            junit_path: test-results/server-integration.xml
+            needs_browser: true
+          - suite: server-sdk
+            command: cd apps/server && bun run test:sdk
+            junit_path: test-results/server-sdk.xml
+            needs_browser: true
+          - suite: agent
+            command: bun run test:agent
+            junit_path: test-results/agent.xml
+            needs_browser: false
+          - suite: eval
+            command: bun run test:eval
+            junit_path: test-results/eval.xml
+            needs_browser: false
+          - suite: agent-sdk
+            command: bun run test:agent-sdk
+            junit_path: test-results/agent-sdk.xml
+            needs_browser: false
+          - suite: build
+            command: bun run test:build
+            junit_path: test-results/build.xml
+            needs_browser: false
 
     steps:
       - name: Checkout code
@@ -48,6 +78,7 @@ jobs:
         run: bun ci
 
       - name: Resolve BrowserOS cache key
+        if: matrix.needs_browser == true
         id: browseros-cache-key
         run: |
           set -euo pipefail
@@ -62,6 +93,7 @@ jobs:
           echo "key=browseros-appimage-${{ runner.os }}-$cache_key" >> "$GITHUB_OUTPUT"
 
       - name: Restore BrowserOS cache
+        if: matrix.needs_browser == true
         id: browseros-cache
         uses: actions/cache@v4
         with:
@@ -69,13 +101,14 @@ jobs:
           key: ${{ steps.browseros-cache-key.outputs.key }}
 
       - name: Download BrowserOS
-        if: steps.browseros-cache.outputs.cache-hit != 'true'
+        if: matrix.needs_browser == true && steps.browseros-cache.outputs.cache-hit != 'true'
         run: |
           mkdir -p .ci/bin
           curl -fsSL "$BROWSEROS_APPIMAGE_URL" -o .ci/bin/BrowserOS.AppImage
           chmod +x .ci/bin/BrowserOS.AppImage
 
       - name: Prepare BrowserOS wrapper
+        if: matrix.needs_browser == true
         run: |
           mkdir -p .ci/bin
           cat > .ci/bin/browseros <<'EOF'
@@ -87,6 +120,7 @@ jobs:
           chmod +x .ci/bin/browseros
 
       - name: Create server env file
+        if: matrix.needs_browser == true
         working-directory: packages/browseros-agent/apps/server
         run: cp .env.example .env.development
 
@@ -99,13 +133,20 @@ jobs:
         run: |
           set +e
           mkdir -p test-results
-          cd apps/server
-          bun run test:cleanup
-          bun --env-file=.env.development test "${{ matrix.test_path }}" --reporter=junit --reporter-outfile="../../${{ matrix.junit_path }}"
+          ${{ matrix.command }}
           exit_code=$?
-          cd ../..
           if [ ! -f "${{ matrix.junit_path }}" ]; then
-            cat > "${{ matrix.junit_path }}" <<EOF
+            if [ "$exit_code" = "0" ]; then
+              cat > "${{ matrix.junit_path }}" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <testsuites tests="1" failures="0">
+            <testsuite name="${{ matrix.suite }}" tests="1" failures="0">
+              <testcase classname="workflow" name="${{ matrix.suite }} script" />
+            </testsuite>
+          </testsuites>
+          EOF
+            else
+              cat > "${{ matrix.junit_path }}" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <testsuites tests="1" failures="1">
             <testsuite name="${{ matrix.suite }}" tests="1" failures="1">
@@ -115,6 +156,7 @@ jobs:
             </testsuite>
           </testsuites>
           EOF
+            fi
           fi
           echo "exit_code=$exit_code" >> "$GITHUB_OUTPUT"
 

@@ -1,6 +1,7 @@
-import { describe, it } from 'bun:test'
+import { afterAll, describe, it } from 'bun:test'
 import assert from 'node:assert'
 import type { Browser } from '../../src/browser/browser'
+import { disposeSemanticPipeline } from '../../src/tools/acl/acl-embeddings'
 import { executeTool, type ToolContext } from '../../src/tools/framework'
 import {
   check,
@@ -16,7 +17,9 @@ import {
 } from '../../src/tools/input'
 import { close_page, navigate_page, new_page } from '../../src/tools/navigation'
 import { evaluate_script, take_snapshot } from '../../src/tools/snapshot'
-import { withBrowser } from '../__helpers__/with-browser'
+import { cleanupWithBrowser, withBrowser } from '../__helpers__/with-browser'
+
+process.env.ACL_EMBEDDING_DISABLE = 'true'
 
 function textOf(result: {
   content: { type: string; text?: string }[]
@@ -88,6 +91,11 @@ const FORM_PAGE = `data:text/html,${encodeURIComponent(`<!DOCTYPE html>
     });
   </script>
 </body></html>`)}`
+
+afterAll(async () => {
+  await disposeSemanticPipeline()
+  await cleanupWithBrowser()
+})
 
 describe('input tools', () => {
   it('fill types text into an input', async () => {
@@ -410,7 +418,7 @@ describe('input tools', () => {
         {
           id: 'submit-rule',
           sitePattern: '*',
-          description: 'submit',
+          textMatch: 'Submit',
           enabled: true,
         },
       ]
@@ -437,7 +445,7 @@ describe('input tools', () => {
           {
             id: 'submit-rule',
             sitePattern: '*',
-            description: 'submit',
+            textMatch: 'Submit',
             enabled: true,
           },
           {
