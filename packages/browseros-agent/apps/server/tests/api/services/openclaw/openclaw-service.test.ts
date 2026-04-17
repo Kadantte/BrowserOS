@@ -42,7 +42,7 @@ describe('OpenClawService', () => {
     }
   })
 
-  it('creates agents through the admin client and writes role bootstrap files', async () => {
+  it('creates agents through the cli client and writes role bootstrap files', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
     const createAgent = mock(async () => ({
       agentId: 'ops',
@@ -92,7 +92,7 @@ describe('OpenClawService', () => {
     })
   })
 
-  it('maps successful admin probes into connected status', async () => {
+  it('maps successful cli client probes into connected status', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
     await writeFile(join(tempDir, 'openclaw.json'), '{}')
     const service = new OpenClawService() as MutableOpenClawService

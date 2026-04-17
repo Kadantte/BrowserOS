@@ -156,7 +156,7 @@ function formatConfigValue(value: unknown): string {
 }
 
 function parseConfigValue(output: string): unknown {
-  const parsed = parsePreferredMatchingJson<unknown>(output)
+  const parsed = selectConfigJson<unknown>(output)
   return parsed ?? output
 }
 
@@ -189,33 +189,22 @@ function parseFirstMatchingJson<T>(
   return null
 }
 
-function parsePreferredMatchingJson<T>(
-  output: string,
-  predicate?: (value: unknown) => boolean,
-): T | null {
+function selectConfigJson<T>(output: string): T | null {
   const candidates = collectJsonCandidates(output)
   const parsedCandidates: Array<{ text: string; value: T }> = []
 
   for (const candidate of candidates) {
     const parsed = tryParseJson<T>(candidate)
     if (parsed === null) continue
-    if (predicate && !predicate(parsed)) continue
+    if (isStructuredLogPayload(parsed)) continue
     parsedCandidates.push({ text: candidate, value: parsed })
   }
 
   if (parsedCandidates.length === 0) return null
 
-  const preferredCandidates = parsedCandidates.filter(
-    (candidate, index) =>
-      !parsedCandidates.some(
-        (other, otherIndex) =>
-          otherIndex !== index &&
-          other.text.length > candidate.text.length &&
-          other.text.includes(candidate.text),
-      ),
-  )
-
-  return preferredCandidates.at(-1)?.value ?? null
+  return parsedCandidates.reduce((best, candidate) =>
+    candidate.text.length > best.text.length ? candidate : best,
+  ).value
 }
 
 function collectJsonCandidates(output: string): string[] {
@@ -334,4 +323,13 @@ function isRawAgentRecord(value: unknown): value is RawAgentRecord {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isStructuredLogPayload(value: unknown): boolean {
+  if (!isPlainObject(value)) return false
+
+  return (
+    typeof value.level === 'string' &&
+    (typeof value.message === 'string' || typeof value.msg === 'string')
+  )
 }
