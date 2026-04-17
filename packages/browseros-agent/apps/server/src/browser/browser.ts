@@ -533,6 +533,14 @@ export class Browser {
       if (targetWindow && !targetWindow.isVisible) {
         return targetWindow.windowId
       }
+      if (targetWindow?.isVisible) {
+        logger.warn(
+          'Requested hidden page target window is visible, creating a new hidden window instead',
+          {
+            requestedWindowId: opts.windowId,
+          },
+        )
+      }
     }
 
     const hiddenWindow = await this.createWindow({ hidden: true })
