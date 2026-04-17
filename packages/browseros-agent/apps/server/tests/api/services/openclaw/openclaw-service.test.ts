@@ -54,7 +54,7 @@ describe('OpenClawService', () => {
     }
   })
 
-  it('creates agents through the cli client and writes role bootstrap files', async () => {
+  it('creates agents through the cli client without role bootstrap files', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
     const createAgent = mock(async () => ({
       agentId: 'ops',
@@ -74,34 +74,62 @@ describe('OpenClawService', () => {
 
     const agent = await service.createAgent({
       name: 'ops',
-      roleId: 'chief-of-staff',
     })
 
     expect(createAgent).toHaveBeenCalledWith({
       name: 'ops',
       model: undefined,
     })
-    expect(agent.role).toEqual({
-      roleSource: 'builtin',
-      roleId: 'chief-of-staff',
-      roleName: 'Chief of Staff',
-      shortDescription:
-        'Executive coordination, follow-ups, scheduling, and briefing support.',
+    expect(agent).toEqual({
+      agentId: 'ops',
+      name: 'ops',
+      workspace: `${OPENCLAW_CONTAINER_HOME}/workspace-ops`,
+      model: 'openclaw/default',
     })
-
-    const roleMetadata = JSON.parse(
-      await readFile(
+    expect(
+      existsSync(
         join(tempDir, '.openclaw', 'workspace-ops', '.browseros-role.json'),
-        'utf-8',
       ),
-    ) as {
-      roleId: string
-      agentName: string
-    }
-    expect(roleMetadata).toMatchObject({
-      roleId: 'chief-of-staff',
-      agentName: 'ops',
+    ).toBe(false)
+  })
+
+  it('lists plain agent entries without role metadata', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw', 'workspace-ops'), {
+      recursive: true,
     })
+    await writeFile(join(tempDir, '.openclaw', 'openclaw.json'), '{}')
+    await writeFile(
+      join(tempDir, '.openclaw', 'workspace-ops', '.browseros-role.json'),
+      '{"roleId":"chief-of-staff"}\n',
+      'utf-8',
+    )
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      isReady: async () => true,
+    }
+    service.cliClient = {
+      getConfig: mock(async () => 'cli-token'),
+      listAgents: mock(async () => [
+        {
+          agentId: 'ops',
+          name: 'ops',
+          workspace: `${OPENCLAW_CONTAINER_HOME}/workspace-ops`,
+          model: 'openai/gpt-5.4-mini',
+        },
+      ]),
+    }
+
+    await expect(service.listAgents()).resolves.toEqual([
+      {
+        agentId: 'ops',
+        name: 'ops',
+        workspace: `${OPENCLAW_CONTAINER_HOME}/workspace-ops`,
+        model: 'openai/gpt-5.4-mini',
+      },
+    ])
   })
 
   it('maps successful cli client probes into connected status', async () => {
