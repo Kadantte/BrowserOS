@@ -79,12 +79,19 @@ describe('CodexLocalAgentAdapter', () => {
         name: 'Codex Agent',
         adapterType: 'codex_local',
         binaryPath: '/usr/local/bin/codex',
+        dangerouslyBypassApprovalsAndSandbox: true,
       }),
     ).rejects.toThrow('Codex hello probe failed')
 
     expect(invocations).toHaveLength(1)
     expect(invocations[0]).toEqual({
-      cmd: ['/usr/local/bin/codex', 'exec', '--json', '-'],
+      cmd: [
+        '/usr/local/bin/codex',
+        'exec',
+        '--json',
+        '--dangerously-bypass-approvals-and-sandbox',
+        '-',
+      ],
       cwd: join(homeDir, '.browseros', 'agents', 'codex-agent'),
       stdinText: 'Respond with hello.',
     })
@@ -145,6 +152,7 @@ describe('CodexLocalAgentAdapter', () => {
       },
       adapterConfig: {
         binaryPath: '/usr/local/bin/codex',
+        dangerouslyBypassApprovalsAndSandbox: true,
       },
     })
 
@@ -154,6 +162,7 @@ describe('CodexLocalAgentAdapter', () => {
         name: 'Codex Agent',
         adapterType: 'codex_local',
         binaryPath: '/usr/local/bin/codex',
+        dangerouslyBypassApprovalsAndSandbox: true,
       }),
     ).toEqual({
       runtimeBinding: null,
@@ -174,6 +183,7 @@ describe('CodexLocalAgentAdapter', () => {
       '/usr/local/bin/codex',
       'exec',
       '--json',
+      '--dangerously-bypass-approvals-and-sandbox',
       '-',
     ])
     expect(invocations[0]?.cwd).toBe(agentCwd)

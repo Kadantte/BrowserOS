@@ -79,6 +79,7 @@ describe('ClaudeLocalAgentAdapter', () => {
         name: 'Claude Agent',
         adapterType: 'claude_local',
         binaryPath: '/usr/local/bin/claude',
+        dangerouslySkipPermissions: true,
       }),
     ).rejects.toThrow('Claude hello probe failed')
 
@@ -91,6 +92,7 @@ describe('ClaudeLocalAgentAdapter', () => {
         '--output-format',
         'stream-json',
         '--verbose',
+        '--dangerously-skip-permissions',
       ],
       cwd: join(homeDir, '.browseros', 'agents', 'claude-agent'),
       stdinText: 'Respond with hello.',
@@ -161,6 +163,7 @@ describe('ClaudeLocalAgentAdapter', () => {
       },
       adapterConfig: {
         binaryPath: '/usr/local/bin/claude',
+        dangerouslySkipPermissions: true,
       },
     })
 
@@ -170,6 +173,7 @@ describe('ClaudeLocalAgentAdapter', () => {
         name: 'Claude Agent',
         adapterType: 'claude_local',
         binaryPath: '/usr/local/bin/claude',
+        dangerouslySkipPermissions: true,
       }),
     ).toEqual({
       runtimeBinding: null,
@@ -193,6 +197,7 @@ describe('ClaudeLocalAgentAdapter', () => {
       '--output-format',
       'stream-json',
       '--verbose',
+      '--dangerously-skip-permissions',
       '--append-system-prompt-file',
       join(runtimeDir, 'claude-system-prompt.md'),
     ])

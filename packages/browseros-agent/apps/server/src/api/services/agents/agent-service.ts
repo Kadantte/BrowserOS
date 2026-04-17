@@ -155,6 +155,18 @@ function buildInitialAdapterConfig(
   ) {
     config.binaryPath = input.binaryPath.trim()
   }
+  if (
+    input.adapterType === 'codex_local' &&
+    input.dangerouslyBypassApprovalsAndSandbox === true
+  ) {
+    config.dangerouslyBypassApprovalsAndSandbox = true
+  }
+  if (
+    input.adapterType === 'claude_local' &&
+    input.dangerouslySkipPermissions === true
+  ) {
+    config.dangerouslySkipPermissions = true
+  }
   return config
 }
 

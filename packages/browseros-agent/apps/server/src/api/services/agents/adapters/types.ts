@@ -9,6 +9,8 @@ export interface BrowserOsAgentCreateInput {
   name: string
   adapterType: BrowserOsAgentAdapterType
   binaryPath?: string
+  dangerouslyBypassApprovalsAndSandbox?: boolean
+  dangerouslySkipPermissions?: boolean
   providerType?: string
   providerName?: string
   baseUrl?: string

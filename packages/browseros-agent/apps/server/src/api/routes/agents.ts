@@ -36,6 +36,8 @@ const CreateAgentRequestSchema = z
     name: z.string().trim().min(1),
     adapterType: z.enum(['openclaw', 'codex_local', 'claude_local']),
     binaryPath: z.string().optional(),
+    dangerouslyBypassApprovalsAndSandbox: z.boolean().optional(),
+    dangerouslySkipPermissions: z.boolean().optional(),
     providerType: z.string().optional(),
     providerName: z.string().optional(),
     baseUrl: z.string().optional(),

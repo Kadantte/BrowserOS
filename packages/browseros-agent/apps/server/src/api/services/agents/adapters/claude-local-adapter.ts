@@ -28,6 +28,11 @@ type SpawnLike = (cmd: string[], options: SpawnOptionsLike) => SpawnResultLike
 
 const CLAUDE_SYSTEM_PROMPT_FILE_NAME = 'claude-system-prompt.md'
 
+interface ClaudeExecutionSettings {
+  binaryPath: string
+  dangerouslySkipPermissions: boolean
+}
+
 export class ClaudeLocalAgentAdapter implements BrowserOsAgentAdapter {
   readonly adapterType = 'claude_local' as const
   private readonly spawn: SpawnLike
@@ -41,15 +46,12 @@ export class ClaudeLocalAgentAdapter implements BrowserOsAgentAdapter {
     if (input.adapterType !== this.adapterType) {
       throw new Error(`Unsupported adapter type: ${input.adapterType}`)
     }
-    const binaryPath = normalizeBinaryPath(input.binaryPath)
-    if (!binaryPath) {
-      throw new Error('claude_local requires a configured binaryPath')
-    }
+    const settings = readCreateSettings(input)
     const agentCwd = getAgentDir(input.id)
     await mkdir(agentCwd, { recursive: true })
     const probe = await runClaudeCommand({
       spawn: this.spawn,
-      binaryPath,
+      settings,
       cwd: agentCwd,
       prompt: 'Respond with hello.',
     })
@@ -68,7 +70,7 @@ export class ClaudeLocalAgentAdapter implements BrowserOsAgentAdapter {
     record: BrowserOsStoredAgent,
     input: BrowserOsAgentChatInput,
   ): Promise<ReadableStream<UIMessageStreamEvent>> {
-    const binaryPath = readRecordBinaryPath(record)
+    const settings = readStoredSettings(record)
     const prompt = await buildLocalAgentPrompt(record, {
       message: input.message,
       conversation: input.conversation,
@@ -76,14 +78,11 @@ export class ClaudeLocalAgentAdapter implements BrowserOsAgentAdapter {
     const systemPromptFile = await writeClaudeSystemPromptFile(record)
     const process = this.spawn(
       [
-        binaryPath,
-        '--print',
-        '-',
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        '--append-system-prompt-file',
-        systemPromptFile,
+        settings.binaryPath,
+        ...buildClaudeArgs({
+          dangerouslySkipPermissions: settings.dangerouslySkipPermissions,
+          systemPromptFile,
+        }),
       ],
       {
         cwd: record.paths.cwd,
@@ -96,29 +95,41 @@ export class ClaudeLocalAgentAdapter implements BrowserOsAgentAdapter {
   }
 }
 
-function readRecordBinaryPath(record: BrowserOsStoredAgent): string {
+function readCreateSettings(
+  input: BrowserOsAgentCreateInput,
+): ClaudeExecutionSettings {
+  const binaryPath = normalizeBinaryPath(input.binaryPath)
+  if (!binaryPath) {
+    throw new Error('claude_local requires a configured binaryPath')
+  }
+  return {
+    binaryPath,
+    dangerouslySkipPermissions: input.dangerouslySkipPermissions === true,
+  }
+}
+
+function readStoredSettings(
+  record: BrowserOsStoredAgent,
+): ClaudeExecutionSettings {
   const binaryPath = normalizeBinaryPath(record.adapterConfig.binaryPath)
   if (!binaryPath) {
     throw new Error('claude_local requires adapterConfig.binaryPath')
   }
-  return binaryPath
+  return {
+    binaryPath,
+    dangerouslySkipPermissions:
+      record.adapterConfig.dangerouslySkipPermissions === true,
+  }
 }
 
 async function runClaudeCommand(input: {
   spawn: SpawnLike
-  binaryPath: string
+  settings: ClaudeExecutionSettings
   cwd: string
   prompt: string
 }): Promise<{ exitCode: number; text: string; stderr: string }> {
   const process = input.spawn(
-    [
-      input.binaryPath,
-      '--print',
-      '-',
-      '--output-format',
-      'stream-json',
-      '--verbose',
-    ],
+    [input.settings.binaryPath, ...buildClaudeArgs(input.settings)],
     {
       cwd: input.cwd,
       stdin: new TextEncoder().encode(input.prompt),
@@ -250,6 +261,20 @@ function extractClaudeContentBlocks(value: unknown): string[] {
     }
     return typeof item.text === 'string' ? [item.text] : []
   })
+}
+
+function buildClaudeArgs(input: {
+  dangerouslySkipPermissions: boolean
+  systemPromptFile?: string
+}): string[] {
+  const args = ['--print', '-', '--output-format', 'stream-json', '--verbose']
+  if (input.dangerouslySkipPermissions) {
+    args.push('--dangerously-skip-permissions')
+  }
+  if (input.systemPromptFile) {
+    args.push('--append-system-prompt-file', input.systemPromptFile)
+  }
+  return args
 }
 
 function normalizeBinaryPath(value: unknown): string | null {

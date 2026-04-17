@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Dialog,
   DialogContent,
@@ -210,6 +211,11 @@ interface ProviderSelectorProps {
   onSelect: (id: string) => void
 }
 
+interface LocalDangerousModeCopy {
+  label: string
+  description: string
+}
+
 const ProviderSelector: FC<ProviderSelectorProps> = ({
   providers,
   defaultProviderId,
@@ -254,6 +260,27 @@ const ProviderSelector: FC<ProviderSelectorProps> = ({
       </p>
     </div>
   )
+}
+
+function getLocalDangerousModeCopy(
+  adapterType: BrowserOsAgentAdapterType,
+): LocalDangerousModeCopy | null {
+  switch (adapterType) {
+    case 'codex_local':
+      return {
+        label: 'Dangerously bypass approvals and sandbox',
+        description:
+          'Runs Codex with local approvals and sandbox protections disabled.',
+      }
+    case 'claude_local':
+      return {
+        label: 'Dangerously skip permissions',
+        description:
+          'Runs Claude with permission prompts disabled for this agent.',
+      }
+    default:
+      return null
+  }
 }
 
 interface OpenClawRuntimeCardProps {
@@ -646,6 +673,9 @@ interface CreateAgentDialogProps {
   onNameChange: (value: string) => void
   binaryPath: string
   onBinaryPathChange: (value: string) => void
+  localDangerousModeCopy: LocalDangerousModeCopy | null
+  localDangerousModeEnabled: boolean
+  onLocalDangerousModeChange: (enabled: boolean) => void
   compatibleProviders: ProviderSelectorProps['providers']
   defaultProviderId: string
   createProviderId: string
@@ -666,6 +696,9 @@ const CreateAgentDialog: FC<CreateAgentDialogProps> = ({
   onNameChange,
   binaryPath,
   onBinaryPathChange,
+  localDangerousModeCopy,
+  localDangerousModeEnabled,
+  onLocalDangerousModeChange,
   compatibleProviders,
   defaultProviderId,
   createProviderId,
@@ -762,6 +795,28 @@ const CreateAgentDialog: FC<CreateAgentDialogProps> = ({
                 BrowserOS validates the local CLI at create time using the path
                 you provide.
               </p>
+              {localDangerousModeCopy ? (
+                <div className="flex items-start gap-3 rounded-xl border border-amber-500/30 bg-amber-500/5 p-3">
+                  <Checkbox
+                    id="agent-local-dangerous-mode"
+                    checked={localDangerousModeEnabled}
+                    onCheckedChange={(checked) =>
+                      onLocalDangerousModeChange(checked === true)
+                    }
+                  />
+                  <div className="space-y-1">
+                    <label
+                      htmlFor="agent-local-dangerous-mode"
+                      className="font-medium text-sm"
+                    >
+                      {localDangerousModeCopy.label}
+                    </label>
+                    <p className="text-muted-foreground text-xs">
+                      {localDangerousModeCopy.description}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
           )}
 
@@ -824,6 +879,10 @@ export const AgentsPage: FC = () => {
     useState<BrowserOsAgentAdapterType>('openclaw')
   const [newName, setNewName] = useState('')
   const [binaryPath, setBinaryPath] = useState('')
+  const [codexDangerousModeEnabled, setCodexDangerousModeEnabled] =
+    useState(false)
+  const [claudeDangerousModeEnabled, setClaudeDangerousModeEnabled] =
+    useState(false)
   const [createProviderId, setCreateProviderId] = useState('')
   const [showTerminal, setShowTerminal] = useState(false)
   const [chatAgent, setChatAgent] = useState<{
@@ -853,6 +912,13 @@ export const AgentsPage: FC = () => {
   const isLocalAdapter =
     selectedAdapterType === 'codex_local' ||
     selectedAdapterType === 'claude_local'
+  const localDangerousModeCopy = getLocalDangerousModeCopy(selectedAdapterType)
+  const localDangerousModeEnabled =
+    selectedAdapterType === 'codex_local'
+      ? codexDangerousModeEnabled
+      : selectedAdapterType === 'claude_local'
+        ? claudeDangerousModeEnabled
+        : false
 
   useEffect(() => {
     if (
@@ -958,6 +1024,8 @@ export const AgentsPage: FC = () => {
     setCreateOpen(false)
     setNewName('')
     setBinaryPath('')
+    setCodexDangerousModeEnabled(false)
+    setClaudeDangerousModeEnabled(false)
   }
 
   const handleSetup = async () => {
@@ -995,6 +1063,14 @@ export const AgentsPage: FC = () => {
         name: normalizedId,
         adapterType: selectedAdapterType,
         binaryPath: isLocalAdapter ? binaryPath.trim() : undefined,
+        dangerouslyBypassApprovalsAndSandbox:
+          selectedAdapterType === 'codex_local'
+            ? codexDangerousModeEnabled
+            : undefined,
+        dangerouslySkipPermissions:
+          selectedAdapterType === 'claude_local'
+            ? claudeDangerousModeEnabled
+            : undefined,
         providerType:
           selectedAdapterType === 'openclaw' ? provider?.type : undefined,
         providerName:
@@ -1141,6 +1217,17 @@ export const AgentsPage: FC = () => {
         onNameChange={setNewName}
         binaryPath={binaryPath}
         onBinaryPathChange={setBinaryPath}
+        localDangerousModeCopy={localDangerousModeCopy}
+        localDangerousModeEnabled={localDangerousModeEnabled}
+        onLocalDangerousModeChange={(enabled) => {
+          if (selectedAdapterType === 'codex_local') {
+            setCodexDangerousModeEnabled(enabled)
+            return
+          }
+          if (selectedAdapterType === 'claude_local') {
+            setClaudeDangerousModeEnabled(enabled)
+          }
+        }}
         compatibleProviders={compatibleProviders}
         defaultProviderId={defaultProviderId}
         createProviderId={createProviderId}

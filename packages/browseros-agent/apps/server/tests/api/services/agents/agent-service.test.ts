@@ -66,6 +66,7 @@ describe('BrowserOsAgentService', () => {
       name: 'codex-agent',
       adapterType: 'codex_local',
       binaryPath: '/usr/local/bin/codex',
+      dangerouslyBypassApprovalsAndSandbox: true,
     })
 
     expect(service.catalog()).toEqual([
@@ -76,12 +77,15 @@ describe('BrowserOsAgentService', () => {
       name: 'codex-agent',
       adapterType: 'codex_local',
       binaryPath: '/usr/local/bin/codex',
+      dangerouslyBypassApprovalsAndSandbox: true,
     })
     expect(created.adapterConfig).toEqual({
       binaryPath: '/usr/local/bin/codex',
+      dangerouslyBypassApprovalsAndSandbox: true,
     })
     expect((await registry.get('codex-agent'))?.adapterConfig).toEqual({
       binaryPath: '/usr/local/bin/codex',
+      dangerouslyBypassApprovalsAndSandbox: true,
     })
   })
 

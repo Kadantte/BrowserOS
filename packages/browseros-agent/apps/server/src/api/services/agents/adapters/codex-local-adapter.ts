@@ -25,6 +25,11 @@ interface SpawnOptionsLike {
 
 type SpawnLike = (cmd: string[], options: SpawnOptionsLike) => SpawnResultLike
 
+interface CodexExecutionSettings {
+  binaryPath: string
+  dangerouslyBypassApprovalsAndSandbox: boolean
+}
+
 export class CodexLocalAgentAdapter implements BrowserOsAgentAdapter {
   readonly adapterType = 'codex_local' as const
   private readonly spawn: SpawnLike
@@ -38,15 +43,12 @@ export class CodexLocalAgentAdapter implements BrowserOsAgentAdapter {
     if (input.adapterType !== this.adapterType) {
       throw new Error(`Unsupported adapter type: ${input.adapterType}`)
     }
-    const binaryPath = normalizeBinaryPath(input.binaryPath)
-    if (!binaryPath) {
-      throw new Error('codex_local requires a configured binaryPath')
-    }
+    const settings = readCreateSettings(input)
     const agentCwd = getAgentDir(input.id)
     await mkdir(agentCwd, { recursive: true })
     const probe = await runCodexCommand({
       spawn: this.spawn,
-      binaryPath,
+      settings,
       cwd: agentCwd,
       prompt: 'Respond with hello.',
     })
@@ -65,41 +67,67 @@ export class CodexLocalAgentAdapter implements BrowserOsAgentAdapter {
     record: BrowserOsStoredAgent,
     input: BrowserOsAgentChatInput,
   ): Promise<ReadableStream<UIMessageStreamEvent>> {
-    const binaryPath = readRecordBinaryPath(record)
+    const settings = readStoredSettings(record)
     const prompt = await buildLocalAgentPrompt(record, {
       message: input.message,
       conversation: input.conversation,
     })
-    const process = this.spawn([binaryPath, 'exec', '--json', '-'], {
-      cwd: record.paths.cwd,
-      stdin: new TextEncoder().encode(prompt),
-      stdout: 'pipe',
-      stderr: 'pipe',
-    })
+    const process = this.spawn(
+      [settings.binaryPath, ...buildCodexArgs(settings)],
+      {
+        cwd: record.paths.cwd,
+        stdin: new TextEncoder().encode(prompt),
+        stdout: 'pipe',
+        stderr: 'pipe',
+      },
+    )
     return createCodexUiStream(process, `${record.id}-text`)
   }
 }
 
-function readRecordBinaryPath(record: BrowserOsStoredAgent): string {
+function readCreateSettings(
+  input: BrowserOsAgentCreateInput,
+): CodexExecutionSettings {
+  const binaryPath = normalizeBinaryPath(input.binaryPath)
+  if (!binaryPath) {
+    throw new Error('codex_local requires a configured binaryPath')
+  }
+  return {
+    binaryPath,
+    dangerouslyBypassApprovalsAndSandbox:
+      input.dangerouslyBypassApprovalsAndSandbox === true,
+  }
+}
+
+function readStoredSettings(
+  record: BrowserOsStoredAgent,
+): CodexExecutionSettings {
   const binaryPath = normalizeBinaryPath(record.adapterConfig.binaryPath)
   if (!binaryPath) {
     throw new Error('codex_local requires adapterConfig.binaryPath')
   }
-  return binaryPath
+  return {
+    binaryPath,
+    dangerouslyBypassApprovalsAndSandbox:
+      record.adapterConfig.dangerouslyBypassApprovalsAndSandbox === true,
+  }
 }
 
 async function runCodexCommand(input: {
   spawn: SpawnLike
-  binaryPath: string
+  settings: CodexExecutionSettings
   cwd: string
   prompt: string
 }): Promise<{ exitCode: number; text: string; stderr: string }> {
-  const process = input.spawn([input.binaryPath, 'exec', '--json', '-'], {
-    cwd: input.cwd,
-    stdin: new TextEncoder().encode(input.prompt),
-    stdout: 'pipe',
-    stderr: 'pipe',
-  })
+  const process = input.spawn(
+    [input.settings.binaryPath, ...buildCodexArgs(input.settings)],
+    {
+      cwd: input.cwd,
+      stdin: new TextEncoder().encode(input.prompt),
+      stdout: 'pipe',
+      stderr: 'pipe',
+    },
+  )
   const [stdoutText, stderrText, exitCode] = await Promise.all([
     readStreamText(process.stdout),
     readStreamText(process.stderr),
@@ -233,6 +261,15 @@ function extractTextPartsFromItem(value: unknown): string[] {
     return [item.delta]
   }
   return []
+}
+
+function buildCodexArgs(settings: CodexExecutionSettings): string[] {
+  const args = ['exec', '--json']
+  if (settings.dangerouslyBypassApprovalsAndSandbox) {
+    args.push('--dangerously-bypass-approvals-and-sandbox')
+  }
+  args.push('-')
+  return args
 }
 
 function normalizeBinaryPath(value: unknown): string | null {

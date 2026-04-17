@@ -62,6 +62,7 @@ describe('createAgentsRoutes', () => {
         name: 'Agent',
         adapterType: 'codex_local',
         binaryPath: '/usr/local/bin/codex',
+        dangerouslyBypassApprovalsAndSandbox: true,
       }),
     })
     expect(createResponse.status).toBe(201)
@@ -73,6 +74,7 @@ describe('createAgentsRoutes', () => {
       name: 'Agent',
       adapterType: 'codex_local',
       binaryPath: '/usr/local/bin/codex',
+      dangerouslyBypassApprovalsAndSandbox: true,
     })
 
     const deleteResponse = await route.request('/agent', {
