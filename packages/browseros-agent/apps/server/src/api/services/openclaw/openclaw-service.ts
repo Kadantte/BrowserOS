@@ -11,10 +11,7 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join, resolve } from 'node:path'
-import {
-  OPENCLAW_CONTAINER_HOME,
-  OPENCLAW_GATEWAY_PORT,
-} from '@browseros/shared/constants/openclaw'
+import { OPENCLAW_GATEWAY_PORT } from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
 import type {
   BrowserOSAgentRoleId,
@@ -708,12 +705,6 @@ export class OpenClawService {
       this.openclawDir,
       agentName === 'main' ? 'workspace' : `workspace-${agentName}`,
     )
-  }
-
-  private getContainerWorkspacePath(agentName: string): string {
-    return agentName === 'main'
-      ? `${OPENCLAW_CONTAINER_HOME}/workspace`
-      : `${OPENCLAW_CONTAINER_HOME}/workspace-${agentName}`
   }
 
   private async writeRoleBootstrapFiles(
