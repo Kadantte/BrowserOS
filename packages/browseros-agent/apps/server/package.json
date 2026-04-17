@@ -11,7 +11,7 @@
     "start": "bun --watch --env-file=.env.development src/index.ts",
     "build": "bun ../../scripts/build/server.ts --target=all",
     "test": "bun run test:core && bun run test:tools && bun run test:cdp && bun run test:integration && bun run test:sdk",
-    "test:core": "bun --env-file=.env.development test ./tests/agent && bun --env-file=.env.development test ./tests/api && bun --env-file=.env.development test ./tests/skills && bun --env-file=.env.development test ./tests/browseros-dir.test.ts && bun --env-file=.env.development test ./tests/build.test.ts && bun --env-file=.env.development test ./tests/config.test.ts && bun --env-file=.env.development test ./tests/index.test.ts && bun --env-file=.env.development test ./tests/main.test.ts",
+    "test:core": "bun run ./tests/__helpers__/run-core-tests.ts",
     "test:tools": "bun run test:tools:acl && bun run test:tools:bookmarks && bun run test:tools:dom && bun run test:tools:filesystem && bun run test:tools:history && bun run test:tools:input && bun run test:tools:keyboard && bun run test:tools:navigation && bun run test:tools:observation && bun run test:tools:page-actions && bun run test:tools:response && bun run test:tools:tab-groups && bun run test:tools:windows",
     "test:tools:acl": "bun run test:cleanup && bun --env-file=.env.development test ./tests/tools/acl-scorer.test.ts",
     "test:tools:bookmarks": "bun run test:cleanup && bun --env-file=.env.development test ./tests/tools/bookmarks.test.ts",
