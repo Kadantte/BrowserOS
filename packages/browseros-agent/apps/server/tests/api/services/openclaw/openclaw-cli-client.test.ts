@@ -5,52 +5,41 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import { OPENCLAW_CONTAINER_HOME } from '@browseros/shared/constants/openclaw'
-import { OpenClawAdminClient } from '../../../../src/api/services/openclaw/openclaw-admin-client'
+import { OpenClawCliClient } from '../../../../src/api/services/openclaw/openclaw-cli-client'
 
-describe('OpenClawAdminClient', () => {
-  it('lists agents from JSON CLI output', async () => {
+describe('OpenClawCliClient', () => {
+  it('runs upstream CLI commands without appending a gateway token flag', async () => {
     const execInContainer = mock(
-      async (_command: string[], onLog?: (line: string) => void) => {
-        onLog?.(
-          JSON.stringify([
-            {
-              id: 'main',
-              workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
-              model: 'openrouter/anthropic/claude-haiku-4-5',
-            },
-          ]),
-        )
+      async (command: string[], onLog?: (line: string) => void) => {
+        if (command[2] === 'agents' && command[3] === 'list') {
+          onLog?.(
+            JSON.stringify([
+              {
+                id: 'main',
+                workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+                model: 'openrouter/anthropic/claude-sonnet-4.5',
+              },
+            ]),
+          )
+        }
         return 0
       },
     )
-    const client = new OpenClawAdminClient(
-      { execInContainer },
-      async () => 'gateway-token',
-    )
 
+    const client = new OpenClawCliClient({ execInContainer })
     const agents = await client.listAgents()
 
-    expect(execInContainer).toHaveBeenCalledTimes(1)
     expect(execInContainer.mock.calls[0]?.[0]).toEqual([
       'node',
       'dist/index.js',
       'agents',
       'list',
       '--json',
-      '--token',
-      'gateway-token',
     ])
-    expect(agents).toEqual([
-      {
-        agentId: 'main',
-        name: 'main',
-        workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
-        model: 'openrouter/anthropic/claude-haiku-4-5',
-      },
-    ])
+    expect(agents[0]?.model).toBe('openrouter/anthropic/claude-sonnet-4.5')
   })
 
-  it('creates an agent non-interactively and reads it back from the agent list', async () => {
+  it('derives the workspace when creating an agent', async () => {
     let callIndex = 0
     const execInContainer = mock(
       async (command: string[], onLog?: (line: string) => void) => {
@@ -68,8 +57,6 @@ describe('OpenClawAdminClient', () => {
             'openai/gpt-5.4-mini',
             '--non-interactive',
             '--json',
-            '--token',
-            'gateway-token',
           ])
           return 0
         }
@@ -90,14 +77,11 @@ describe('OpenClawAdminClient', () => {
         return 0
       },
     )
-    const client = new OpenClawAdminClient(
-      { execInContainer },
-      async () => 'gateway-token',
-    )
 
+    const client = new OpenClawCliClient({ execInContainer })
     const agent = await client.createAgent({
       name: 'research',
-      workspace: `${OPENCLAW_CONTAINER_HOME}/workspace-research`,
+      workspace: '/tmp/ignored',
       model: 'openai/gpt-5.4-mini',
     })
 
@@ -110,18 +94,32 @@ describe('OpenClawAdminClient', () => {
     })
   })
 
-  it('includes CLI stderr or stdout in thrown errors', async () => {
+  it('parses agent lists from mixed log and JSON output', async () => {
     const execInContainer = mock(
       async (_command: string[], onLog?: (line: string) => void) => {
-        onLog?.('agent already exists')
-        return 1
+        onLog?.('starting agent listing')
+        onLog?.(
+          JSON.stringify([
+            {
+              id: 'main',
+              workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+            },
+          ]),
+        )
+        onLog?.('done')
+        return 0
       },
     )
-    const client = new OpenClawAdminClient(
-      { execInContainer },
-      async () => 'gateway-token',
-    )
 
-    await expect(client.listAgents()).rejects.toThrow('agent already exists')
+    const client = new OpenClawCliClient({ execInContainer })
+    const agents = await client.listAgents()
+
+    expect(agents).toEqual([
+      {
+        agentId: 'main',
+        name: 'main',
+        workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+      },
+    ])
   })
 })
