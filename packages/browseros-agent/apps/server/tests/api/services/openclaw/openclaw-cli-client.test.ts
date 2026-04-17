@@ -122,4 +122,33 @@ describe('OpenClawCliClient', () => {
       },
     ])
   })
+
+  it('parses pretty-printed JSON surrounded by logs', async () => {
+    const execInContainer = mock(
+      async (_command: string[], onLog?: (line: string) => void) => {
+        onLog?.('starting agent listing')
+        onLog?.('[')
+        onLog?.('  {')
+        onLog?.('    "id": "main",')
+        onLog?.(`    "workspace": "${OPENCLAW_CONTAINER_HOME}/workspace",`)
+        onLog?.('    "model": "openrouter/anthropic/claude-sonnet-4.5"')
+        onLog?.('  }')
+        onLog?.(']')
+        onLog?.('done')
+        return 0
+      },
+    )
+
+    const client = new OpenClawCliClient({ execInContainer })
+    const agents = await client.listAgents()
+
+    expect(agents).toEqual([
+      {
+        agentId: 'main',
+        name: 'main',
+        workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+        model: 'openrouter/anthropic/claude-sonnet-4.5',
+      },
+    ])
+  })
 })

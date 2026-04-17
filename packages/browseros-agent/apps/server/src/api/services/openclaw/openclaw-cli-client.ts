@@ -173,13 +173,70 @@ function parseJsonOutput<T>(output: string): T {
   for (let index = 0; index < output.length; index += 1) {
     const char = output[index]
     if (char !== '[' && char !== '{') continue
-    const parsed = tryParseJson<T>(output.slice(index))
+    const extracted = extractJsonSubstring(output, index)
+    if (!extracted) continue
+    const parsed = tryParseJson<T>(extracted)
     if (parsed !== null) return parsed
   }
 
   throw new Error(
     `Failed to parse OpenClaw JSON output: ${output.slice(0, 200)}`,
   )
+}
+
+function extractJsonSubstring(
+  output: string,
+  startIndex: number,
+): string | null {
+  const opening = output[startIndex]
+  const closing = opening === '{' ? '}' : ']'
+  const stack: string[] = [closing]
+  let inString = false
+  let escaped = false
+
+  for (let index = startIndex + 1; index < output.length; index += 1) {
+    const char = output[index]
+
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = true
+        continue
+      }
+      if (char === '"') {
+        inString = false
+      }
+      continue
+    }
+
+    if (char === '"') {
+      inString = true
+      continue
+    }
+
+    if (char === '{') {
+      stack.push('}')
+      continue
+    }
+
+    if (char === '[') {
+      stack.push(']')
+      continue
+    }
+
+    const expectedClosing = stack[stack.length - 1]
+    if (char === expectedClosing) {
+      stack.pop()
+      if (stack.length === 0) {
+        return output.slice(startIndex, index + 1)
+      }
+    }
+  }
+
+  return null
 }
 
 function tryParseJson<T>(value: string): T | null {
