@@ -31,23 +31,23 @@ jobs:
       matrix:
         include:
           - suite: server-core
-            command: cd apps/server && bun run test:core
+            command: (cd apps/server && bun run test:core)
             junit_path: test-results/server-core.xml
             needs_browser: false
           - suite: server-tools
-            command: cd apps/server && bun run test:tools
+            command: (cd apps/server && bun run test:tools)
             junit_path: test-results/server-tools.xml
             needs_browser: true
           - suite: server-cdp
-            command: cd apps/server && bun run test:cdp
+            command: (cd apps/server && bun run test:cdp)
             junit_path: test-results/server-cdp.xml
             needs_browser: false
           - suite: server-integration
-            command: cd apps/server && bun run test:integration
+            command: (cd apps/server && bun run test:integration)
             junit_path: test-results/server-integration.xml
             needs_browser: true
           - suite: server-sdk
-            command: cd apps/server && bun run test:sdk
+            command: (cd apps/server && bun run test:sdk)
             junit_path: test-results/server-sdk.xml
             needs_browser: true
           - suite: agent
