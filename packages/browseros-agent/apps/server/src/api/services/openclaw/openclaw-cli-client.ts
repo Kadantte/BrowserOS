@@ -78,9 +78,7 @@ export class OpenClawCliClient {
   }
 
   async listAgents(): Promise<OpenClawAgentRecord[]> {
-    const records = await this.runJsonCommand<
-      RawAgentRecord[] | { agents?: RawAgentRecord[] }
-    >(['agents', 'list', '--json'])
+    const records = await this.runAgentListCommand()
     const agents = Array.isArray(records) ? records : (records.agents ?? [])
     return agents.map((record) => ({
       agentId: record.id,
@@ -128,11 +126,6 @@ export class OpenClawCliClient {
       : `${OPENCLAW_CONTAINER_HOME}/workspace-${name}`
   }
 
-  private async runJsonCommand<T>(args: string[]): Promise<T> {
-    const output = await this.runCommand(args)
-    return parseJsonOutput<T>(output)
-  }
-
   private async runCommand(args: string[]): Promise<string> {
     const output: string[] = []
     const command = ['node', 'dist/index.js', ...args]
@@ -149,6 +142,13 @@ export class OpenClawCliClient {
 
     return output.join('\n').trim()
   }
+
+  private async runAgentListCommand(): Promise<
+    RawAgentRecord[] | { agents?: RawAgentRecord[] }
+  > {
+    const output = await this.runCommand(['agents', 'list', '--json'])
+    return parseAgentListOutput(output)
+  }
 }
 
 function formatConfigValue(value: unknown): string {
@@ -162,26 +162,61 @@ function parseConfigValue(output: string): unknown {
 }
 
 function parseJsonOutput<T>(output: string): T {
-  const direct = tryParseJson<T>(output)
-  if (direct !== null) return direct
+  const parsed = parseFirstMatchingJson<T>(output)
+  if (parsed !== null) return parsed
+
+  throw new Error(
+    `Failed to parse OpenClaw JSON output: ${output.slice(0, 200)}`,
+  )
+}
+
+function parseAgentListOutput(
+  output: string,
+): RawAgentRecord[] | { agents?: RawAgentRecord[] } {
+  const parsed = parseFirstMatchingJson<
+    RawAgentRecord[] | { agents?: RawAgentRecord[] }
+  >(output, isAgentListPayload)
+  if (parsed !== null) return parsed
+
+  throw new Error(
+    `Failed to parse OpenClaw JSON output: ${output.slice(0, 200)}`,
+  )
+}
+
+function parseFirstMatchingJson<T>(
+  output: string,
+  predicate?: (value: unknown) => boolean,
+): T | null {
+  const candidates = collectJsonCandidates(output)
+
+  for (const candidate of candidates) {
+    const parsed = tryParseJson<T>(candidate)
+    if (parsed === null) continue
+    if (predicate && !predicate(parsed)) continue
+    return parsed
+  }
+
+  return null
+}
+
+function collectJsonCandidates(output: string): string[] {
+  const candidates = [output.trim()]
 
   for (const line of output.split(/\r?\n/)) {
-    const parsed = tryParseJson<T>(line)
-    if (parsed !== null) return parsed
+    const trimmed = line.trim()
+    if (trimmed) candidates.push(trimmed)
   }
 
   for (let index = 0; index < output.length; index += 1) {
     const char = output[index]
     if (char !== '[' && char !== '{') continue
     const extracted = extractJsonSubstring(output, index)
-    if (!extracted) continue
-    const parsed = tryParseJson<T>(extracted)
-    if (parsed !== null) return parsed
+    if (extracted) {
+      candidates.push(extracted)
+    }
   }
 
-  throw new Error(
-    `Failed to parse OpenClaw JSON output: ${output.slice(0, 200)}`,
-  )
+  return candidates
 }
 
 function extractJsonSubstring(
@@ -248,4 +283,36 @@ function tryParseJson<T>(value: string): T | null {
   } catch {
     return null
   }
+}
+
+function isAgentListPayload(
+  value: unknown,
+): value is RawAgentRecord[] | { agents?: RawAgentRecord[] } {
+  if (Array.isArray(value)) {
+    return value.every(isRawAgentRecord)
+  }
+
+  if (!isPlainObject(value)) return false
+
+  if (!('agents' in value)) return false
+
+  const agents = (value as { agents?: unknown }).agents
+  return (
+    agents === undefined ||
+    (Array.isArray(agents) && agents.every(isRawAgentRecord))
+  )
+}
+
+function isRawAgentRecord(value: unknown): value is RawAgentRecord {
+  return (
+    isPlainObject(value) &&
+    typeof value.id === 'string' &&
+    typeof value.workspace === 'string' &&
+    (value.name === undefined || typeof value.name === 'string') &&
+    (value.model === undefined || typeof value.model === 'string')
+  )
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
 }

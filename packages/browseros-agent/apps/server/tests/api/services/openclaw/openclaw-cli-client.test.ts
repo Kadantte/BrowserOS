@@ -151,4 +151,53 @@ describe('OpenClawCliClient', () => {
       },
     ])
   })
+
+  it('skips structured JSON logs before the real agent list payload', async () => {
+    const execInContainer = mock(
+      async (_command: string[], onLog?: (line: string) => void) => {
+        onLog?.(
+          JSON.stringify({
+            level: 'info',
+            message: 'agent list requested',
+            workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+          }),
+        )
+        onLog?.(
+          JSON.stringify([
+            {
+              id: 'main',
+              workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+              model: 'openrouter/anthropic/claude-sonnet-4.5',
+            },
+          ]),
+        )
+        return 0
+      },
+    )
+
+    const client = new OpenClawCliClient({ execInContainer })
+    const agents = await client.listAgents()
+
+    expect(agents).toEqual([
+      {
+        agentId: 'main',
+        name: 'main',
+        workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
+        model: 'openrouter/anthropic/claude-sonnet-4.5',
+      },
+    ])
+  })
+
+  it('preserves exit details when the CLI fails', async () => {
+    const execInContainer = mock(
+      async (_command: string[], onLog?: (line: string) => void) => {
+        onLog?.('agent already exists')
+        return 1
+      },
+    )
+
+    const client = new OpenClawCliClient({ execInContainer })
+
+    await expect(client.listAgents()).rejects.toThrow('agent already exists')
+  })
 })
