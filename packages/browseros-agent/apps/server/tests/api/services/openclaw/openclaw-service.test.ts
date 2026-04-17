@@ -94,8 +94,11 @@ describe('OpenClawService', () => {
   })
 
   it('maps successful admin probes into connected status', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await writeFile(join(tempDir, 'openclaw.json'), '{}')
     const service = new OpenClawService() as MutableOpenClawService
 
+    service.openclawDir = tempDir
     service.runtime = {
       isPodmanAvailable: async () => true,
       getMachineStatus: async () => ({ initialized: true, running: true }),

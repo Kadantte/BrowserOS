@@ -31,9 +31,9 @@ import {
   OpenClawProtectedAgentError,
 } from './errors'
 import {
-  OpenClawAdminClient,
   type OpenClawAgentRecord,
-} from './openclaw-admin-client'
+  OpenClawCliClient,
+} from './openclaw-cli-client'
 import {
   buildBootstrapConfig,
   buildEnvFile,
@@ -111,7 +111,7 @@ export interface SetupInput {
 
 export class OpenClawService {
   private runtime: ContainerRuntime
-  private adminClient: OpenClawAdminClient
+  private adminClient: OpenClawCliClient
   private chatClient: OpenClawHttpChatClient
   private openclawDir: string
   private port = OPENCLAW_GATEWAY_PORT
@@ -127,10 +127,7 @@ export class OpenClawService {
     this.openclawDir = getOpenClawDir()
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
     this.token = crypto.randomUUID()
-    this.adminClient = new OpenClawAdminClient(
-      this.runtime,
-      async () => this.token,
-    )
+    this.adminClient = new OpenClawCliClient(this.runtime)
     this.chatClient = new OpenClawHttpChatClient(
       this.port,
       async () => this.token,
