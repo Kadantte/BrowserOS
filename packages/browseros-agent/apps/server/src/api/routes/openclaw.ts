@@ -273,10 +273,12 @@ export function createOpenClawRoutes() {
       }
 
       try {
-        await getOpenClawService().updateProviderKeys(body)
+        const result = await getOpenClawService().updateProviderKeys(body)
         return c.json({
-          status: 'restarting',
-          message: 'Provider updated, restarting gateway',
+          status: result.restarted ? 'restarting' : 'updated',
+          message: result.restarted
+            ? 'Provider updated, restarting gateway'
+            : 'Provider updated without a restart',
         })
       } catch (err) {
         if (isUnsupportedOpenClawProviderError(err)) {

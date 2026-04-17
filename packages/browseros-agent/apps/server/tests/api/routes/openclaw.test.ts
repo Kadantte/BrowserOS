@@ -105,6 +105,50 @@ describe('createOpenClawRoutes', () => {
     })
   })
 
+  it('returns a non-restarting response when only the default model changes', async () => {
+    const actualOpenClawService = await import(
+      '../../../src/api/services/openclaw/openclaw-service'
+    )
+    const updateProviderKeys = mock(async () => ({
+      restarted: false,
+      modelUpdated: true,
+    }))
+
+    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+      ...actualOpenClawService,
+      getOpenClawService: () =>
+        ({
+          updateProviderKeys,
+        }) as never,
+    }))
+
+    const { createOpenClawRoutes } = await import(
+      '../../../src/api/routes/openclaw'
+    )
+    const route = createOpenClawRoutes()
+
+    const response = await route.request('/providers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        providerType: 'openai',
+        apiKey: 'sk-test',
+        modelId: 'gpt-5.4-mini',
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(updateProviderKeys).toHaveBeenCalledWith({
+      providerType: 'openai',
+      apiKey: 'sk-test',
+      modelId: 'gpt-5.4-mini',
+    })
+    expect(await response.json()).toEqual({
+      status: 'updated',
+      message: 'Provider updated without a restart',
+    })
+  })
+
   it('does not expose a roles route', async () => {
     const { createOpenClawRoutes } = await import(
       '../../../src/api/routes/openclaw'

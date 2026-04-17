@@ -9,8 +9,15 @@
  */
 
 import { existsSync } from 'node:fs'
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { resolve } from 'node:path'
+import {
+  copyFile,
+  mkdir,
+  readdir,
+  readFile,
+  rename,
+  writeFile,
+} from 'node:fs/promises'
+import { join, resolve } from 'node:path'
 import {
   OPENCLAW_CONTAINER_HOME,
   OPENCLAW_GATEWAY_PORT,
@@ -96,6 +103,11 @@ export interface SetupInput {
   modelId?: string
 }
 
+export interface OpenClawProviderUpdateResult {
+  restarted: boolean
+  modelUpdated: boolean
+}
+
 export class OpenClawService {
   private runtime: ContainerRuntime
   private cliClient: OpenClawCliClient
@@ -145,6 +157,7 @@ export class OpenClawService {
       )
     }
 
+    await this.migrateLegacyStateIfNeeded()
     await this.runtime.ensureReady(logProgress)
     logProgress('Container runtime ready')
 
@@ -252,6 +265,7 @@ export class OpenClawService {
       port: this.port,
     })
 
+    await this.migrateLegacyStateIfNeeded()
     await this.runtime.ensureReady(logProgress)
     logProgress('Starting OpenClaw gateway...')
     await this.runtime.composeUp(logProgress)
@@ -360,6 +374,7 @@ export class OpenClawService {
       }
     }
 
+    await this.migrateLegacyStateIfNeeded()
     const isSetUp = existsSync(this.getStateConfigPath())
     if (!isSetUp) {
       const machineStatus = await this.runtime.getMachineStatus()
@@ -521,13 +536,24 @@ export class OpenClawService {
     baseUrl?: string
     apiKey: string
     modelId?: string
-  }): Promise<void> {
+  }): Promise<OpenClawProviderUpdateResult> {
     const provider = resolveSupportedOpenClawProvider(input)
     const changed = await this.writeStateEnv(provider.envValues)
+    if (provider.model) {
+      await this.cliClient.setDefaultModel(provider.model)
+    }
     if (changed) {
       await this.restart()
     }
-    logger.info('Provider keys updated', { providerType: input.providerType })
+    logger.info('Provider keys updated', {
+      providerType: input.providerType,
+      modelUpdated: !!provider.model,
+      restarted: changed,
+    })
+    return {
+      restarted: changed,
+      modelUpdated: !!provider.model,
+    }
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────
@@ -540,6 +566,7 @@ export class OpenClawService {
   // ── Auto-start on BrowserOS boot ────────────────────────────────────
 
   async tryAutoStart(): Promise<void> {
+    await this.migrateLegacyStateIfNeeded()
     const isSetUp = existsSync(this.getStateConfigPath())
     if (!isSetUp) return
 
@@ -662,6 +689,75 @@ export class OpenClawService {
     return getOpenClawStateEnvPath(this.openclawDir)
   }
 
+  private getLegacyStateConfigPath(): string {
+    return join(this.openclawDir, 'openclaw.json')
+  }
+
+  private getLegacyRootEnvPath(): string {
+    return join(this.openclawDir, '.env')
+  }
+
+  private async listLegacyWorkspaceDirs(): Promise<string[]> {
+    try {
+      const entries = await readdir(this.openclawDir, { withFileTypes: true })
+      return entries
+        .filter(
+          (entry) =>
+            entry.isDirectory() &&
+            (entry.name === 'workspace' || entry.name.startsWith('workspace-')),
+        )
+        .map((entry) => entry.name)
+    } catch {
+      return []
+    }
+  }
+
+  private async migrateLegacyStateIfNeeded(): Promise<void> {
+    await mkdir(this.openclawDir, { recursive: true })
+
+    const legacyWorkspaces = await this.listLegacyWorkspaceDirs()
+    const hasLegacyState =
+      existsSync(this.getLegacyStateConfigPath()) || legacyWorkspaces.length > 0
+
+    if (!hasLegacyState) {
+      return
+    }
+
+    await mkdir(this.getStateDir(), { recursive: true })
+
+    let migrated = false
+    const legacyConfigPath = this.getLegacyStateConfigPath()
+    const stateConfigPath = this.getStateConfigPath()
+    if (existsSync(legacyConfigPath) && !existsSync(stateConfigPath)) {
+      await rename(legacyConfigPath, stateConfigPath)
+      migrated = true
+    }
+
+    const legacyEnvPath = this.getLegacyRootEnvPath()
+    const stateEnvPath = this.getStateEnvPath()
+    if (existsSync(legacyEnvPath) && !existsSync(stateEnvPath)) {
+      await copyFile(legacyEnvPath, stateEnvPath)
+      migrated = true
+    }
+
+    for (const workspaceName of legacyWorkspaces) {
+      const legacyWorkspacePath = join(this.openclawDir, workspaceName)
+      const stateWorkspacePath = join(this.getStateDir(), workspaceName)
+      if (existsSync(stateWorkspacePath)) {
+        continue
+      }
+      await rename(legacyWorkspacePath, stateWorkspacePath)
+      migrated = true
+    }
+
+    if (migrated) {
+      logger.info('Migrated legacy OpenClaw state layout', {
+        openclawDir: this.openclawDir,
+        workspaceCount: legacyWorkspaces.length,
+      })
+    }
+  }
+
   private async applyBrowserosConfig(): Promise<void> {
     await this.cliClient.setConfig(
       'agents.defaults.workspace',
@@ -756,6 +852,7 @@ export class OpenClawService {
   }
 
   private async ensureTokenLoaded(): Promise<void> {
+    await this.migrateLegacyStateIfNeeded()
     if (!existsSync(this.getStateConfigPath())) {
       return
     }
