@@ -132,7 +132,6 @@ jobs:
           chmod +x .ci/bin/browseros
 
       - name: Create server env file
-        if: matrix.needs_browser == true
         working-directory: packages/browseros-agent/apps/server
         run: cp .env.example .env.development
 
