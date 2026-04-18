@@ -12,12 +12,14 @@ import { join } from 'node:path'
 import {
   OPENCLAW_COMPOSE_PROJECT_NAME,
   OPENCLAW_GATEWAY_CONTAINER_NAME,
+  OPENCLAW_GATEWAY_PORT,
 } from '@browseros/shared/constants/openclaw'
 import { logger } from '../../../lib/logger'
 import type { LogFn, PodmanRuntime } from './podman-runtime'
 
 const COMPOSE_FILE_NAME = 'docker-compose.yml'
 const ENV_FILE_NAME = '.env'
+const GATEWAY_CONTAINER_HOME = '/home/node'
 
 interface GatewayContainerSpec {
   image: string
@@ -146,19 +148,19 @@ export class ContainerRuntime {
         'run',
         '-d',
         '--name',
-        'openclaw-gateway',
+        OPENCLAW_GATEWAY_CONTAINER_NAME,
         '--restart',
         'unless-stopped',
         '-p',
-        `127.0.0.1:${input.port}:18789`,
+        `127.0.0.1:${input.port}:${OPENCLAW_GATEWAY_PORT}`,
         '--env-file',
         input.envFilePath,
         '-e',
-        'HOME=/home/node',
+        `HOME=${GATEWAY_CONTAINER_HOME}`,
         '-e',
-        'OPENCLAW_HOME=/home/node',
+        `OPENCLAW_HOME=${GATEWAY_CONTAINER_HOME}`,
         '-e',
-        'OPENCLAW_STATE_DIR=/home/node/.openclaw',
+        `OPENCLAW_STATE_DIR=${GATEWAY_CONTAINER_HOME}/.openclaw`,
         '-e',
         'OPENCLAW_NO_RESPAWN=1',
         '-e',
@@ -168,7 +170,7 @@ export class ContainerRuntime {
         '-e',
         `TZ=${input.timezone}`,
         '-v',
-        `${input.hostHome}:/home/node`,
+        `${input.hostHome}:${GATEWAY_CONTAINER_HOME}`,
         '--add-host',
         'host.containers.internal:host-gateway',
         ...(input.gatewayToken
@@ -181,7 +183,7 @@ export class ContainerRuntime {
         '--bind',
         'lan',
         '--port',
-        '18789',
+        String(OPENCLAW_GATEWAY_PORT),
         '--allow-unconfigured',
       ],
       onLog,
@@ -190,11 +192,12 @@ export class ContainerRuntime {
   }
 
   async stopGateway(onLog?: LogFn): Promise<void> {
-    try {
-      await this.runPodmanCommand(['stop', 'openclaw-gateway'], onLog)
-    } catch {
-      // Container doesn't exist or already stopped
-    }
+    // runPodmanCommand returns exit code; we ignore any failure since
+    // container may not exist or may already be stopped
+    await this.runPodmanCommand(
+      ['stop', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      onLog,
+    )
   }
 
   async restartGateway(
@@ -208,7 +211,13 @@ export class ContainerRuntime {
   async getGatewayLogs(tail = 50): Promise<string[]> {
     const lines: string[] = []
     await this.runPodmanCommand(
-      ['logs', '--no-color', '--tail', String(tail), 'openclaw-gateway'],
+      [
+        'logs',
+        '--no-color',
+        '--tail',
+        String(tail),
+        OPENCLAW_GATEWAY_CONTAINER_NAME,
+      ],
       (line) => lines.push(line),
     )
     return lines
@@ -281,16 +290,13 @@ export class ContainerRuntime {
   }
 
   private async ensureGatewayRemoved(onLog?: LogFn): Promise<void> {
-    try {
-      await this.runPodmanCommand(['stop', 'openclaw-gateway'], onLog)
-    } catch {
-      // Container doesn't exist, that's fine
-    }
-    try {
-      await this.runPodmanCommand(['rm', 'openclaw-gateway'], onLog)
-    } catch {
-      // Container was already removed, that's fine
-    }
+    // Stop the container if it exists. We ignore any failure since the container may not exist.
+    await this.runPodmanCommand(
+      ['stop', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      onLog,
+    )
+    // Remove the container if it exists. We ignore any failure since it may have already been removed.
+    await this.runPodmanCommand(['rm', OPENCLAW_GATEWAY_CONTAINER_NAME], onLog)
   }
 
   private async compose(args: string[], onLog?: LogFn): Promise<number> {

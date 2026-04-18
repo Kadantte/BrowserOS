@@ -82,7 +82,7 @@ describe('ContainerRuntime', () => {
         'run',
         '-d',
         '--name',
-        'openclaw-gateway',
+        'browseros-openclaw-openclaw-gateway-1',
         '--restart',
         'unless-stopped',
         '-p',
