@@ -4,112 +4,350 @@
  */
 
 import { describe, expect, it } from 'bun:test'
+import { OPENCLAW_GATEWAY_CONTAINER_NAME } from '@browseros/shared/constants/openclaw'
 import { ContainerRuntime } from '../../../../src/api/services/openclaw/container-runtime'
+
+const PROJECT_DIR = '/tmp/openclaw'
+const DIRECT_GATEWAY_CONTAINER_NAME = 'openclaw-gateway'
+const defaultSpec = {
+  image: 'ghcr.io/openclaw/openclaw:2026.4.12',
+  port: 18789,
+  hostHome: '/tmp/openclaw',
+  envFilePath: '/tmp/openclaw/.openclaw/.env',
+  gatewayToken: 'token-123',
+  timezone: 'America/Los_Angeles',
+}
+
+function createRuntime(
+  runCommand: (
+    args: string[],
+    options?: { cwd?: string; onOutput?: (line: string) => void },
+  ) => Promise<number>,
+  listRunningContainers: () => Promise<string[]> = async () => [],
+  stopMachine: () => Promise<void> = async () => {},
+): ContainerRuntime {
+  return new ContainerRuntime(
+    {
+      ensureReady: async () => {},
+      isPodmanAvailable: async () => true,
+      getMachineStatus: async () => ({ initialized: true, running: true }),
+      runCommand,
+      tailContainerLogs: () => () => {},
+      listRunningContainers,
+      stopMachine,
+    } as never,
+    PROJECT_DIR,
+  )
+}
+
+function expectedGatewayRuntimeArgs(spec: typeof defaultSpec): string[] {
+  return [
+    '--env-file',
+    spec.envFilePath,
+    '-e',
+    'HOME=/home/node',
+    '-e',
+    'OPENCLAW_HOME=/home/node',
+    '-e',
+    'OPENCLAW_STATE_DIR=/home/node/.openclaw',
+    '-e',
+    'OPENCLAW_NO_RESPAWN=1',
+    '-e',
+    'NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache',
+    '-e',
+    'NODE_ENV=production',
+    '-e',
+    `TZ=${spec.timezone}`,
+    '-v',
+    `${spec.hostHome}:/home/node`,
+    '--add-host',
+    'host.containers.internal:host-gateway',
+    '-e',
+    `OPENCLAW_GATEWAY_TOKEN=${spec.gatewayToken}`,
+  ]
+}
+
+function expectedStartGatewayRunArgs(spec: typeof defaultSpec): string[] {
+  return [
+    'run',
+    '-d',
+    '--name',
+    DIRECT_GATEWAY_CONTAINER_NAME,
+    '--restart',
+    'unless-stopped',
+    '-p',
+    `127.0.0.1:${spec.port}:18789`,
+    ...expectedGatewayRuntimeArgs(spec),
+    '--health-cmd',
+    'curl -sf http://127.0.0.1:18789/healthz',
+    '--health-interval',
+    '30s',
+    '--health-timeout',
+    '10s',
+    '--health-retries',
+    '3',
+    spec.image,
+    'node',
+    'dist/index.js',
+    'gateway',
+    '--bind',
+    'lan',
+    '--port',
+    '18789',
+    '--allow-unconfigured',
+  ]
+}
 
 describe('ContainerRuntime', () => {
   it('pullImage runs podman pull for the requested image', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
-    const runtime = new ContainerRuntime(
-      {
-        ensureReady: async () => {},
-        isPodmanAvailable: async () => true,
-        getMachineStatus: async () => ({ initialized: true, running: true }),
-        runCommand: async (args, options) => {
-          calls.push({ args, cwd: options?.cwd })
-          return 0
-        },
-        tailContainerLogs: () => () => {},
-        listRunningContainers: async () => [],
-        stopMachine: async () => {},
-      } as never,
-      '/tmp/openclaw',
-    )
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      return 0
+    })
 
     await runtime.pullImage('ghcr.io/openclaw/openclaw:2026.4.12')
 
     expect(calls).toEqual([
       {
         args: ['pull', 'ghcr.io/openclaw/openclaw:2026.4.12'],
-        cwd: '/tmp/openclaw',
+        cwd: PROJECT_DIR,
       },
     ])
   })
 
   it('startGateway removes any existing gateway and runs a fresh container', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      return 0
+    })
+
+    await runtime.startGateway(defaultSpec)
+
+    expect(calls).toHaveLength(2)
+    expect(calls[0]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', DIRECT_GATEWAY_CONTAINER_NAME],
+    })
+    expect(calls[1]).toEqual({
+      cwd: PROJECT_DIR,
+      args: expectedStartGatewayRunArgs(defaultSpec),
+    })
+  })
+
+  it('runGatewaySetupCommand in direct mode builds a one-off podman run command', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      return 0
+    })
+
+    await runtime.runGatewaySetupCommand(
+      ['node', 'dist/index.js', 'agents', 'list', '--json'],
+      defaultSpec,
+    )
+
+    expect(calls).toEqual([
+      {
+        cwd: PROJECT_DIR,
+        args: [
+          'run',
+          '--rm',
+          '--name',
+          `${DIRECT_GATEWAY_CONTAINER_NAME}-setup`,
+          ...expectedGatewayRuntimeArgs(defaultSpec),
+          defaultSpec.image,
+          'node',
+          'dist/index.js',
+          'agents',
+          'list',
+          '--json',
+        ],
+      },
+    ])
+  })
+
+  it('stopGateway removes the direct runtime container', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      return 0
+    })
+
+    await runtime.stopGateway()
+
+    expect(calls).toEqual([
+      {
+        cwd: PROJECT_DIR,
+        args: ['rm', '-f', DIRECT_GATEWAY_CONTAINER_NAME],
+      },
+    ])
+  })
+
+  it('getGatewayLogs tails logs from the direct runtime container', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      options?.onOutput?.('first')
+      options?.onOutput?.('second')
+      return 0
+    })
+
+    const logs = await runtime.getGatewayLogs(25)
+
+    expect(logs).toEqual(['first', 'second'])
+    expect(calls).toEqual([
+      {
+        cwd: PROJECT_DIR,
+        args: ['logs', '--tail', '25', DIRECT_GATEWAY_CONTAINER_NAME],
+      },
+    ])
+  })
+
+  it('restartGateway recreates and launches the direct runtime container', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      return 0
+    })
+
+    await runtime.restartGateway(defaultSpec)
+
+    expect(calls).toEqual([
+      {
+        cwd: PROJECT_DIR,
+        args: ['rm', '-f', DIRECT_GATEWAY_CONTAINER_NAME],
+      },
+      {
+        cwd: PROJECT_DIR,
+        args: expectedStartGatewayRunArgs(defaultSpec),
+      },
+    ])
+  })
+
+  it('stopMachineIfSafe allows both compose and direct BrowserOS gateway containers', async () => {
+    let stopCalls = 0
+    const runtime = createRuntime(
+      async () => 0,
+      async () => [
+        OPENCLAW_GATEWAY_CONTAINER_NAME,
+        DIRECT_GATEWAY_CONTAINER_NAME,
+      ],
+      async () => {
+        stopCalls += 1
+      },
+    )
+
+    await runtime.stopMachineIfSafe()
+
+    expect(stopCalls).toBe(1)
+  })
+
+  it('stopMachineIfSafe does not stop machine if non-BrowserOS containers are running', async () => {
+    let stopCalls = 0
+    const runtime = createRuntime(
+      async () => 0,
+      async () => [OPENCLAW_GATEWAY_CONTAINER_NAME, 'postgres-dev'],
+      async () => {
+        stopCalls += 1
+      },
+    )
+
+    await runtime.stopMachineIfSafe()
+
+    expect(stopCalls).toBe(0)
+  })
+
+  it('execInContainer continues targeting the compose-era gateway container name', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      return 0
+    })
+
+    await runtime.execInContainer(['node', '--version'])
+
+    expect(calls).toEqual([
+      {
+        cwd: undefined,
+        args: ['exec', OPENCLAW_GATEWAY_CONTAINER_NAME, 'node', '--version'],
+      },
+    ])
+  })
+
+  it('tailGatewayLogs continues targeting the compose-era gateway container name', () => {
+    const names: string[] = []
     const runtime = new ContainerRuntime(
       {
-        runCommand: async (args, options) => {
-          calls.push({ args, cwd: options?.cwd })
-          return 0
-        },
         ensureReady: async () => {},
         isPodmanAvailable: async () => true,
         getMachineStatus: async () => ({ initialized: true, running: true }),
+        runCommand: async () => 0,
+        tailContainerLogs: (containerName: string) => {
+          names.push(containerName)
+          return () => {}
+        },
+        listRunningContainers: async () => [],
+        stopMachine: async () => {},
+      } as never,
+      PROJECT_DIR,
+    )
+
+    const stop = runtime.tailGatewayLogs(() => {})
+    stop()
+
+    expect(names).toEqual([OPENCLAW_GATEWAY_CONTAINER_NAME])
+  })
+
+  it('runGatewaySetupCommand defaults to compose-backed execution when spec is not provided', async () => {
+    const calls: Array<{
+      args: string[]
+      cwd?: string
+      env?: Record<string, string>
+    }> = []
+    const runtime = new ContainerRuntime(
+      {
+        ensureReady: async () => {},
+        isPodmanAvailable: async () => true,
+        getMachineStatus: async () => ({ initialized: true, running: true }),
+        runCommand: async (args, options) => {
+          calls.push({ args, cwd: options?.cwd, env: options?.env })
+          return 0
+        },
         tailContainerLogs: () => () => {},
         listRunningContainers: async () => [],
         stopMachine: async () => {},
       } as never,
-      '/tmp/openclaw',
+      PROJECT_DIR,
     )
 
-    await runtime.startGateway({
-      image: 'ghcr.io/openclaw/openclaw:2026.4.12',
-      port: 18789,
-      hostHome: '/tmp/openclaw',
-      envFilePath: '/tmp/openclaw/.openclaw/.env',
-      gatewayToken: 'token-123',
-      timezone: 'America/Los_Angeles',
-    })
+    await runtime.runGatewaySetupCommand([
+      'node',
+      'dist/index.js',
+      'agents',
+      'list',
+      '--json',
+    ])
 
-    expect(calls).toHaveLength(2)
-    expect(calls[0]).toEqual({
-      cwd: '/tmp/openclaw',
-      args: ['rm', '-f', 'openclaw-gateway'],
-    })
-    expect(calls[1]).toEqual({
-      cwd: '/tmp/openclaw',
-      args: [
-        'run',
-        '-d',
-        '--name',
-        'openclaw-gateway',
-        '--restart',
-        'unless-stopped',
-        '-p',
-        '127.0.0.1:18789:18789',
-        '--env-file',
-        '/tmp/openclaw/.openclaw/.env',
-        '-e',
-        'HOME=/home/node',
-        '-e',
-        'OPENCLAW_HOME=/home/node',
-        '-e',
-        'OPENCLAW_STATE_DIR=/home/node/.openclaw',
-        '-e',
-        'OPENCLAW_NO_RESPAWN=1',
-        '-e',
-        'NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache',
-        '-e',
-        'NODE_ENV=production',
-        '-e',
-        'TZ=America/Los_Angeles',
-        '-v',
-        '/tmp/openclaw:/home/node',
-        '--add-host',
-        'host.containers.internal:host-gateway',
-        '-e',
-        'OPENCLAW_GATEWAY_TOKEN=token-123',
-        'ghcr.io/openclaw/openclaw:2026.4.12',
-        'node',
-        'dist/index.js',
-        'gateway',
-        '--bind',
-        'lan',
-        '--port',
-        '18789',
-        '--allow-unconfigured',
-      ],
-    })
+    expect(calls).toEqual([
+      {
+        cwd: PROJECT_DIR,
+        env: { COMPOSE_PROJECT_NAME: 'browseros-openclaw' },
+        args: [
+          'compose',
+          'run',
+          '--rm',
+          '--no-deps',
+          '--entrypoint',
+          'node',
+          'openclaw-gateway',
+          'dist/index.js',
+          'agents',
+          'list',
+          '--json',
+        ],
+      },
+    ])
   })
 })
