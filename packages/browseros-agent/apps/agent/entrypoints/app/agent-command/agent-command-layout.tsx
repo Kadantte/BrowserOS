@@ -1,9 +1,9 @@
 import type { FC } from 'react'
 import { Outlet, useOutletContext } from 'react-router'
+import type { AgentEntry } from '@/entrypoints/app/agents/useAgents'
+import { useAgents } from '@/entrypoints/app/agents/useAgents'
 import {
-  type AgentEntry,
   type OpenClawStatus,
-  useOpenClawAgents,
   useOpenClawStatus,
 } from '@/entrypoints/app/agents/useOpenClaw'
 
@@ -16,9 +16,7 @@ interface AgentCommandContextValue {
 
 export const AgentCommandLayout: FC = () => {
   const { status, loading: statusLoading } = useOpenClawStatus(5000)
-  const { agents, loading: agentsLoading } = useOpenClawAgents(
-    status?.status === 'running' && status.controlPlaneStatus === 'connected',
-  )
+  const { agents, loading: agentsLoading } = useAgents()
 
   return (
     <Outlet

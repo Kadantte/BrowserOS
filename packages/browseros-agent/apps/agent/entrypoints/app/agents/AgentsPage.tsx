@@ -587,17 +587,17 @@ const AgentRegistrySection: FC<AgentRegistrySectionProps> = ({
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                {agent.adapterType === 'openclaw' ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => onOpenChat(agent)}
-                    disabled={!canManageOpenClawAgents}
-                  >
-                    <MessageSquare className="mr-2 size-4" />
-                    Chat
-                  </Button>
-                ) : null}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onOpenChat(agent)}
+                  disabled={
+                    agent.adapterType === 'openclaw' && !canManageOpenClawAgents
+                  }
+                >
+                  <MessageSquare className="mr-2 size-4" />
+                  Chat
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon"

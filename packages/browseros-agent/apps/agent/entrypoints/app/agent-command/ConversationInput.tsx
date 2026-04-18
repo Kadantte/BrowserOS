@@ -13,7 +13,8 @@ import { AppSelector } from '@/components/elements/AppSelector'
 import { TabPickerPopover } from '@/components/elements/tab-picker-popover'
 import { WorkspaceSelector } from '@/components/elements/workspace-selector'
 import { Button } from '@/components/ui/button'
-import type { AgentEntry } from '@/entrypoints/app/agents/useOpenClaw'
+import type { AgentEntry } from '@/entrypoints/app/agents/useAgents'
+import type { OpenClawStatus } from '@/entrypoints/app/agents/useOpenClaw'
 import { McpServerIcon } from '@/entrypoints/app/connect-mcp/McpServerIcon'
 import { useGetUserMCPIntegrations } from '@/entrypoints/app/connect-mcp/useGetUserMCPIntegrations'
 import { Feature } from '@/lib/browseros/capabilities'
@@ -32,7 +33,7 @@ interface ConversationInputProps {
   onCreateAgent?: () => void
   streaming: boolean
   disabled?: boolean
-  status?: string
+  openClawStatus?: OpenClawStatus | null
   placeholder?: string
   variant?: 'home' | 'conversation'
 }
@@ -122,7 +123,7 @@ function ContextControls({
   selectedTabs,
   onToggleTab,
   showAgentSelector,
-  status,
+  openClawStatus,
 }: {
   agents: AgentEntry[]
   onCreateAgent?: () => void
@@ -131,7 +132,7 @@ function ContextControls({
   selectedTabs: chrome.tabs.Tab[]
   onToggleTab: (tab: chrome.tabs.Tab) => void
   showAgentSelector: boolean
-  status?: string
+  openClawStatus?: OpenClawStatus | null
 }) {
   const { supports } = useCapabilities()
   const { selectedFolder } = useWorkspace()
@@ -154,7 +155,7 @@ function ContextControls({
             selectedAgentId={selectedAgentId}
             onSelectAgent={onSelectAgent}
             onCreateAgent={onCreateAgent}
-            status={status}
+            openClawStatus={openClawStatus}
           />
         ) : null}
         {supports(Feature.WORKSPACE_FOLDER_SUPPORT) ? (
@@ -256,7 +257,7 @@ export const ConversationInput: FC<ConversationInputProps> = ({
   onCreateAgent,
   streaming,
   disabled,
-  status,
+  openClawStatus,
   placeholder,
   variant = 'conversation',
 }) => {
@@ -349,7 +350,7 @@ export const ConversationInput: FC<ConversationInputProps> = ({
         selectedTabs={selectedTabs}
         onToggleTab={toggleTab}
         showAgentSelector={variant === 'home'}
-        status={status}
+        openClawStatus={openClawStatus}
       />
     </Shell>
   )

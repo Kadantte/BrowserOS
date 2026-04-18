@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
+import { isOpenClawAgentReady } from '@/entrypoints/app/agents/agent-availability'
+import type { AgentEntry } from '@/entrypoints/app/agents/useAgents'
 import {
-  type AgentEntry,
   getModelDisplayName,
   type OpenClawStatus,
 } from '@/entrypoints/app/agents/useOpenClaw'
@@ -8,16 +9,32 @@ import { getLatestConversation } from '@/lib/agent-conversations/storage'
 import type { AgentCardData } from '@/lib/agent-conversations/types'
 
 function getAgentStatusTone(
-  status: OpenClawStatus['status'] | undefined,
+  agent: AgentEntry,
+  status: OpenClawStatus | null,
 ): AgentCardData['status'] {
-  if (status === 'error') return 'error'
-  if (status === 'starting') return 'working'
+  if (agent.adapterType !== 'openclaw') {
+    return 'idle'
+  }
+  if (status?.status === 'error' || status?.controlPlaneStatus === 'failed') {
+    return 'error'
+  }
+  if (
+    status?.status === 'starting' ||
+    status?.controlPlaneStatus === 'connecting' ||
+    status?.controlPlaneStatus === 'reconnecting' ||
+    status?.controlPlaneStatus === 'recovering'
+  ) {
+    return 'working'
+  }
+  if (!isOpenClawAgentReady(status)) {
+    return 'error'
+  }
   return 'idle'
 }
 
 async function getAgentCardData(
   agent: AgentEntry,
-  status: OpenClawStatus['status'] | undefined,
+  status: OpenClawStatus | null,
 ): Promise<AgentCardData> {
   const conversation = await getLatestConversation(agent.agentId)
   const lastTurn = conversation?.turns[conversation.turns.length - 1]
@@ -26,8 +43,14 @@ async function getAgentCardData(
   return {
     agentId: agent.agentId,
     name: agent.name,
-    model: getModelDisplayName(agent.model),
-    status: getAgentStatusTone(status),
+    model:
+      getModelDisplayName(agent.model) ??
+      (agent.adapterType === 'codex_local'
+        ? 'Codex local'
+        : agent.adapterType === 'claude_local'
+          ? 'Claude local'
+          : 'OpenClaw'),
+    status: getAgentStatusTone(agent, status),
     lastMessage:
       lastTextPart?.kind === 'text'
         ? lastTextPart.text.slice(0, 120)
@@ -38,7 +61,7 @@ async function getAgentCardData(
 
 export function useAgentCardData(
   agents: AgentEntry[],
-  status: OpenClawStatus['status'] | undefined,
+  status: OpenClawStatus | null,
 ) {
   const [cardData, setCardData] = useState<AgentCardData[]>([])
 

@@ -33,6 +33,12 @@ export interface AgentMutationInput {
   modelId?: string
 }
 
+export interface AgentChatInput {
+  message: string
+  sessionKey?: string
+  conversation?: Array<{ role: 'user' | 'assistant'; text: string }>
+}
+
 const AGENT_QUERY_KEYS = {
   agents: 'browseros-agents',
   catalog: 'browseros-agent-catalog',
@@ -169,6 +175,20 @@ export function useAgentMutations() {
 export async function getAgents(): Promise<AgentEntry[]> {
   const baseUrl = await getAgentServerUrl()
   return fetchAgents(baseUrl)
+}
+
+export async function chatWithAgent(
+  agentId: string,
+  input: AgentChatInput,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const baseUrl = await getAgentServerUrl()
+  return fetch(`${baseUrl}/agents/${agentId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+    signal,
+  })
 }
 
 function toAgentEntry(record: BrowserOsStoredAgent): AgentEntry {
