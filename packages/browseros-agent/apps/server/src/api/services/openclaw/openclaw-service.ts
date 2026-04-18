@@ -10,7 +10,6 @@
 
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
-import { join, resolve } from 'node:path'
 import {
   OPENCLAW_CONTAINER_HOME,
   OPENCLAW_GATEWAY_PORT,
@@ -31,7 +30,6 @@ import {
   type OpenClawConfigBatchEntry,
 } from './openclaw-cli-client'
 import {
-  buildComposeEnvFile,
   buildRuntimeEnvFile,
   getHostWorkspaceDir,
   getOpenClawStateConfigPath,
@@ -44,26 +42,8 @@ import { resolveSupportedOpenClawProvider } from './openclaw-provider-map'
 import type { OpenClawStreamEvent } from './openclaw-types'
 import { getPodmanRuntime } from './podman-runtime'
 
-export const SOURCE_COMPOSE_RESOURCE = resolve(
-  import.meta.dir,
-  '../../../../resources/openclaw-compose.yml',
-)
 const READY_TIMEOUT_MS = 30_000
 const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/
-
-export function resolveComposeResourcePath(resourcesDir?: string): string {
-  if (resourcesDir) {
-    const bundledComposePath = join(resourcesDir, 'openclaw-compose.yml')
-    if (existsSync(bundledComposePath)) {
-      return bundledComposePath
-    }
-    logger.warn(
-      'Bundled openclaw-compose.yml not found in resourcesDir, falling back to source tree',
-      { resourcesDir },
-    )
-  }
-  return SOURCE_COMPOSE_RESOURCE
-}
 
 export type OpenClawControlPlaneStatus =
   | 'disconnected'
@@ -128,7 +108,6 @@ export class OpenClawService {
   private bootstrapCliClient: OpenClawCliClient
   private chatClient: OpenClawHttpChatClient
   private openclawDir: string
-  private composeResourcePath: string
   private port = OPENCLAW_GATEWAY_PORT
   private token: string
   private tokenLoaded = false
@@ -152,7 +131,6 @@ export class OpenClawService {
       this.port,
       async () => this.token,
     )
-    this.composeResourcePath = resolveComposeResourcePath(config.resourcesDir)
     this.browserosServerPort =
       config.browserosServerPort ?? DEFAULT_PORTS.server
   }
@@ -160,9 +138,6 @@ export class OpenClawService {
   configure(config: OpenClawServiceConfig): void {
     if (config.browserosServerPort !== undefined) {
       this.browserosServerPort = config.browserosServerPort
-    }
-    if (config.resourcesDir !== undefined) {
-      this.composeResourcePath = resolveComposeResourcePath(config.resourcesDir)
     }
   }
 
@@ -903,15 +878,6 @@ export class OpenClawService {
     if (existsSync(envPath)) return
     await mkdir(this.getStateDir(), { recursive: true })
     await writeFile(envPath, '', { mode: 0o600 })
-  }
-
-  private async writeComposeEnv(): Promise<void> {
-    const envContent = buildComposeEnvFile({
-      hostHome: this.openclawDir,
-      port: this.port,
-      gatewayToken: this.tokenLoaded ? this.token : undefined,
-    })
-    await this.runtime.writeEnvFile(envContent)
   }
 
   private async writeStateEnv(

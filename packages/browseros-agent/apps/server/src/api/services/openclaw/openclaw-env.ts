@@ -53,16 +53,6 @@ export function buildRuntimeEnvFile(input: {
   return lines.join('\n')
 }
 
-export function buildComposeEnvFile(input: {
-  hostHome: string
-  image?: string
-  port?: number
-  timezone?: string
-  gatewayToken?: string
-}): string {
-  return buildRuntimeEnvFile(input)
-}
-
 export function mergeEnvContent(
   current: string,
   updates: Record<string, string>,
