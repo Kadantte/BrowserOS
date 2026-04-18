@@ -40,6 +40,7 @@ type MutableOpenClawService = OpenClawService & {
     stopGateway?: (_onLog?: (_line: string) => void) => Promise<void>
     getGatewayLogs?: (_tail?: number) => Promise<string[]>
     waitForReady?: () => Promise<boolean>
+    stopMachineIfSafe?: () => Promise<void>
   }
   cliClient: {
     probe?: ReturnType<typeof mock>
@@ -462,6 +463,219 @@ describe('OpenClawService', () => {
     expect(
       await readFile(join(tempDir, '.openclaw', '.env'), 'utf-8'),
     ).toContain('OPENAI_API_KEY=sk-test')
+  })
+
+  it('start uses the direct runtime startGateway flow', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(
+      join(tempDir, '.openclaw', 'openclaw.json'),
+      JSON.stringify({
+        gateway: {
+          auth: {
+            token: 'cli-token',
+          },
+        },
+      }),
+    )
+    const ensureReady = mock(async () => {})
+    const writeRuntimeEnvFile = mock(async () => {})
+    const startGateway = mock(async () => {})
+    const waitForReady = mock(async () => true)
+    const probe = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      ensureReady,
+      isReady: async () => true,
+      writeRuntimeEnvFile,
+      startGateway,
+      waitForReady,
+    }
+    service.cliClient = {
+      probe,
+    }
+
+    await service.start()
+
+    expect(ensureReady).toHaveBeenCalledTimes(1)
+    expect(writeRuntimeEnvFile).toHaveBeenCalledWith(
+      expect.stringContaining('OPENCLAW_GATEWAY_TOKEN=cli-token'),
+    )
+    expect(startGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image: 'ghcr.io/openclaw/openclaw:2026.4.12',
+        port: 18789,
+        hostHome: tempDir,
+        envFilePath: join(tempDir, '.openclaw', '.env'),
+      }),
+      expect.any(Function),
+    )
+    expect(waitForReady).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+
+  it('restart uses the direct runtime restartGateway flow', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(
+      join(tempDir, '.openclaw', 'openclaw.json'),
+      JSON.stringify({
+        gateway: {
+          auth: {
+            token: 'cli-token',
+          },
+        },
+      }),
+    )
+    const writeRuntimeEnvFile = mock(async () => {})
+    const restartGateway = mock(async () => {})
+    const waitForReady = mock(async () => true)
+    const probe = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      isReady: async () => true,
+      writeRuntimeEnvFile,
+      restartGateway,
+      waitForReady,
+    }
+    service.cliClient = {
+      probe,
+    }
+
+    await service.restart()
+
+    expect(writeRuntimeEnvFile).toHaveBeenCalledTimes(1)
+    expect(restartGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image: 'ghcr.io/openclaw/openclaw:2026.4.12',
+        port: 18789,
+        hostHome: tempDir,
+        envFilePath: join(tempDir, '.openclaw', '.env'),
+      }),
+      expect.any(Function),
+    )
+    expect(waitForReady).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledTimes(1)
+  })
+
+  it('stop calls runtime.stopGateway', async () => {
+    const stopGateway = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.runtime = {
+      isReady: async () => true,
+      stopGateway,
+    }
+
+    await service.stop()
+
+    expect(stopGateway).toHaveBeenCalledTimes(1)
+  })
+
+  it('getLogs proxies to runtime.getGatewayLogs with tail', async () => {
+    const getGatewayLogs = mock(async (tail = 50) => [`tail:${tail}`])
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.runtime = {
+      isReady: async () => true,
+      getGatewayLogs,
+    }
+
+    await expect(service.getLogs(25)).resolves.toEqual(['tail:25'])
+    expect(getGatewayLogs).toHaveBeenCalledWith(25)
+  })
+
+  it('shutdown stops gateway and then stops machine when safe', async () => {
+    const stopGateway = mock(async () => {})
+    const stopMachineIfSafe = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.runtime = {
+      isReady: async () => true,
+      stopGateway,
+      stopMachineIfSafe,
+    }
+
+    await service.shutdown()
+
+    expect(stopGateway).toHaveBeenCalledTimes(1)
+    expect(stopMachineIfSafe).toHaveBeenCalledTimes(1)
+  })
+
+  it('shutdown still stops machine when stopGateway fails', async () => {
+    const stopGateway = mock(async () => {
+      throw new Error('stop failed')
+    })
+    const stopMachineIfSafe = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.runtime = {
+      isReady: async () => true,
+      stopGateway,
+      stopMachineIfSafe,
+    }
+
+    await expect(service.shutdown()).resolves.toBeUndefined()
+
+    expect(stopGateway).toHaveBeenCalledTimes(1)
+    expect(stopMachineIfSafe).toHaveBeenCalledTimes(1)
+  })
+
+  it('tryAutoStart uses direct-runtime startGateway when gateway is not ready', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(
+      join(tempDir, '.openclaw', 'openclaw.json'),
+      JSON.stringify({
+        gateway: {
+          auth: {
+            token: 'cli-token',
+          },
+        },
+      }),
+    )
+    const ensureReady = mock(async () => {})
+    const isReady = mock(async () => false)
+    const writeRuntimeEnvFile = mock(async () => {})
+    const startGateway = mock(async () => {})
+    const waitForReady = mock(async () => true)
+    const probe = mock(async () => {})
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      isPodmanAvailable: async () => true,
+      ensureReady,
+      isReady,
+      writeRuntimeEnvFile,
+      startGateway,
+      waitForReady,
+    }
+    service.cliClient = {
+      probe,
+    }
+
+    await service.tryAutoStart()
+
+    expect(ensureReady).toHaveBeenCalledTimes(1)
+    expect(writeRuntimeEnvFile).toHaveBeenCalledWith(
+      expect.stringContaining('OPENCLAW_GATEWAY_TOKEN=cli-token'),
+    )
+    expect(startGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image: 'ghcr.io/openclaw/openclaw:2026.4.12',
+        port: 18789,
+        hostHome: tempDir,
+        envFilePath: join(tempDir, '.openclaw', '.env'),
+      }),
+    )
+    expect(waitForReady).toHaveBeenCalledTimes(1)
+    expect(probe).toHaveBeenCalledTimes(1)
+    expect(isReady).toHaveBeenCalledTimes(1)
   })
 
   it('keeps openrouter model refs verbatim without rewriting dots', () => {
