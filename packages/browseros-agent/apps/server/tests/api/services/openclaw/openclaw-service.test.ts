@@ -24,12 +24,13 @@ type MutableOpenClawService = OpenClawService & {
     isPodmanAvailable?: () => Promise<boolean>
     getMachineStatus?: () => Promise<{ initialized: boolean; running: boolean }>
     isReady: () => Promise<boolean>
-    copyComposeFile?: (_source: string) => Promise<void>
-    writeEnvFile?: (_content: string) => Promise<void>
-    composePull?: () => Promise<void>
-    composeRestart?: () => Promise<void>
-    composeUp?: () => Promise<void>
+    pullImage?: ReturnType<typeof mock>
+    startGateway?: ReturnType<typeof mock>
+    restartGateway?: ReturnType<typeof mock>
+    stopGateway?: ReturnType<typeof mock>
+    getGatewayLogs?: ReturnType<typeof mock>
     waitForReady?: () => Promise<boolean>
+    writeEnvFile?: ReturnType<typeof mock>
   }
   cliClient: {
     probe?: ReturnType<typeof mock>
@@ -201,6 +202,12 @@ describe('OpenClawService', () => {
       workspace: `${OPENCLAW_CONTAINER_HOME}/workspace`,
     }))
     const writeEnvFile = mock(async (_content: string) => {})
+    const pullImage = mock(async () => {
+      steps.push('pull')
+    })
+    const startGateway = mock(async () => {
+      steps.push('start')
+    })
     const service = new OpenClawService() as MutableOpenClawService
 
     service.openclawDir = tempDir
@@ -208,15 +215,9 @@ describe('OpenClawService', () => {
       isPodmanAvailable: async () => true,
       ensureReady: async () => {},
       isReady: async () => true,
-      copyComposeFile: async () => {},
       writeEnvFile,
-      composePull: async () => {},
-      composeRestart: mock(async () => {
-        steps.push('restart')
-      }),
-      composeUp: mock(async () => {
-        steps.push('up')
-      }),
+      pullImage,
+      startGateway,
       waitForReady: mock(async () => {
         steps.push('ready')
         return true
@@ -269,11 +270,29 @@ describe('OpenClawService', () => {
       name: 'main',
       model: undefined,
     })
-    expect(steps).toEqual(['onboard', 'batch', 'validate', 'up', 'ready'])
+    expect(steps).toEqual([
+      'pull',
+      'onboard',
+      'batch',
+      'validate',
+      'start',
+      'ready',
+    ])
     expect(writeEnvFile).toHaveBeenCalledWith(
       expect.stringContaining(`OPENCLAW_HOST_HOME=${tempDir}`),
     )
-    expect(service.runtime.composeRestart).not.toHaveBeenCalled()
+    expect(pullImage).toHaveBeenCalledWith(
+      'ghcr.io/openclaw/openclaw:2026.4.12',
+      expect.anything(),
+    )
+    expect(startGateway).toHaveBeenCalledWith(
+      expect.objectContaining({
+        image: 'ghcr.io/openclaw/openclaw:2026.4.12',
+        port: 18789,
+        hostHome: tempDir,
+      }),
+      expect.anything(),
+    )
   })
 
   it('applies setup-time config in one batch before the gateway starts', async () => {
@@ -298,11 +317,9 @@ describe('OpenClawService', () => {
       isPodmanAvailable: async () => true,
       ensureReady: async () => {},
       isReady: async () => true,
-      copyComposeFile: async () => {},
       writeEnvFile: async () => {},
-      composePull: async () => {},
-      composeRestart: mock(async () => {}),
-      composeUp: async () => {},
+      pullImage: async () => {},
+      startGateway: mock(async () => {}),
       waitForReady,
     }
     service.cliClient = {
@@ -326,7 +343,6 @@ describe('OpenClawService', () => {
       name: 'main',
       model: undefined,
     })
-    expect(service.runtime.composeRestart).not.toHaveBeenCalled()
   })
 
   it('loads the persisted gateway token from the mounted config before control plane calls', async () => {
@@ -398,11 +414,9 @@ describe('OpenClawService', () => {
       isPodmanAvailable: async () => true,
       ensureReady: async () => {},
       isReady: async () => true,
-      copyComposeFile: async () => {},
       writeEnvFile: async () => {},
-      composePull: async () => {},
-      composeRestart: async () => {},
-      composeUp: async () => {},
+      pullImage: async () => {},
+      startGateway: async () => {},
       waitForReady: async () => true,
     }
     service.cliClient = {
