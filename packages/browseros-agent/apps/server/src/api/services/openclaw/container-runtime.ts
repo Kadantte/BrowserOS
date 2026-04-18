@@ -256,16 +256,40 @@ export class ContainerRuntime {
 
   async runGatewaySetupCommand(
     command: string[],
+    spec: GatewayContainerSpec,
     onLog?: LogFn,
   ): Promise<number> {
-    return this.compose(
+    return this.runPodmanCommand(
       [
         'run',
         '--rm',
-        '--no-deps',
-        '--entrypoint',
+        '--name',
+        `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`,
+        '--env-file',
+        spec.envFilePath,
+        '-e',
+        `HOME=${GATEWAY_CONTAINER_HOME}`,
+        '-e',
+        `OPENCLAW_HOME=${GATEWAY_CONTAINER_HOME}`,
+        '-e',
+        `OPENCLAW_STATE_DIR=${GATEWAY_CONTAINER_HOME}/.openclaw`,
+        '-e',
+        `OPENCLAW_NO_RESPAWN=1`,
+        '-e',
+        `NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache`,
+        '-e',
+        `NODE_ENV=production`,
+        '-e',
+        `TZ=${spec.timezone}`,
+        '-v',
+        `${spec.hostHome}:${GATEWAY_CONTAINER_HOME}`,
+        '--add-host',
+        'host.containers.internal:host-gateway',
+        ...(spec.gatewayToken
+          ? ['-e', `OPENCLAW_GATEWAY_TOKEN=${spec.gatewayToken}`]
+          : []),
+        spec.image,
         'node',
-        'openclaw-gateway',
         ...command.slice(1),
       ],
       onLog,

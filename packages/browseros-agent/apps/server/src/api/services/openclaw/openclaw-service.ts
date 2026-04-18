@@ -125,7 +125,11 @@ export class OpenClawService {
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = new OpenClawCliClient({
       execInContainer: (command, onLog) =>
-        this.runtime.runGatewaySetupCommand(command, onLog),
+        this.runtime.runGatewaySetupCommand(
+          command,
+          this.buildGatewayRuntimeSpec(),
+          onLog,
+        ),
     })
     this.chatClient = new OpenClawHttpChatClient(
       this.port,
