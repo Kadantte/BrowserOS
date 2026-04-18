@@ -127,7 +127,7 @@ describe('ContainerRuntime', () => {
     expect(calls).toHaveLength(2)
     expect(calls[0]).toEqual({
       cwd: PROJECT_DIR,
-      args: ['rm', '-f', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
     })
     expect(calls[1]).toEqual({
       cwd: PROJECT_DIR,
@@ -179,7 +179,26 @@ describe('ContainerRuntime', () => {
     expect(calls).toEqual([
       {
         cwd: PROJECT_DIR,
-        args: ['rm', '-f', OPENCLAW_GATEWAY_CONTAINER_NAME],
+        args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      },
+    ])
+  })
+
+  it('stopGateway is idempotent when the managed container is already absent', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      options?.onOutput?.(
+        `Error: no container with name "${OPENCLAW_GATEWAY_CONTAINER_NAME}" found`,
+      )
+      return 0
+    })
+
+    await expect(runtime.stopGateway()).resolves.toBeUndefined()
+    expect(calls).toEqual([
+      {
+        cwd: PROJECT_DIR,
+        args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
       },
     ])
   })
@@ -216,7 +235,7 @@ describe('ContainerRuntime', () => {
     expect(calls).toEqual([
       {
         cwd: PROJECT_DIR,
-        args: ['rm', '-f', OPENCLAW_GATEWAY_CONTAINER_NAME],
+        args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
       },
       {
         cwd: PROJECT_DIR,

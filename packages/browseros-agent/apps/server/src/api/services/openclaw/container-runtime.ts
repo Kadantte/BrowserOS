@@ -255,7 +255,7 @@ export class ContainerRuntime {
     requireAtLeastOneSuccess: boolean
   }): Promise<number> {
     const code = await this.runPodmanCommand(
-      ['rm', '-f', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
       input.onLog,
     )
 
