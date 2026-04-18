@@ -2,7 +2,9 @@ import { Bot, Home, RotateCcw } from 'lucide-react'
 import { type FC, useEffect, useRef } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
-import type { AgentEntry } from '@/entrypoints/app/agents/useOpenClaw'
+import { canChatWithAgent } from '@/entrypoints/app/agents/agent-availability'
+import type { AgentEntry } from '@/entrypoints/app/agents/useAgents'
+import type { OpenClawStatus } from '@/entrypoints/app/agents/useOpenClaw'
 import { cn } from '@/lib/utils'
 import { useAgentCommandData } from './agent-command-layout'
 import { ConversationInput } from './ConversationInput'
@@ -74,14 +76,28 @@ function EmptyConversationState({ agentName }: { agentName: string }) {
 }
 
 function getConversationStatusCopy(
-  status: string | undefined,
+  agent: AgentEntry | undefined,
+  openClawStatus: OpenClawStatus | null,
   streaming: boolean,
 ): string {
   if (streaming) return 'Working on your request'
-  if (status === 'running') return 'Ready for the next task'
-  if (status === 'starting') return 'Connecting to OpenClaw'
-  if (status === 'error') return 'OpenClaw needs attention'
-  if (status === 'stopped') return 'OpenClaw is offline'
+  if (agent?.adapterType !== 'openclaw') return 'Ready for the next task'
+  if (canChatWithAgent(agent, openClawStatus)) return 'Ready for the next task'
+  if (
+    openClawStatus?.status === 'starting' ||
+    openClawStatus?.controlPlaneStatus === 'connecting' ||
+    openClawStatus?.controlPlaneStatus === 'reconnecting' ||
+    openClawStatus?.controlPlaneStatus === 'recovering'
+  ) {
+    return 'Connecting to OpenClaw'
+  }
+  if (
+    openClawStatus?.status === 'error' ||
+    openClawStatus?.controlPlaneStatus === 'failed'
+  ) {
+    return 'OpenClaw needs attention'
+  }
+  if (openClawStatus?.status === 'stopped') return 'OpenClaw is offline'
   return 'Open agent setup to continue'
 }
 
@@ -91,7 +107,7 @@ export const AgentCommandConversation: FC = () => {
   const navigate = useNavigate()
   const scrollRef = useRef<HTMLDivElement>(null)
   const initialQuerySent = useRef(false)
-  const { status, agents } = useAgentCommandData()
+  const { status, agents, agentsLoading } = useAgentCommandData()
   const shouldRedirectHome = !agentId
   const resolvedAgentId = agentId ?? ''
   const agent = agents.find((entry) => entry.agentId === resolvedAgentId)
@@ -126,7 +142,7 @@ export const AgentCommandConversation: FC = () => {
     })
   }, [lastTurnPartCount, shouldRedirectHome, streaming, turns.length])
 
-  if (shouldRedirectHome) {
+  if (shouldRedirectHome || (!agentsLoading && !agent)) {
     return <Navigate to="/home" replace />
   }
 
@@ -134,7 +150,12 @@ export const AgentCommandConversation: FC = () => {
     navigate(`/home/agents/${entry.agentId}`)
   }
 
-  const statusCopy = getConversationStatusCopy(status?.status, streaming)
+  const canSendToAgent = canChatWithAgent(agent, status)
+  const statusCopy = getConversationStatusCopy(agent, status, streaming)
+  const placeholder =
+    agent?.adapterType === 'openclaw' && !canSendToAgent
+      ? `${agentName} is unavailable until OpenClaw reconnects...`
+      : `Message ${agentName}...`
 
   return (
     <div className="absolute inset-0 overflow-hidden">
@@ -183,9 +204,9 @@ export const AgentCommandConversation: FC = () => {
             }}
             onCreateAgent={() => navigate('/agents')}
             streaming={streaming}
-            disabled={status?.status !== 'running'}
-            status={status?.status}
-            placeholder={`Message ${agentName}...`}
+            disabled={!canSendToAgent}
+            openClawStatus={status}
+            placeholder={placeholder}
           />
         </div>
       </div>

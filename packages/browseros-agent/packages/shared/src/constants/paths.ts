@@ -9,6 +9,9 @@
 export const PATHS = {
   DEFAULT_EXECUTION_DIR: process.cwd(),
   BROWSEROS_DIR_NAME: '.browseros',
+  AGENTS_DIR_NAME: 'agents',
+  AGENT_METADATA_FILE_NAME: 'agent.json',
+  AGENT_RUNTIME_DIR_NAME: 'runtime',
   MEMORY_DIR_NAME: 'memory',
   SESSIONS_DIR_NAME: 'sessions',
   TOOL_OUTPUT_DIR_NAME: 'tool-output',

@@ -15,9 +15,11 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover'
+import { canChatWithAgent } from '@/entrypoints/app/agents/agent-availability'
+import type { AgentEntry } from '@/entrypoints/app/agents/useAgents'
 import {
-  type AgentEntry,
   getModelDisplayName,
+  type OpenClawStatus,
 } from '@/entrypoints/app/agents/useOpenClaw'
 import { cn } from '@/lib/utils'
 
@@ -26,13 +28,36 @@ interface AgentSelectorProps {
   selectedAgentId: string | null
   onSelectAgent: (agent: AgentEntry) => void
   onCreateAgent?: () => void
-  status?: string
+  openClawStatus?: OpenClawStatus | null
 }
 
-function getStatusDot(status?: string) {
-  if (status === 'running') return 'bg-emerald-500'
-  if (status === 'starting') return 'bg-amber-500 animate-pulse'
-  if (status === 'error') return 'bg-destructive'
+function getStatusDot(
+  agent: AgentEntry | undefined,
+  openClawStatus?: OpenClawStatus | null,
+) {
+  if (!agent) {
+    return 'bg-muted-foreground/50'
+  }
+  if (agent.adapterType !== 'openclaw') {
+    return 'bg-emerald-500'
+  }
+  if (canChatWithAgent(agent, openClawStatus ?? null)) {
+    return 'bg-emerald-500'
+  }
+  if (
+    openClawStatus?.status === 'starting' ||
+    openClawStatus?.controlPlaneStatus === 'connecting' ||
+    openClawStatus?.controlPlaneStatus === 'reconnecting' ||
+    openClawStatus?.controlPlaneStatus === 'recovering'
+  ) {
+    return 'bg-amber-500 animate-pulse'
+  }
+  if (
+    openClawStatus?.status === 'error' ||
+    openClawStatus?.controlPlaneStatus === 'failed'
+  ) {
+    return 'bg-destructive'
+  }
   return 'bg-muted-foreground/50'
 }
 
@@ -41,7 +66,7 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
   selectedAgentId,
   onSelectAgent,
   onCreateAgent,
-  status,
+  openClawStatus,
 }) => {
   const [open, setOpen] = useState(false)
   const selectedAgent = agents.find(
@@ -60,7 +85,12 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
           )}
         >
           <Bot className="h-4 w-4" />
-          <span className={cn('size-2 rounded-full', getStatusDot(status))} />
+          <span
+            className={cn(
+              'size-2 rounded-full',
+              getStatusDot(selectedAgent, openClawStatus),
+            )}
+          />
           <span className="max-w-32 truncate">
             {selectedAgent?.name ?? 'Select agent'}
           </span>
@@ -75,7 +105,13 @@ export const AgentSelector: FC<AgentSelectorProps> = ({
             <CommandGroup>
               {agents.map((agent) => {
                 const isSelected = selectedAgentId === agent.agentId
-                const modelLabel = getModelDisplayName(agent.model)
+                const modelLabel =
+                  getModelDisplayName(agent.model) ??
+                  (agent.adapterType === 'codex_local'
+                    ? 'Codex local'
+                    : agent.adapterType === 'claude_local'
+                      ? 'Claude local'
+                      : 'OpenClaw')
                 return (
                   <CommandItem
                     key={agent.agentId}

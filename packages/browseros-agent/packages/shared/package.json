@@ -53,6 +53,10 @@
       "types": "./src/types/server-config.ts",
       "default": "./src/types/server-config.ts"
     },
+    "./types/browseros-agents": {
+      "types": "./src/types/browseros-agents.ts",
+      "default": "./src/types/browseros-agents.ts"
+    },
     "./types/role-aware-agents": {
       "types": "./src/types/role-aware-agents.ts",
       "default": "./src/types/role-aware-agents.ts"

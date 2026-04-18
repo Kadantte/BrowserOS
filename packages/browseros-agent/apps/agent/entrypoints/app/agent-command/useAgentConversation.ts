@@ -1,8 +1,11 @@
+import type { UIMessageStreamEvent } from '@browseros/shared/schemas/ui-stream'
 import { useEffect, useRef, useState } from 'react'
+import { chatWithAgent } from '@/entrypoints/app/agents/useAgents'
 import {
-  chatWithAgent,
-  type OpenClawStreamEvent,
-} from '@/entrypoints/app/agents/useOpenClaw'
+  buildBrowserOsConversation,
+  createBrowserOsAgentStreamState,
+  reduceBrowserOsAgentStreamEvent,
+} from '@/lib/agent-conversations/browseros-agent-chat'
 import {
   getLatestConversation,
   saveConversation,
@@ -10,7 +13,6 @@ import {
 import type {
   AgentConversation,
   AgentConversationTurn,
-  AssistantPart,
 } from '@/lib/agent-conversations/types'
 import { consumeSSEStream } from '@/lib/sse'
 
@@ -19,8 +21,7 @@ export function useAgentConversation(agentId: string, agentName: string) {
   const [streaming, setStreaming] = useState(false)
   const [loading, setLoading] = useState(true)
   const sessionKeyRef = useRef('')
-  const textAccRef = useRef('')
-  const thinkAccRef = useRef('')
+  const streamStateRef = useRef(createBrowserOsAgentStreamState())
   const streamAbortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
@@ -66,155 +67,62 @@ export function useAgentConversation(agentId: string, agentName: string) {
   }
 
   const updateCurrentTurnParts = (
-    updater: (parts: AssistantPart[]) => AssistantPart[],
+    updater: (turn: AgentConversationTurn) => AgentConversationTurn,
   ) => {
     setTurns((prev) => {
       const last = prev[prev.length - 1]
       if (!last) return prev
-      return [...prev.slice(0, -1), { ...last, parts: updater(last.parts) }]
+      const updated = [...prev.slice(0, -1), updater(last)]
+      if (updated[updated.length - 1]?.done) {
+        persistTurns(updated)
+      }
+      return updated
     })
   }
 
-  const processStreamEvent = (event: OpenClawStreamEvent) => {
-    switch (event.type) {
-      case 'text-delta': {
-        const delta = (event.data.text as string) ?? ''
-        textAccRef.current += delta
-        const text = textAccRef.current
-        updateCurrentTurnParts((parts) => {
-          const last = parts[parts.length - 1]
-          if (last?.kind === 'text') {
-            return [...parts.slice(0, -1), { ...last, text }]
-          }
-          return [...parts, { kind: 'text', text }]
-        })
-        break
-      }
-
-      case 'thinking': {
-        const delta = (event.data.text as string) ?? ''
-        thinkAccRef.current += delta
-        const text = thinkAccRef.current
-        updateCurrentTurnParts((parts) => {
-          const idx = parts.findIndex((p) => p.kind === 'thinking' && !p.done)
-          if (idx >= 0) {
-            return [
-              ...parts.slice(0, idx),
-              { ...parts[idx], text, done: false },
-              ...parts.slice(idx + 1),
-            ]
-          }
-          return [...parts, { kind: 'thinking', text, done: false }]
-        })
-        break
-      }
-
-      case 'tool-start': {
-        const tool = {
-          id: (event.data.toolCallId as string) ?? crypto.randomUUID(),
-          name: (event.data.toolName as string) ?? 'unknown',
-          status: 'running' as const,
-        }
-        updateCurrentTurnParts((parts) => {
-          const last = parts[parts.length - 1]
-          if (last?.kind === 'tool-batch') {
-            return [
-              ...parts.slice(0, -1),
-              { ...last, tools: [...last.tools, tool] },
-            ]
-          }
-          return [...parts, { kind: 'tool-batch', tools: [tool] }]
-        })
-        break
-      }
-
-      case 'tool-end': {
-        const toolId = event.data.toolCallId as string
-        const toolStatus: 'completed' | 'error' =
-          (event.data.status as string) === 'error' ? 'error' : 'completed'
-        const durationMs = event.data.durationMs as number | undefined
-        updateCurrentTurnParts((parts) => {
-          for (let i = parts.length - 1; i >= 0; i--) {
-            const part = parts[i]
-            if (
-              part.kind === 'tool-batch' &&
-              part.tools.some((t) => t.id === toolId)
-            ) {
-              const updatedTools = part.tools.map((t) =>
-                t.id === toolId ? { ...t, status: toolStatus, durationMs } : t,
-              )
-              return [
-                ...parts.slice(0, i),
-                { ...part, tools: updatedTools },
-                ...parts.slice(i + 1),
-              ]
-            }
-          }
-          return parts
-        })
-        break
-      }
-
-      case 'done': {
-        updateCurrentTurnParts((parts) =>
-          parts.map((part) =>
-            part.kind === 'thinking' ? { ...part, done: true } : part,
-          ),
-        )
-        setTurns((prev) => {
-          const last = prev[prev.length - 1]
-          if (!last) return prev
-          const updated = [...prev.slice(0, -1), { ...last, done: true }]
-          persistTurns(updated)
-          return updated
-        })
-        break
-      }
-
-      case 'error': {
-        const msg =
-          (event.data.message as string) ??
-          (event.data.error as string) ??
-          'Unknown error'
-        updateCurrentTurnParts((parts) => [
-          ...parts,
-          { kind: 'text', text: `Error: ${msg}` },
-        ])
-        break
-      }
-    }
+  const processStreamEvent = (event: UIMessageStreamEvent) => {
+    streamStateRef.current = reduceBrowserOsAgentStreamEvent(
+      streamStateRef.current,
+      event,
+    )
+    updateCurrentTurnParts((turn) => ({
+      ...turn,
+      parts: streamStateRef.current.parts,
+      done: streamStateRef.current.done,
+    }))
   }
 
   const send = async (text: string) => {
     if (!text.trim() || streaming) return
 
+    const message = text.trim()
+    const conversation = buildBrowserOsConversation(turns)
     const turn: AgentConversationTurn = {
       id: crypto.randomUUID(),
-      userText: text.trim(),
+      userText: message,
       parts: [],
       done: false,
       timestamp: Date.now(),
     }
     setTurns((prev) => [...prev, turn])
     setStreaming(true)
-    textAccRef.current = ''
-    thinkAccRef.current = ''
+    streamStateRef.current = createBrowserOsAgentStreamState()
     const abortController = new AbortController()
     streamAbortRef.current = abortController
 
     try {
       const response = await chatWithAgent(
         agentId,
-        text.trim(),
-        sessionKeyRef.current,
+        {
+          message,
+          sessionKey: sessionKeyRef.current,
+          conversation,
+        },
         abortController.signal,
       )
       if (!response.ok) {
-        const err = await response.text()
-        updateCurrentTurnParts((parts) => [
-          ...parts,
-          { kind: 'text', text: `Error: ${err}` },
-        ])
+        const err = await readErrorResponse(response)
+        processStreamEvent({ type: 'error', errorText: err })
         return
       }
       await consumeSSEStream(
@@ -225,10 +133,7 @@ export function useAgentConversation(agentId: string, agentName: string) {
     } catch (err) {
       if (abortController.signal.aborted) return
       const msg = err instanceof Error ? err.message : String(err)
-      updateCurrentTurnParts((parts) => [
-        ...parts,
-        { kind: 'text', text: `Error: ${msg}` },
-      ])
+      processStreamEvent({ type: 'error', errorText: msg })
     } finally {
       if (streamAbortRef.current === abortController) {
         streamAbortRef.current = null
@@ -243,6 +148,7 @@ export function useAgentConversation(agentId: string, agentName: string) {
     setTurns([])
     setStreaming(false)
     sessionKeyRef.current = crypto.randomUUID()
+    streamStateRef.current = createBrowserOsAgentStreamState()
   }
 
   return {
@@ -253,4 +159,14 @@ export function useAgentConversation(agentId: string, agentName: string) {
     send,
     resetConversation,
   }
+}
+
+async function readErrorResponse(response: Response): Promise<string> {
+  try {
+    const body = (await response.json()) as { error?: string }
+    if (body.error) {
+      return body.error
+    }
+  } catch {}
+  return `Request failed with status ${response.status}`
 }
