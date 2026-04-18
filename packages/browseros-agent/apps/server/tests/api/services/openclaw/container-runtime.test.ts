@@ -67,9 +67,9 @@ describe('ContainerRuntime', () => {
       cwd: '/tmp/openclaw',
       args: ['rm', '-f', 'openclaw-gateway'],
     })
-    expect(calls.at(-1)).toEqual({
+    expect(calls[1]).toEqual({
       cwd: '/tmp/openclaw',
-      args: expect.arrayContaining([
+      args: [
         'run',
         '-d',
         '--name',
@@ -81,14 +81,35 @@ describe('ContainerRuntime', () => {
         '--env-file',
         '/tmp/openclaw/.openclaw/.env',
         '-e',
-        'OPENCLAW_GATEWAY_TOKEN=token-123',
+        'HOME=/home/node',
+        '-e',
+        'OPENCLAW_HOME=/home/node',
+        '-e',
+        'OPENCLAW_STATE_DIR=/home/node/.openclaw',
+        '-e',
+        'OPENCLAW_NO_RESPAWN=1',
+        '-e',
+        'NODE_COMPILE_CACHE=/var/tmp/openclaw-compile-cache',
+        '-e',
+        'NODE_ENV=production',
+        '-e',
+        'TZ=America/Los_Angeles',
         '-v',
         '/tmp/openclaw:/home/node',
+        '--add-host',
+        'host.containers.internal:host-gateway',
+        '-e',
+        'OPENCLAW_GATEWAY_TOKEN=token-123',
         'ghcr.io/openclaw/openclaw:2026.4.12',
         'node',
         'dist/index.js',
         'gateway',
-      ]),
+        '--bind',
+        'lan',
+        '--port',
+        '18789',
+        '--allow-unconfigured',
+      ],
     })
   })
 })
