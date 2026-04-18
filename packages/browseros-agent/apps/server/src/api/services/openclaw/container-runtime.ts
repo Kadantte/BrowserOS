@@ -89,10 +89,7 @@ export class ContainerRuntime {
   }
 
   async stopGateway(onLog?: LogFn): Promise<void> {
-    const code = await this.removeGatewayContainers({
-      onLog,
-      requireAtLeastOneSuccess: true,
-    })
+    const code = await this.removeGatewayContainer(onLog)
     if (code !== 0) {
       throw new Error(`gateway stop failed with code ${code}`)
     }
@@ -188,13 +185,18 @@ export class ContainerRuntime {
     spec: GatewayContainerSpec,
     onLog?: LogFn,
   ): Promise<number> {
+    const setupContainerName = `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`
+    await this.runPodmanCommand(
+      ['rm', '-f', '--ignore', setupContainerName],
+      onLog,
+    )
     const setupArgs = command[0] === 'node' ? command.slice(1) : command
     return this.runPodmanCommand(
       [
         'run',
         '--rm',
         '--name',
-        `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`,
+        setupContainerName,
         ...this.buildGatewayContainerRuntimeArgs(spec),
         spec.image,
         'node',
@@ -244,26 +246,14 @@ export class ContainerRuntime {
   }
 
   private async ensureGatewayRemoved(onLog?: LogFn): Promise<void> {
-    await this.removeGatewayContainers({
-      onLog,
-      requireAtLeastOneSuccess: false,
-    })
+    await this.removeGatewayContainer(onLog)
   }
 
-  private async removeGatewayContainers(input: {
-    onLog?: LogFn
-    requireAtLeastOneSuccess: boolean
-  }): Promise<number> {
-    const code = await this.runPodmanCommand(
+  private async removeGatewayContainer(onLog?: LogFn): Promise<number> {
+    return this.runPodmanCommand(
       ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
-      input.onLog,
+      onLog,
     )
-
-    if (input.requireAtLeastOneSuccess && code !== 0) {
-      return code
-    }
-
-    return 0
   }
 
   private buildGatewayContainerRuntimeArgs(

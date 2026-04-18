@@ -848,6 +848,7 @@ export class OpenClawService {
     await writeFile(envPath, '', { mode: 0o600 })
   }
 
+  // Pin away from latest because newer OpenClaw releases regress OpenRouter chat streams.
   private getGatewayImage(): string {
     return process.env.OPENCLAW_IMAGE || 'ghcr.io/openclaw/openclaw:2026.4.12'
   }

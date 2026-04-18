@@ -151,6 +151,15 @@ describe('ContainerRuntime', () => {
       {
         cwd: PROJECT_DIR,
         args: [
+          'rm',
+          '-f',
+          '--ignore',
+          `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`,
+        ],
+      },
+      {
+        cwd: PROJECT_DIR,
+        args: [
           'run',
           '--rm',
           '--name',
