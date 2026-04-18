@@ -1,4 +1,6 @@
 import { execSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { Browser } from '@browseros/server/browser'
 import { CdpBackend } from '@browseros/server/browser/backends/cdp'
 import { RecordWriter } from '../collectors/record-writer'
@@ -22,6 +24,7 @@ export interface CollectionRunnerOptions {
   workers: number
   limit?: number
   headless: boolean
+  profileSeed?: string
   basePorts?: EvalPorts
 }
 
@@ -41,6 +44,12 @@ class TargetQueue {
 export async function runCollection(
   opts: CollectionRunnerOptions,
 ): Promise<{ writtenCount: number; errors: string[] }> {
+  if (opts.profileSeed && !existsSync(join(opts.profileSeed, 'Default'))) {
+    throw new Error(
+      `profile seed missing Default/ subfolder: ${join(opts.profileSeed, 'Default')}`,
+    )
+  }
+
   const loaded = await loadCollectionTargets(opts.seedsPath)
   const targets = opts.limit ? loaded.slice(0, opts.limit) : loaded
 
@@ -84,6 +93,7 @@ async function runWorker(
     basePorts,
     false,
     opts.headless,
+    opts.profileSeed ?? null,
   )
   await appManager.restart()
   appManagers.push(appManager)

@@ -12,12 +12,17 @@ Usage:
   bun run collect --seeds <path.jsonl> [options]
 
 Options:
-  --seeds <path>    JSONL file with CollectionTarget entries (required)
-  --out <dir>       Output directory (default: results/vl-data/<timestamp>)
-  --workers <n>     Parallel workers (default: 1)
-  --limit <n>       Stop after N targets (default: all)
-  --headless        Run BrowserOS headless (default: false)
-  -h, --help        Show this help
+  --seeds <path>           JSONL file with CollectionTarget entries (required)
+  --out <dir>              Output directory (default: results/vl-data/<timestamp>)
+  --workers <n>            Parallel workers (default: 1)
+  --limit <n>              Stop after N targets (default: all)
+  --headless               Run BrowserOS headless (default: false)
+  --profile-seed <dir>     Seed each worker's user-data-dir from this snapshot.
+                           Expected layout: <dir>/Default/<profile files>.
+                           Use scripts/copy-browseros-profile.sh to build one.
+                           When set, --use-mock-keychain is dropped so cookies
+                           encrypted against the OS keychain still decrypt.
+  -h, --help               Show this help
 `
 
 async function main() {
@@ -29,6 +34,7 @@ async function main() {
       workers: { type: 'string', default: '1' },
       limit: { type: 'string' },
       headless: { type: 'boolean', default: false },
+      'profile-seed': { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
@@ -56,6 +62,10 @@ async function main() {
     ? resolve(process.cwd(), values.out)
     : resolve(projectRoot, `results/vl-data/${timestamp()}`)
 
+  const profileSeed = values['profile-seed']
+    ? resolve(process.cwd(), values['profile-seed'])
+    : undefined
+
   const { writtenCount, errors } = await runCollection({
     seedsPath: resolve(process.cwd(), values.seeds),
     outDir,
@@ -63,6 +73,7 @@ async function main() {
     workers,
     limit,
     headless: values.headless,
+    profileSeed,
   })
 
   console.log(`\nWrote ${writtenCount} record(s) to ${outDir}`)

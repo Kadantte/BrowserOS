@@ -14,6 +14,7 @@
  */
 
 import {
+  copyFileSync,
   existsSync,
   mkdtempSync,
   readFileSync,
@@ -52,16 +53,19 @@ export class BrowserOSAppManager {
   private readonly workerIndex: number
   private readonly loadExtensions: boolean
   private readonly headless: boolean
+  private readonly profileSeed: string | null
 
   constructor(
     workerIndex: number = 0,
     basePorts?: EvalPorts,
     loadExtensions: boolean = false,
     headless: boolean = false,
+    profileSeed: string | null = null,
   ) {
     this.workerIndex = workerIndex
     this.loadExtensions = loadExtensions
     this.headless = headless
+    this.profileSeed = profileSeed
     const base = basePorts ?? { cdp: 9010, server: 9110, extension: 9310 }
     this.ports = {
       cdp: base.cdp + workerIndex,
@@ -123,16 +127,25 @@ export class BrowserOSAppManager {
     // Unique temp dir per worker per restart
     this.tempDir = mkdtempSync('/tmp/browseros-eval-')
 
+    if (this.profileSeed) {
+      this.cloneProfileSeed(this.tempDir)
+    }
+
     console.log(
       `  [W${this.workerIndex}] Ports: CDP=${cdp} Server=${server} Extension=${extension}${this.headless ? ' (headless)' : ''}`,
     )
-    console.log(`  [W${this.workerIndex}] Profile: ${this.tempDir}`)
+    console.log(
+      `  [W${this.workerIndex}] Profile: ${this.tempDir}${this.profileSeed ? ' (seeded)' : ''}`,
+    )
 
     // --- Chrome Launch (matches start.ts startManualBrowser) ---
+    // Drop --use-mock-keychain when a real profile seed is in use — otherwise
+    // cookies encrypted against the OS keychain (where the login sessions
+    // live) decrypt to garbage and the seed's logged-in state is lost.
     const chromeArgs = [
       '--no-first-run',
       '--no-default-browser-check',
-      '--use-mock-keychain',
+      ...(this.profileSeed ? [] : ['--use-mock-keychain']),
       '--disable-browseros-server',
       '--disable-browseros-extensions',
       ...(this.headless ? ['--headless=new'] : []),
@@ -194,6 +207,43 @@ export class BrowserOSAppManager {
       throw new Error('Server health check timed out')
     }
     console.log(`  [W${this.workerIndex}] Server healthy`)
+  }
+
+  private cloneProfileSeed(tempDir: string): void {
+    const seed = this.profileSeed
+    if (!seed) return
+    const seedDefault = join(seed, 'Default')
+    if (!existsSync(seedDefault)) {
+      throw new Error(`Profile seed missing Default/ subfolder: ${seedDefault}`)
+    }
+
+    // APFS clone is O(1) on macOS; slower byte-copy on other filesystems.
+    const result = spawnSync({
+      cmd: ['cp', '-c', '-R', seedDefault, join(tempDir, 'Default')],
+      stdout: 'ignore',
+      stderr: 'pipe',
+    })
+    if (result.exitCode !== 0) {
+      const stderr = result.stderr?.toString?.() ?? ''
+      throw new Error(`Failed to clone profile seed: ${stderr.trim()}`)
+    }
+
+    const seedLocalState = join(seed, 'Local State')
+    const destLocalState = join(tempDir, 'Local State')
+    if (existsSync(seedLocalState)) {
+      copyFileSync(seedLocalState, destLocalState)
+    } else {
+      writeFileSync(destLocalState, '{}')
+    }
+
+    // Stale singleton files from the source instance would block Chrome.
+    for (const f of ['SingletonLock', 'SingletonSocket', 'SingletonCookie']) {
+      try {
+        rmSync(join(tempDir, 'Default', f), { force: true })
+      } catch {
+        // ignore
+      }
+    }
   }
 
   private async waitForCdp(): Promise<boolean> {
