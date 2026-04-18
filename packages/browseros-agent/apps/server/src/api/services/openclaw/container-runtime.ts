@@ -6,14 +6,10 @@
  * OpenClaw container lifecycle abstraction over PodmanRuntime.
  */
 
-import {
-  OPENCLAW_COMPOSE_PROJECT_NAME,
-  OPENCLAW_GATEWAY_CONTAINER_NAME,
-} from '@browseros/shared/constants/openclaw'
+import { OPENCLAW_GATEWAY_CONTAINER_NAME } from '@browseros/shared/constants/openclaw'
 import { logger } from '../../../lib/logger'
 import type { LogFn, PodmanRuntime } from './podman-runtime'
 
-const LEGACY_GATEWAY_CONTAINER_NAME = `${OPENCLAW_COMPOSE_PROJECT_NAME}-openclaw-gateway-1`
 const GATEWAY_CONTAINER_HOME = '/home/node'
 const GATEWAY_STATE_DIR = `${GATEWAY_CONTAINER_HOME}/.openclaw`
 
@@ -111,9 +107,8 @@ export class ContainerRuntime {
 
   async getGatewayLogs(tail = 50): Promise<string[]> {
     const lines: string[] = []
-    const containerName = await this.resolveGatewayContainerName()
     await this.runPodmanCommand(
-      ['logs', '--tail', String(tail), containerName],
+      ['logs', '--tail', String(tail), OPENCLAW_GATEWAY_CONTAINER_NAME],
       (line) => lines.push(line),
     )
     return lines
@@ -168,9 +163,7 @@ export class ContainerRuntime {
     try {
       const containers = await this.podman.listRunningContainers()
       const allOurs = containers.every(
-        (name) =>
-          name === OPENCLAW_GATEWAY_CONTAINER_NAME ||
-          name === LEGACY_GATEWAY_CONTAINER_NAME,
+        (name) => name === OPENCLAW_GATEWAY_CONTAINER_NAME,
       )
 
       if (containers.length === 0 || allOurs) {
@@ -182,10 +175,12 @@ export class ContainerRuntime {
   }
 
   async execInContainer(command: string[], onLog?: LogFn): Promise<number> {
-    const containerName = await this.resolveGatewayContainerName()
-    return this.podman.runCommand(['exec', containerName, ...command], {
-      onOutput: onLog,
-    })
+    return this.podman.runCommand(
+      ['exec', OPENCLAW_GATEWAY_CONTAINER_NAME, ...command],
+      {
+        onOutput: onLog,
+      },
+    )
   }
 
   async runGatewaySetupCommand(
@@ -255,41 +250,17 @@ export class ContainerRuntime {
     })
   }
 
-  private async resolveGatewayContainerName(): Promise<string> {
-    try {
-      const runningContainers = await this.podman.listRunningContainers()
-      if (runningContainers.includes(OPENCLAW_GATEWAY_CONTAINER_NAME)) {
-        return OPENCLAW_GATEWAY_CONTAINER_NAME
-      }
-      if (runningContainers.includes(LEGACY_GATEWAY_CONTAINER_NAME)) {
-        return LEGACY_GATEWAY_CONTAINER_NAME
-      }
-    } catch {
-      // fallback to the direct runtime name if we can't inspect container state
-    }
-    return OPENCLAW_GATEWAY_CONTAINER_NAME
-  }
-
   private async removeGatewayContainers(input: {
     onLog?: LogFn
     requireAtLeastOneSuccess: boolean
   }): Promise<number> {
-    const containerNames = [
-      OPENCLAW_GATEWAY_CONTAINER_NAME,
-      LEGACY_GATEWAY_CONTAINER_NAME,
-    ]
-    const codes: number[] = []
+    const code = await this.runPodmanCommand(
+      ['rm', '-f', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      input.onLog,
+    )
 
-    for (const containerName of containerNames) {
-      const code = await this.runPodmanCommand(
-        ['rm', '-f', containerName],
-        input.onLog,
-      )
-      codes.push(code)
-    }
-
-    if (input.requireAtLeastOneSuccess && codes.every((code) => code !== 0)) {
-      return codes[0] ?? 1
+    if (input.requireAtLeastOneSuccess && code !== 0) {
+      return code
     }
 
     return 0
