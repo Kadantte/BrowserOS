@@ -43,6 +43,11 @@ async function main() {
     process.exit(1)
   }
 
+  const workers = parsePositiveInt(values.workers, '--workers')
+  const limit = values.limit
+    ? parsePositiveInt(values.limit, '--limit')
+    : undefined
+
   const projectRoot = resolve(
     dirname(fileURLToPath(import.meta.url)),
     '../../..',
@@ -55,8 +60,8 @@ async function main() {
     seedsPath: resolve(process.cwd(), values.seeds),
     outDir,
     projectRoot,
-    workers: Number.parseInt(values.workers, 10),
-    limit: values.limit ? Number.parseInt(values.limit, 10) : undefined,
+    workers,
+    limit,
     headless: values.headless,
   })
 
@@ -75,6 +80,15 @@ function timestamp(): string {
   const d = new Date()
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}`
+}
+
+function parsePositiveInt(raw: string, flag: string): number {
+  const n = Number.parseInt(raw, 10)
+  if (!Number.isFinite(n) || n < 1) {
+    console.error(`error: ${flag} must be a positive integer (got "${raw}")`)
+    process.exit(1)
+  }
+  return n
 }
 
 main().catch((err) => {

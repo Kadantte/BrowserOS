@@ -14,13 +14,25 @@ export interface Bbox {
 }
 
 function quadBounds(q: number[]): Bbox {
-  const xs = [q[0] ?? 0, q[2] ?? 0, q[4] ?? 0, q[6] ?? 0]
-  const ys = [q[1] ?? 0, q[3] ?? 0, q[5] ?? 0, q[7] ?? 0]
+  const xs = [q[0], q[2], q[4], q[6]]
+  const ys = [q[1], q[3], q[5], q[7]]
+  const x1 = Math.min(...xs)
+  const y1 = Math.min(...ys)
+  const x2 = Math.max(...xs)
+  const y2 = Math.max(...ys)
+  if (
+    !Number.isFinite(x1) ||
+    !Number.isFinite(y1) ||
+    !Number.isFinite(x2) ||
+    !Number.isFinite(y2)
+  ) {
+    throw new Error('Quad contains non-finite coordinates')
+  }
   return {
-    x1: Math.floor(Math.min(...xs)),
-    y1: Math.floor(Math.min(...ys)),
-    x2: Math.ceil(Math.max(...xs)),
-    y2: Math.ceil(Math.max(...ys)),
+    x1: Math.floor(x1),
+    y1: Math.floor(y1),
+    x2: Math.ceil(x2),
+    y2: Math.ceil(y2),
   }
 }
 

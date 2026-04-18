@@ -9,6 +9,12 @@ import type { CollectionTarget } from '../types/collection-target'
 import type { EvalPorts } from '../utils/dev-config'
 import { BrowserOSAppManager } from './browseros-app-manager'
 
+const DEFAULT_BASE_PORTS: EvalPorts = {
+  cdp: 9010,
+  server: 9110,
+  extension: 9310,
+}
+
 export interface CollectionRunnerOptions {
   seedsPath: string
   outDir: string
@@ -21,9 +27,14 @@ export interface CollectionRunnerOptions {
 
 class TargetQueue {
   private index = 0
+  private stopped = false
   constructor(private readonly targets: CollectionTarget[]) {}
   next(): CollectionTarget | null {
-    return this.index >= this.targets.length ? null : this.targets[this.index++]
+    if (this.stopped || this.index >= this.targets.length) return null
+    return this.targets[this.index++]
+  }
+  stop(): void {
+    this.stopped = true
   }
 }
 
@@ -41,16 +52,15 @@ export async function runCollection(
   const appManagers: BrowserOSAppManager[] = []
   const workerCount = Math.max(1, Math.min(opts.workers, targets.length))
 
-  const cleanupSignal = setupSignalHandlers(appManagers)
-  let writtenCount = 0
+  const cleanupSignal = setupSignalHandlers(queue, appManagers)
 
+  let writtenCount = 0
   try {
     const workers = Array.from({ length: workerCount }, (_, i) =>
-      runWorker(i, queue, writer, opts, appManagers).then((n) => {
-        writtenCount += n
-      }),
+      runWorker(i, queue, writer, opts, appManagers),
     )
-    await Promise.all(workers)
+    const counts = await Promise.all(workers)
+    writtenCount = counts.reduce((a, b) => a + b, 0)
   } finally {
     await Promise.allSettled(appManagers.map((m) => m.killApp()))
     cleanupSignal()
@@ -68,20 +78,15 @@ async function runWorker(
   opts: CollectionRunnerOptions,
   appManagers: BrowserOSAppManager[],
 ): Promise<number> {
-  const basePorts = opts.basePorts ?? {
-    cdp: 9010,
-    server: 9110,
-    extension: 9310,
-  }
+  const basePorts = opts.basePorts ?? DEFAULT_BASE_PORTS
   const appManager = new BrowserOSAppManager(
     workerIndex,
     basePorts,
     false,
     opts.headless,
   )
-  appManagers.push(appManager)
-
   await appManager.restart()
+  appManagers.push(appManager)
 
   const { cdp: cdpPort } = appManager.getPorts()
   const cdp = new CdpBackend({ port: cdpPort })
@@ -98,7 +103,7 @@ async function runWorker(
     browser,
     pageId,
     writer,
-    log: (msg) => console.log(`[W${workerIndex}]${msg}`),
+    log: (msg) => console.log(`worker ${workerIndex}:${msg}`),
   })
 
   let written = 0
@@ -106,7 +111,9 @@ async function runWorker(
     while (true) {
       const target = queue.next()
       if (!target) break
-      console.log(`[W${workerIndex}] collecting ${target.site} (${target.url})`)
+      console.log(
+        `worker ${workerIndex}: collecting ${target.site} (${target.url})`,
+      )
       written += await collector.collect(target)
     }
   } finally {
@@ -115,11 +122,22 @@ async function runWorker(
   return written
 }
 
-function setupSignalHandlers(appManagers: BrowserOSAppManager[]): () => void {
-  const onSignal = async () => {
-    console.log('\nShutting down collection workers...')
-    await Promise.allSettled(appManagers.map((m) => m.killApp()))
-    process.exit(130)
+function setupSignalHandlers(
+  queue: TargetQueue,
+  appManagers: BrowserOSAppManager[],
+): () => void {
+  let tripped = false
+  const onSignal = () => {
+    if (tripped) return
+    tripped = true
+    console.log('\nShutting down: draining in-flight targets...')
+    queue.stop()
+    // Kick the app managers so workers unblock quickly. The outer `finally`
+    // in runCollection will also await killApp — allSettled tolerates the
+    // double-kill cleanly.
+    for (const m of appManagers) {
+      m.killApp().catch(() => {})
+    }
   }
   process.on('SIGINT', onSignal)
   process.on('SIGTERM', onSignal)

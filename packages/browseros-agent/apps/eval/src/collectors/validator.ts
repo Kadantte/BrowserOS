@@ -52,7 +52,10 @@ async function validateRecordFile(
 
   const result = CollectedRecordSchema.safeParse(parsed)
   if (!result.success) {
-    return [`${filename}: schema: ${result.error.message}`]
+    const issues = result.error.issues
+      .map((iss) => `${iss.path.join('.')}: ${iss.message}`)
+      .join(', ')
+    return [`${filename}: schema: ${issues}`]
   }
   const record = result.data
 

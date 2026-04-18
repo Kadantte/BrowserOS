@@ -35,12 +35,8 @@ export class VlCollector {
         await sleep(LAYOUT_SETTLE_MS)
         const { record, pngBase64 } = await this.captureOne(target)
         const result = await writer.write(record, pngBase64)
-        if (!result.skipped) {
-          written++
-          log?.(`  captured ${result.id} (${state.kind})`)
-        } else {
-          log?.(`  skipped existing ${result.id}`)
-        }
+        written++
+        log?.(`  captured ${result.id} (${state.kind})`)
       } catch (error) {
         log?.(`  failed ${target.site} ${state.kind}: ${errorMessage(error)}`)
       }
@@ -82,10 +78,25 @@ export class VlCollector {
     pngBase64: string
   }> {
     const { browser, pageId } = this.deps
+
+    // Snapshot, scroll_y, url, and screenshot must reflect the same page state
+    // — bbox resolution can take seconds on a busy page and would let scroll
+    // drift, so capture all frozen-state fields adjacent in time.
     const rawSnapshot = await browser.snapshot(pageId)
     const snapshot = rawSnapshot.replace(/\n$/, '')
-    const parsed = parseSnapshot(snapshot)
+    const scrollY = toInt(
+      (await browser.evaluate(pageId, 'window.scrollY')).value,
+    )
+    const resolvedUrl = coerceString(
+      (await browser.evaluate(pageId, 'window.location.href')).value,
+      target.url,
+    )
+    const screenshot = await browser.screenshot(pageId, {
+      format: 'png',
+      fullPage: false,
+    })
 
+    const parsed = parseSnapshot(snapshot)
     const elements: ElementRecord[] = []
     for (const line of parsed) {
       let bbox: [number, number, number, number]
@@ -104,18 +115,6 @@ export class VlCollector {
         in_viewport: overlapsViewport(bbox),
       })
     }
-
-    const scrollY = toInt(
-      (await browser.evaluate(pageId, 'window.scrollY')).value,
-    )
-    const resolvedUrl = coerceString(
-      (await browser.evaluate(pageId, 'window.location.href')).value,
-      target.url,
-    )
-    const screenshot = await browser.screenshot(pageId, {
-      format: 'png',
-      fullPage: false,
-    })
 
     return {
       record: {

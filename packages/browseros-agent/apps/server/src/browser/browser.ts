@@ -917,6 +917,11 @@ export class Browser {
     height: number,
     deviceScaleFactor: number = 1,
   ): Promise<void> {
+    if (width <= 0 || height <= 0) {
+      throw new Error(
+        `Invalid viewport: width=${width} height=${height} must both be > 0`,
+      )
+    }
     const session = await this.resolveSession(page)
     await session.Emulation.setDeviceMetricsOverride({
       width,
@@ -924,6 +929,11 @@ export class Browser {
       deviceScaleFactor,
       mobile: false,
     })
+  }
+
+  async clearViewport(page: number): Promise<void> {
+    const session = await this.resolveSession(page)
+    await session.Emulation.clearDeviceMetricsOverride()
   }
 
   async getElementBbox(

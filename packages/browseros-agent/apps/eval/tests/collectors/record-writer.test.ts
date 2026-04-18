@@ -44,7 +44,6 @@ describe('RecordWriter', () => {
     const writer = new RecordWriter(outDir, outDir)
     await writer.init()
     const result = await writer.write(makeRecord('hn'), TINY_PNG_BASE64)
-    expect(result.skipped).toBe(false)
     expect(result.id).toMatch(/^hn_[0-9a-f]{8}$/)
 
     const pngFiles = await readdir(join(outDir, 'screenshots'))
@@ -58,6 +57,17 @@ describe('RecordWriter', () => {
     expect(record.id).toBe(result.id)
     expect(record.screenshot_path).toContain(`screenshots/${result.id}.png`)
     expect(record.snapshot).toBe('[1] button "ok"')
+  })
+
+  it('writes atomically — no .tmp files remain after a successful write', async () => {
+    const writer = new RecordWriter(outDir, outDir)
+    await writer.init()
+    await writer.write(makeRecord('hn'), TINY_PNG_BASE64)
+    const pngFiles = await readdir(join(outDir, 'screenshots'))
+    const jsonFiles = await readdir(join(outDir, 'raw'))
+    for (const f of [...pngFiles, ...jsonFiles]) {
+      expect(f.endsWith('.tmp')).toBe(false)
+    }
   })
 
   it('writes manifest with site counts and collector tag', async () => {
@@ -86,16 +96,13 @@ describe('RecordWriter', () => {
     expect(siteCounts).toEqual({ hn: 2, wiki: 1 })
   })
 
-  it('is idempotent: re-writing an existing id skips', async () => {
+  it('generates a fresh id per write even for the same site', async () => {
     const writer = new RecordWriter(outDir, outDir)
     await writer.init()
     const first = await writer.write(makeRecord('hn'), TINY_PNG_BASE64)
-    const files = await readdir(join(outDir, 'raw'))
-
-    // Second write generates a new uuid → new files, not a skip.
     const second = await writer.write(makeRecord('hn'), TINY_PNG_BASE64)
-    expect(second.skipped).toBe(false)
     expect(second.id).not.toBe(first.id)
-    expect(files.length).toBe(1)
+    const files = await readdir(join(outDir, 'raw'))
+    expect(files.length).toBe(2)
   })
 })
