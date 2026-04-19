@@ -4,6 +4,9 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { UnsupportedOpenClawProviderError } from '../../../src/api/services/openclaw/openclaw-provider-map'
 
 describe('createOpenClawRoutes', () => {
@@ -219,6 +222,31 @@ describe('createOpenClawRoutes', () => {
     expect(await response.json()).toEqual({
       error: 'File does not exist: /does/not/exist/podman',
     })
+  })
+
+  it('rejects a non-executable podman path on POST', async () => {
+    const tempDir = mkdtempSync(join(tmpdir(), 'openclaw-route-'))
+    const nonExec = join(tempDir, 'podman')
+    writeFileSync(nonExec, 'not a binary')
+    chmodSync(nonExec, 0o644)
+    try {
+      const { createOpenClawRoutes } = await import(
+        '../../../src/api/routes/openclaw'
+      )
+      const route = createOpenClawRoutes()
+
+      const response = await route.request('/podman-overrides', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ podmanPath: nonExec }),
+      })
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({
+        error: `File is not executable: ${nonExec}`,
+      })
+    } finally {
+      rmSync(tempDir, { recursive: true, force: true })
+    }
   })
 
   it('applies and echoes when POST clears the override', async () => {

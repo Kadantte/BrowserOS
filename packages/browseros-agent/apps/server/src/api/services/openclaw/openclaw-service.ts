@@ -538,6 +538,8 @@ export class OpenClawService {
       podmanPath: input.podmanPath,
     })
 
+    // Intentionally mutates the module-level PodmanRuntime singleton so every
+    // consumer (including future service instances) sees the new path.
     configurePodmanRuntime({
       resourcesDir: this.resourcesDir ?? undefined,
       podmanPath: input.podmanPath ?? undefined,

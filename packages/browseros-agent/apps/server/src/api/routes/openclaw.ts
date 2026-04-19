@@ -7,7 +7,7 @@
  * Thin layer delegating to OpenClawService.
  */
 
-import { existsSync } from 'node:fs'
+import { accessSync, existsSync, constants as fsConstants } from 'node:fs'
 import path from 'node:path'
 import { OPENCLAW_GATEWAY_PORT } from '@browseros/shared/constants/openclaw'
 import { Hono } from 'hono'
@@ -41,6 +41,11 @@ function getPodmanOverrideValidationError(body: {
   }
   if (!existsSync(body.podmanPath)) {
     return `File does not exist: ${body.podmanPath}`
+  }
+  try {
+    accessSync(body.podmanPath, fsConstants.X_OK)
+  } catch {
+    return `File is not executable: ${body.podmanPath}`
   }
   return null
 }
