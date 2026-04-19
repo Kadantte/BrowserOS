@@ -655,6 +655,7 @@ export class OpenClawService {
   }
 
   private rebuildRuntimeClients(): void {
+    this.stopGatewayLogTail()
     this.runtime = new ContainerRuntime(getPodmanRuntime(), this.openclawDir)
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
