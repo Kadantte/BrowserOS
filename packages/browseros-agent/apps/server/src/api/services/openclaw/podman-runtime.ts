@@ -287,6 +287,7 @@ export function configurePodmanRuntime(config: {
   resourcesDir?: string
   podmanPath?: string
   machineName?: string
+  platform?: NodeJS.Platform
 }): PodmanRuntime {
   const podmanPath =
     config.podmanPath ??
@@ -296,6 +297,7 @@ export function configurePodmanRuntime(config: {
   runtime = new PodmanRuntime({
     podmanPath,
     machineName: config.machineName,
+    platform: config.platform,
   })
   return runtime
 }

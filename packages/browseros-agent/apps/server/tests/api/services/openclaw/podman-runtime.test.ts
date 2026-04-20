@@ -115,6 +115,145 @@ describe('podman runtime', () => {
     expect(runtime.getPodmanPath()).toBe('podman')
   })
 
+  it('forwards platform overrides through configurePodmanRuntime', async () => {
+    const spawnSpy = spyOn(Bun, 'spawn')
+    const runtime = configurePodmanRuntime({
+      podmanPath: 'podman',
+      platform: 'linux',
+    })
+
+    expect(getPodmanRuntime()).toBe(runtime)
+    expect(await runtime.getMachineStatus()).toEqual({
+      initialized: true,
+      running: true,
+    })
+    expect(spawnSpy).not.toHaveBeenCalled()
+  })
+
+  it('preserves the default OpenClaw machine name through the factory singleton path', async () => {
+    spyOn(Bun, 'spawn').mockReturnValue(
+      createSpawnResult({
+        stdout: JSON.stringify([
+          { Name: 'podman-machine-default', Running: true },
+          {
+            Name: BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME,
+            Running: false,
+            LastUp: '',
+          },
+        ]),
+      }),
+    )
+    const runtime = configurePodmanRuntime({
+      podmanPath: 'podman',
+      platform: 'darwin',
+    })
+
+    expect(getPodmanRuntime()).toBe(runtime)
+    expect(await getPodmanRuntime().getMachineStatus()).toEqual({
+      initialized: true,
+      running: false,
+    })
+  })
+
+  it('ensureReady initializes and starts the default named machine when it is missing', async () => {
+    const spawnSpy = spyOn(Bun, 'spawn')
+      .mockReturnValueOnce(
+        createSpawnResult({
+          stdout: JSON.stringify([
+            { Name: 'podman-machine-default', Running: true },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(createSpawnResult())
+      .mockReturnValueOnce(createSpawnResult())
+    const runtime = configurePodmanRuntime({
+      podmanPath: 'podman',
+      platform: 'darwin',
+    })
+    const logs: string[] = []
+
+    await runtime.ensureReady((line) => logs.push(line))
+    await runtime.ensureReady((line) => logs.push(line))
+
+    expect(logs).toEqual([
+      'Initializing Podman machine...',
+      'Starting Podman machine...',
+    ])
+    expect(spawnSpy).toHaveBeenNthCalledWith(
+      1,
+      ['podman', 'machine', 'list', '--format', 'json'],
+      { stdout: 'pipe', stderr: 'ignore' },
+    )
+    expect(spawnSpy).toHaveBeenNthCalledWith(
+      2,
+      [
+        'podman',
+        'machine',
+        'init',
+        '--cpus',
+        '8',
+        '--memory',
+        '8096',
+        '--disk-size',
+        '10',
+        BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME,
+      ],
+      {
+        stdout: 'ignore',
+        stderr: 'pipe',
+      },
+    )
+    expect(spawnSpy).toHaveBeenNthCalledWith(
+      3,
+      ['podman', 'machine', 'start', BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME],
+      {
+        stdout: 'ignore',
+        stderr: 'pipe',
+      },
+    )
+    expect(spawnSpy).toHaveBeenCalledTimes(3)
+  })
+
+  it('ensureReady starts but does not reinitialize the default named machine when it exists but is stopped', async () => {
+    const spawnSpy = spyOn(Bun, 'spawn')
+      .mockReturnValueOnce(
+        createSpawnResult({
+          stdout: JSON.stringify([
+            {
+              Name: BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME,
+              Running: false,
+              LastUp: '',
+            },
+          ]),
+        }),
+      )
+      .mockReturnValueOnce(createSpawnResult())
+    const runtime = configurePodmanRuntime({
+      podmanPath: 'podman',
+      platform: 'darwin',
+    })
+    const logs: string[] = []
+
+    await runtime.ensureReady((line) => logs.push(line))
+    await runtime.ensureReady((line) => logs.push(line))
+
+    expect(logs).toEqual(['Starting Podman machine...'])
+    expect(spawnSpy).toHaveBeenNthCalledWith(
+      1,
+      ['podman', 'machine', 'list', '--format', 'json'],
+      { stdout: 'pipe', stderr: 'ignore' },
+    )
+    expect(spawnSpy).toHaveBeenNthCalledWith(
+      2,
+      ['podman', 'machine', 'start', BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME],
+      {
+        stdout: 'ignore',
+        stderr: 'pipe',
+      },
+    )
+    expect(spawnSpy).toHaveBeenCalledTimes(2)
+  })
+
   it('selects the configured machine by name from machine list output', async () => {
     const spawnSpy = spyOn(Bun, 'spawn').mockReturnValue(
       createSpawnResult({
