@@ -2,7 +2,7 @@ import { describe, expect, it } from 'bun:test'
 import { getOpenClawOperatorState } from './openclaw-operator-state'
 import type { OpenClawStatus } from './useOpenClaw'
 
-function buildStatus(overrides: Partial<OpenClawStatus>): OpenClawStatus {
+function buildStatus(overrides: Partial<OpenClawStatus> = {}): OpenClawStatus {
   return {
     status: 'running',
     podmanAvailable: true,

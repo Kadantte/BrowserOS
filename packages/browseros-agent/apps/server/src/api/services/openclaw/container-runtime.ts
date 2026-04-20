@@ -9,7 +9,11 @@
 import { createServer } from 'node:net'
 import { OPENCLAW_GATEWAY_CONTAINER_NAME } from '@browseros/shared/constants/openclaw'
 import { logger } from '../../../lib/logger'
-import type { LogFn, PodmanRuntime } from './podman-runtime'
+import {
+  BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME,
+  type LogFn,
+  type PodmanRuntime,
+} from './podman-runtime'
 
 const GATEWAY_CONTAINER_HOME = '/home/node'
 const GATEWAY_STATE_DIR = `${GATEWAY_CONTAINER_HOME}/.openclaw`
@@ -117,6 +121,11 @@ export class ContainerRuntime {
       this.logPodmanCommandResult(runArgs, result)
 
       if (result.code === 0) {
+        logger.info('OpenClaw gateway bound to host port', {
+          hostPort,
+          preferredPort: input.port,
+          attempt,
+        })
         return hostPort
       }
 
@@ -317,7 +326,13 @@ export class ContainerRuntime {
   ): Promise<{ code: number; output: string[] }> {
     const lines: string[] = []
     const command = ['podman', ...args].join(' ')
+    const podmanPath =
+      typeof this.podman.getPodmanPath === 'function'
+        ? this.podman.getPodmanPath()
+        : 'podman'
     logger.info('Running OpenClaw podman command', {
+      podmanPath,
+      machineName: BROWSEROS_OPENCLAW_PODMAN_MACHINE_NAME,
       command,
     })
     const code = await this.podman.runCommand(args, {
