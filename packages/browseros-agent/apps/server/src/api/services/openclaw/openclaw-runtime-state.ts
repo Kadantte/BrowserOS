@@ -53,13 +53,26 @@ function isOpenClawRuntimeState(value: unknown): value is OpenClawRuntimeState {
 
   const state = value as Record<string, unknown>
   return (
-    (typeof state.hostGatewayPort === 'number' ||
-      state.hostGatewayPort === null) &&
+    isValidHostGatewayPort(state.hostGatewayPort) &&
     (typeof state.lastSuccessfulStartAt === 'string' ||
       state.lastSuccessfulStartAt === null) &&
-    typeof state.repairGeneration === 'number' &&
+    isValidRepairGeneration(state.repairGeneration) &&
     (state.lastRepairOutcome === 'success' ||
       state.lastRepairOutcome === 'failed' ||
       state.lastRepairOutcome === null)
   )
+}
+
+function isValidHostGatewayPort(value: unknown): value is number | null {
+  return (
+    value === null ||
+    (typeof value === 'number' &&
+      Number.isInteger(value) &&
+      value >= 1 &&
+      value <= 65535)
+  )
+}
+
+function isValidRepairGeneration(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }

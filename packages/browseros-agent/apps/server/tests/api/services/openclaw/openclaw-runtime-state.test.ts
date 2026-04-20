@@ -40,6 +40,29 @@ describe('openclaw runtime state', () => {
     }
   })
 
+  it('returns null when persisted numeric values are invalid', async () => {
+    const tempDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'browseros-openclaw-runtime-state-'),
+    )
+
+    try {
+      fs.writeFileSync(
+        getOpenClawRuntimeStatePath(tempDir),
+        JSON.stringify({
+          hostGatewayPort: -1,
+          lastSuccessfulStartAt: null,
+          repairGeneration: 1.5,
+          lastRepairOutcome: 'success',
+        }),
+        'utf-8',
+      )
+
+      await expect(loadOpenClawRuntimeState(tempDir)).resolves.toBeNull()
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true })
+    }
+  })
+
   it('round-trips saved runtime state', async () => {
     const tempDir = fs.mkdtempSync(
       path.join(os.tmpdir(), 'browseros-openclaw-runtime-state-'),
