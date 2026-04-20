@@ -330,6 +330,45 @@ describe('ContainerRuntime', () => {
     expect(chosenPort).toBeGreaterThan(0)
   })
 
+  it('startGateway cleans up the managed container after an exhausted bind-conflict retry sequence', async () => {
+    const calls: Array<{ args: string[]; cwd?: string }> = []
+    const runtime = createRuntime(async (args, options) => {
+      calls.push({ args, cwd: options?.cwd })
+      if (args[0] === 'run') {
+        options?.onOutput?.(
+          'Error: unable to bind 127.0.0.1:18789: address already in use',
+        )
+        return 1
+      }
+      return 0
+    })
+
+    await expect(runtime.startGateway(defaultSpec)).rejects.toThrow(
+      'gateway start failed with code 1',
+    )
+
+    expect(calls).toHaveLength(7)
+    expect(calls[0]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+    })
+    expect(calls[1].args).toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[2]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+    })
+    expect(calls[3].args).not.toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[4]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+    })
+    expect(calls[5].args).not.toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[6]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+    })
+  })
+
   it('runGatewaySetupCommand in direct mode builds a one-off podman run command', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
     const runtime = createRuntime(async (args, options) => {

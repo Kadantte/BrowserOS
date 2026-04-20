@@ -120,15 +120,20 @@ export class ContainerRuntime {
         return hostPort
       }
 
-      if (
-        this.isGatewayBindConflict(result.output) &&
-        attempt < GATEWAY_START_MAX_ATTEMPTS
-      ) {
+      const bindConflict = this.isGatewayBindConflict(result.output)
+
+      if (bindConflict && attempt < GATEWAY_START_MAX_ATTEMPTS) {
         logger.warn('OpenClaw gateway start hit a bind conflict; retrying', {
           attempt,
           hostPort,
         })
+      }
+
+      if (bindConflict) {
         await this.removeGatewayContainer(onLog)
+      }
+
+      if (bindConflict && attempt < GATEWAY_START_MAX_ATTEMPTS) {
         continue
       }
 
