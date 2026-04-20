@@ -6,6 +6,7 @@
 
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
+import { z } from 'zod'
 
 export interface OpenClawRuntimeState {
   hostGatewayPort: number | null
@@ -15,6 +16,14 @@ export interface OpenClawRuntimeState {
 }
 
 const RUNTIME_STATE_FILE_NAME = 'runtime-state.json'
+const openClawRuntimeStateSchema = z
+  .object({
+    hostGatewayPort: z.number().int().min(1).max(65535).nullable(),
+    lastSuccessfulStartAt: z.string().datetime({ offset: true }).nullable(),
+    repairGeneration: z.number().int().nonnegative(),
+    lastRepairOutcome: z.enum(['success', 'failed']).nullable(),
+  })
+  .strict()
 
 export function getOpenClawRuntimeStatePath(openclawDir: string): string {
   return join(openclawDir, RUNTIME_STATE_FILE_NAME)
@@ -27,8 +36,9 @@ export async function loadOpenClawRuntimeState(
     const parsed = JSON.parse(
       await readFile(getOpenClawRuntimeStatePath(openclawDir), 'utf-8'),
     ) as unknown
-    if (!isOpenClawRuntimeState(parsed)) return null
-    return parsed
+    const result = openClawRuntimeStateSchema.safeParse(parsed)
+    if (!result.success) return null
+    return result.data
   } catch {
     return null
   }
@@ -44,35 +54,4 @@ export async function saveOpenClawRuntimeState(
     `${JSON.stringify(state, null, 2)}\n`,
     'utf-8',
   )
-}
-
-function isOpenClawRuntimeState(value: unknown): value is OpenClawRuntimeState {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    return false
-  }
-
-  const state = value as Record<string, unknown>
-  return (
-    isValidHostGatewayPort(state.hostGatewayPort) &&
-    (typeof state.lastSuccessfulStartAt === 'string' ||
-      state.lastSuccessfulStartAt === null) &&
-    isValidRepairGeneration(state.repairGeneration) &&
-    (state.lastRepairOutcome === 'success' ||
-      state.lastRepairOutcome === 'failed' ||
-      state.lastRepairOutcome === null)
-  )
-}
-
-function isValidHostGatewayPort(value: unknown): value is number | null {
-  return (
-    value === null ||
-    (typeof value === 'number' &&
-      Number.isInteger(value) &&
-      value >= 1 &&
-      value <= 65535)
-  )
-}
-
-function isValidRepairGeneration(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 0
 }
