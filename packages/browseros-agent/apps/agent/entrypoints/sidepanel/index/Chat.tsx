@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createBrowserOSAction } from '@/lib/chat-actions/types'
 import {
   SIDEPANEL_AI_TRIGGERED_EVENT,
@@ -17,11 +17,12 @@ import { useJtbdPopup } from '@/lib/jtbd-popup/useJtbdPopup'
 import { track } from '@/lib/metrics/track'
 import { useVoiceInput } from '@/lib/voice/useVoiceInput'
 import { useChatSessionContext } from '../layout/ChatSessionContext'
-import { ChatEmptyState } from './ChatEmptyState'
+import { ChatComposerFloating } from './ambient/ChatComposerFloating'
+import { ChatOverlayBar } from './ambient/ChatOverlayBar'
+import { EditorialHeader } from './ambient/EditorialHeader'
 import { ChatError } from './ChatError'
-import { ChatFooter } from './ChatFooter'
 import { ChatMessages } from './ChatMessages'
-import type { ChatMode } from './chatTypes'
+import { AGENT_SUGGESTIONS, CHAT_SUGGESTIONS, type ChatMode } from './chatTypes'
 
 /**
  * @public
@@ -36,7 +37,10 @@ export const Chat = () => {
     stop,
     agentUrlError,
     chatError,
+    providers,
     selectedProvider,
+    handleSelectProvider,
+    resetConversation,
     getActionForMessage,
     liked,
     onClickLike,
@@ -60,6 +64,11 @@ export const Chat = () => {
   const [input, setInput] = useState('')
   const [attachedTabs, setAttachedTabs] = useState<chrome.tabs.Tab[]>([])
   const [mounted, setMounted] = useState(false)
+
+  const sessionHash = useMemo(() => {
+    return crypto.randomUUID().slice(0, 6)
+    // Rotates on full remount (new provider / new session); fine for display-only.
+  }, [])
 
   useEffect(() => {
     setMounted(true)
@@ -197,19 +206,32 @@ export const Chat = () => {
     onStopRecording: handleStopRecording,
   }
 
+  const suggestions = mode === 'chat' ? CHAT_SUGGESTIONS : AGENT_SUGGESTIONS
+  const title = selectedProvider?.name ?? 'Agent'
+  const subtitleParts = [
+    mode === 'agent' ? 'Agent mode' : 'Chat with this page',
+    `session/${sessionHash}`,
+    `${messages.length} turn${messages.length === 1 ? '' : 's'}`,
+  ]
+
   return (
-    <>
-      <main className="mt-4 flex h-full flex-1 flex-col space-y-4 overflow-y-auto">
+    <div className="relative flex h-full min-h-0 w-full flex-1 flex-col">
+      <ChatOverlayBar
+        status={status}
+        mode={mode}
+        onModeChange={handleModeChange}
+        selectedProvider={selectedProvider}
+        providers={providers}
+        onSelectProvider={handleSelectProvider}
+        onNewConversation={resetConversation}
+        hasMessages={messages.length > 0}
+      />
+
+      <main className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
         {isRestoringConversation ? (
           <div className="flex flex-1 items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
           </div>
-        ) : messages.length === 0 ? (
-          <ChatEmptyState
-            mode={mode}
-            mounted={mounted}
-            onSuggestionClick={handleSuggestionClick}
-          />
         ) : (
           <ChatMessages
             messages={messages}
@@ -229,22 +251,43 @@ export const Chat = () => {
             onToolDeny={(id) =>
               addToolApprovalResponse({ id, approved: false })
             }
+            variant="ambient"
+            header={
+              <EditorialHeader title={title} subtitleParts={subtitleParts} />
+            }
+            emptyStateSlot={
+              <AmbientEmptyStateSuggestions
+                mounted={mounted}
+                suggestions={suggestions}
+                onClick={handleSuggestionClick}
+              />
+            }
           />
         )}
         {agentUrlError && (
-          <ChatError
-            error={agentUrlError}
-            providerType={selectedProvider?.type}
-          />
+          <div className="pointer-events-none absolute inset-x-0 bottom-[130px] z-20 flex justify-center px-6">
+            <div className="pointer-events-auto w-full max-w-[720px]">
+              <ChatError
+                error={agentUrlError}
+                providerType={selectedProvider?.type}
+              />
+            </div>
+          </div>
         )}
         {chatError && (
-          <ChatError error={chatError} providerType={selectedProvider?.type} />
+          <div className="pointer-events-none absolute inset-x-0 bottom-[130px] z-20 flex justify-center px-6">
+            <div className="pointer-events-auto w-full max-w-[720px]">
+              <ChatError
+                error={chatError}
+                providerType={selectedProvider?.type}
+              />
+            </div>
+          </div>
         )}
       </main>
 
-      <ChatFooter
+      <ChatComposerFloating
         mode={mode}
-        onModeChange={handleModeChange}
         input={input}
         onInputChange={setInput}
         onSubmit={handleSubmit}
@@ -255,6 +298,33 @@ export const Chat = () => {
         onRemoveTab={removeTab}
         voice={voiceState}
       />
-    </>
+    </div>
   )
 }
+
+const AmbientEmptyStateSuggestions: React.FC<{
+  mounted: boolean
+  suggestions: { display: string; prompt: string; icon: string }[]
+  onClick: (prompt: string) => void
+}> = ({ mounted, suggestions, onClick }) => (
+  <div
+    className={`mt-2 flex flex-col gap-2 transition-all duration-500 ${
+      mounted ? 'translate-y-0 opacity-100' : 'translate-y-2 opacity-0'
+    }`}
+  >
+    <div className="mb-1 text-[13px] text-muted-foreground">Try asking…</div>
+    {suggestions.map((s) => (
+      <button
+        type="button"
+        key={s.display}
+        onClick={() => onClick(s.prompt)}
+        className="group flex items-center justify-between rounded-[10px] border border-border bg-background px-3.5 py-3 text-left text-sm transition-all hover:border-[var(--accent-orange)]/50 hover:bg-[var(--accent-orange)]/5"
+      >
+        <span>{s.display}</span>
+        <span className="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">
+          {s.icon}
+        </span>
+      </button>
+    ))}
+  </div>
+)

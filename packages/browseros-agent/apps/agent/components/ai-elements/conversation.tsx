@@ -80,13 +80,17 @@ export const ConversationEmptyState = ({
   </div>
 )
 
-export type ConversationScrollButtonProps = ComponentProps<typeof Button>
+export type ConversationScrollButtonProps = ComponentProps<typeof Button> & {
+  offsetBottom?: number
+}
 
 /**
  * @public
  */
 export const ConversationScrollButton = ({
   className,
+  offsetBottom,
+  style,
   ...props
 }: ConversationScrollButtonProps) => {
   const { isAtBottom, scrollToBottom } = useStickToBottomContext()
@@ -95,13 +99,18 @@ export const ConversationScrollButton = ({
     scrollToBottom()
   }, [scrollToBottom])
 
+  const resolvedStyle =
+    offsetBottom != null ? { ...style, bottom: offsetBottom } : style
+
   return (
     !isAtBottom && (
       <Button
         className={cn(
-          'absolute right-[16px] bottom-4 translate-x-[-50%] rounded-full',
+          'absolute right-[16px] translate-x-[-50%] rounded-full',
+          offsetBottom == null && 'bottom-4',
           className,
         )}
+        style={resolvedStyle}
         onClick={handleScrollToBottom}
         size="icon"
         type="button"

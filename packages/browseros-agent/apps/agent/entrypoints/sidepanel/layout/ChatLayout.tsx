@@ -1,5 +1,5 @@
 import type { FC } from 'react'
-import { Outlet } from 'react-router'
+import { Outlet, useLocation } from 'react-router'
 import { ChatHeader } from '../index/ChatHeader'
 import {
   ChatSessionProvider,
@@ -16,6 +16,9 @@ const ChatLayoutContent: FC = () => {
     isLoading,
   } = useChatSessionContext()
 
+  const pathname = useLocation().pathname
+  const showHeader = pathname !== '/'
+
   if (isLoading || !selectedProvider) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
@@ -26,13 +29,15 @@ const ChatLayoutContent: FC = () => {
 
   return (
     <div className="mx-auto flex h-screen w-screen flex-col overflow-hidden bg-background text-foreground">
-      <ChatHeader
-        selectedProvider={selectedProvider}
-        onSelectProvider={handleSelectProvider}
-        providers={providers}
-        onNewConversation={resetConversation}
-        hasMessages={messages.length > 0}
-      />
+      {showHeader && (
+        <ChatHeader
+          selectedProvider={selectedProvider}
+          onSelectProvider={handleSelectProvider}
+          providers={providers}
+          onNewConversation={resetConversation}
+          hasMessages={messages.length > 0}
+        />
+      )}
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <Outlet />
       </div>

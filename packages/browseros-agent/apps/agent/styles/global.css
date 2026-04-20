@@ -40,6 +40,16 @@
   font-display: swap;
 }
 
+/* Instrument Serif (editorial title). Self-hosted; falls back to system serifs when the
+   woff2 isn't present in the bundle — see public/instrument-serif/README.md. */
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("../instrument-serif/InstrumentSerif-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --radius: 0.65rem;
   --background: oklch(0.985 0.002 85);
@@ -78,6 +88,8 @@
   --accent-orange: oklch(0.6781 0.1663 43.21);
   /* Added brighter orange variant for shimmer animation */
   --accent-orange-bright: oklch(0.7531 0.1963 43.21);
+  /* Soft orange for user avatar bg, subtle accent surfaces */
+  --accent-orange-soft: oklch(0.6781 0.1663 43.21 / 0.12);
 }
 
 .dark {
@@ -118,6 +130,7 @@
 @theme inline {
   --font-sans: "Geist", "Geist Fallback";
   --font-mono: "Geist Mono", "Geist Mono Fallback";
+  --font-serif: "Instrument Serif", "Iowan Old Style", Georgia, serif;
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -157,6 +170,7 @@
   --color-accent-orange: var(--accent-orange);
   /* Added brighter orange to theme */
   --color-accent-orange-bright: var(--accent-orange-bright);
+  --color-accent-orange-soft: var(--accent-orange-soft);
 
   /* Custom keyframe animations for hero section */
   --animate-float: float 3s ease-in-out infinite;

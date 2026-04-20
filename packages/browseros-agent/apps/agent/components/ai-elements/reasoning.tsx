@@ -132,18 +132,18 @@ export const ReasoningTrigger = memo(
     return (
       <CollapsibleTrigger
         className={cn(
-          'flex w-full items-center gap-2 text-muted-foreground text-sm transition-colors hover:text-foreground',
+          'flex items-center gap-1.5 font-medium text-[12px] text-muted-foreground transition-colors hover:text-foreground',
           className,
         )}
         {...props}
       >
         {children ?? (
           <>
-            <BrainIcon className="size-4" />
+            <BrainIcon className="size-3" />
             {getThinkingMessage(isStreaming, duration)}
             <ChevronDownIcon
               className={cn(
-                'size-4 transition-transform',
+                'size-2.5 transition-transform',
                 isOpen ? 'rotate-180' : 'rotate-0',
               )}
             />
@@ -165,13 +165,15 @@ export const ReasoningContent = memo(
   ({ className, children, ...props }: ReasoningContentProps) => (
     <CollapsibleContent
       className={cn(
-        'mt-4 text-sm',
-        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 text-muted-foreground outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        'mt-2',
+        'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
         className,
       )}
       {...props}
     >
-      <Streamdown {...props}>{children}</Streamdown>
+      <div className="rounded-lg bg-muted px-3.5 py-3 text-[13px] text-muted-foreground italic leading-[1.6]">
+        <Streamdown {...props}>{children}</Streamdown>
+      </div>
     </CollapsibleContent>
   ),
 )

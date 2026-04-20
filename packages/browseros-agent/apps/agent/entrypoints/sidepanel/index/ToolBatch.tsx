@@ -1,6 +1,6 @@
 import {
-  BotIcon,
-  CheckCircle2,
+  Check,
+  ChevronDown,
   CircleDashed,
   Clock,
   Loader2,
@@ -9,13 +9,13 @@ import {
   XCircle,
 } from 'lucide-react'
 import { type FC, useEffect, useState } from 'react'
-import {
-  Task,
-  TaskContent,
-  TaskItem,
-  TaskTrigger,
-} from '@/components/ai-elements/task'
 import { Button } from '@/components/ui/button'
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from '@/components/ui/collapsible'
+import { cn } from '@/lib/utils'
 import type {
   ToolInvocationInfo,
   ToolInvocationState,
@@ -65,9 +65,10 @@ export const ToolBatch: FC<ToolBatchProps> = ({
   ])
 
   const completedCount = tools.filter((t) => isToolCompleted(t.state)).length
-  const triggerTitle = hasPendingApproval
-    ? 'Waiting for approval...'
-    : `${completedCount}/${tools.length} actions completed`
+  const allDone = completedCount === tools.length && !hasPendingApproval
+  const headerLabel = hasPendingApproval
+    ? 'Waiting for approval'
+    : `${tools.length} tool ${tools.length === 1 ? 'call' : 'calls'}${allDone ? '' : ` · ${completedCount}/${tools.length}`}`
 
   const onManualToggle = (newState: boolean) => {
     setHasUserInteracted(true)
@@ -75,15 +76,40 @@ export const ToolBatch: FC<ToolBatchProps> = ({
   }
 
   return (
-    <Task open={isOpen} onOpenChange={onManualToggle}>
-      <TaskTrigger title={triggerTitle} TriggerIcon={BotIcon} />
-      <TaskContent>
+    <Collapsible
+      open={isOpen}
+      onOpenChange={onManualToggle}
+      className="my-3 rounded-[10px] border border-border bg-background px-3 py-2.5"
+    >
+      <CollapsibleTrigger asChild>
+        <button
+          type="button"
+          className="group flex w-full items-center gap-2 text-left"
+        >
+          <span className="font-semibold text-[11px] text-muted-foreground uppercase tracking-[0.4px]">
+            {headerLabel}
+          </span>
+          <div className="flex-1" />
+          <ChevronDown className="h-3 w-3 text-muted-foreground transition-transform group-data-[state=open]:rotate-180" />
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent
+        className={cn(
+          'mt-2 grid gap-0.5',
+          'data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-top-2 data-[state=open]:slide-in-from-top-2 outline-none data-[state=closed]:animate-out data-[state=open]:animate-in',
+        )}
+      >
         {tools.map((tool) => (
           <div key={tool.toolCallId}>
-            <TaskItem className="flex items-center gap-2">
+            <div className="flex items-center gap-2.5 py-1 font-mono text-xs">
               <ToolStatusIcon state={tool.state} />
-              <span className="flex-1">{formatToolName(tool.toolName)}</span>
-            </TaskItem>
+              <span className="font-medium">
+                {formatToolName(tool.toolName)}
+              </span>
+              <span className="flex-1 overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">
+                {formatInputPreview(tool.input)}
+              </span>
+            </div>
             {tool.state === 'approval-requested' &&
               tool.approval?.id != null && (
                 <ApprovalButtons
@@ -94,8 +120,8 @@ export const ToolBatch: FC<ToolBatchProps> = ({
               )}
           </div>
         ))}
-      </TaskContent>
-    </Task>
+      </CollapsibleContent>
+    </Collapsible>
   )
 }
 
@@ -104,6 +130,15 @@ const formatToolName = (name: string) => {
     ?.replace(/_/g, ' ')
     ?.replace(/([a-z])([A-Z])/g, '$1 $2')
     ?.replace(/^./, (s) => s.toUpperCase())
+}
+
+const formatInputPreview = (input: Record<string, unknown> | undefined) => {
+  if (!input) return ''
+  const firstValue = Object.values(input).find(
+    (v) => typeof v === 'string' && v.length > 0,
+  )
+  if (typeof firstValue === 'string') return firstValue
+  return ''
 }
 
 const isToolCompleted = (state: ToolInvocationState) =>
@@ -124,7 +159,7 @@ const ApprovalButtons: FC<{
   onApprove?: (id: string) => void
   onDeny?: (id: string) => void
 }> = ({ approvalId, onApprove, onDeny }) => (
-  <div className="mt-1 mb-2 ml-6 flex items-center gap-2">
+  <div className="mt-1 mb-1.5 ml-5 flex items-center gap-2">
     <Button
       size="sm"
       className="h-7 gap-1 px-2.5 text-xs"
@@ -147,21 +182,26 @@ const ApprovalButtons: FC<{
 
 const ToolStatusIcon: FC<{ state: ToolInvocationState }> = ({ state }) => {
   if (isToolCompleted(state)) {
-    return <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+    return (
+      <Check
+        className="h-3 w-3 text-[var(--accent-orange)]"
+        strokeWidth={2.5}
+      />
+    )
   }
   if (isToolApprovalPending(state)) {
-    return <Clock className="h-3.5 w-3.5 text-yellow-500" />
+    return <Clock className="h-3 w-3 text-yellow-500" />
   }
   if (isToolDenied(state)) {
-    return <ShieldX className="h-3.5 w-3.5 text-red-400" />
+    return <ShieldX className="h-3 w-3 text-red-400" />
   }
   if (isToolInProgress(state)) {
     return (
-      <Loader2 className="h-3.5 w-3.5 animate-spin text-[var(--accent-orange)]" />
+      <Loader2 className="h-3 w-3 animate-spin text-[var(--accent-orange)]" />
     )
   }
   if (isToolError(state)) {
-    return <XCircle className="h-3.5 w-3.5 text-destructive" />
+    return <XCircle className="h-3 w-3 text-destructive" />
   }
-  return <CircleDashed className="h-3.5 w-3.5 text-muted-foreground" />
+  return <CircleDashed className="h-3 w-3 text-muted-foreground" />
 }
