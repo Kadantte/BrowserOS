@@ -8,13 +8,6 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { z } from 'zod'
 
-export interface OpenClawRuntimeState {
-  hostGatewayPort: number | null
-  lastSuccessfulStartAt: string | null
-  repairGeneration: number
-  lastRepairOutcome: 'success' | 'failed' | null
-}
-
 const RUNTIME_STATE_FILE_NAME = 'runtime-state.json'
 const openClawRuntimeStateSchema = z
   .object({
@@ -24,6 +17,8 @@ const openClawRuntimeStateSchema = z
     lastRepairOutcome: z.enum(['success', 'failed']).nullable(),
   })
   .strict()
+
+export type OpenClawRuntimeState = z.infer<typeof openClawRuntimeStateSchema>
 
 export function getOpenClawRuntimeStatePath(openclawDir: string): string {
   return join(openclawDir, RUNTIME_STATE_FILE_NAME)
