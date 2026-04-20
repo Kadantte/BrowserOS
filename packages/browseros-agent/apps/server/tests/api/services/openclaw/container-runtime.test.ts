@@ -133,6 +133,29 @@ async function withOccupiedPort<T>(
   }
 }
 
+async function getAvailablePort(): Promise<number> {
+  const server = createServer()
+  return new Promise<number>((resolve, reject) => {
+    server.once('error', reject)
+    server.listen({ port: 0, host: '127.0.0.1', exclusive: true }, () => {
+      const address = server.address()
+      if (!address || typeof address === 'string') {
+        server.close(() =>
+          reject(new Error('failed to resolve available port')),
+        )
+        return
+      }
+      server.close((closeError) => {
+        if (closeError) {
+          reject(closeError)
+          return
+        }
+        resolve(address.port)
+      })
+    })
+  })
+}
+
 describe('ContainerRuntime', () => {
   it('pullImage runs podman pull for the requested image', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
@@ -157,8 +180,9 @@ describe('ContainerRuntime', () => {
       calls.push({ args, cwd: options?.cwd })
       return 0
     })
+    const spec = { ...defaultSpec, port: await getAvailablePort() }
 
-    await runtime.startGateway(defaultSpec)
+    const chosenPort = await runtime.startGateway(spec)
 
     expect(calls).toHaveLength(2)
     expect(calls[0]).toEqual({
@@ -167,7 +191,7 @@ describe('ContainerRuntime', () => {
     })
     expect(calls[1]).toEqual({
       cwd: PROJECT_DIR,
-      args: expectedStartGatewayRunArgs(defaultSpec),
+      args: expectedStartGatewayRunArgs({ ...spec, port: chosenPort }),
     })
   })
 
@@ -177,16 +201,17 @@ describe('ContainerRuntime', () => {
       calls.push({ args, cwd: options?.cwd })
       return 0
     })
+    const spec = { ...defaultSpec, port: await getAvailablePort() }
 
-    await withOccupiedPort(defaultSpec.port, async () => {
+    await withOccupiedPort(spec.port, async () => {
       const chosenPort = await (
         runtime as unknown as {
           startGateway: typeof runtime.startGateway
         }
-      ).startGateway(defaultSpec)
+      ).startGateway(spec)
 
       expect(chosenPort).toBeGreaterThan(0)
-      expect(chosenPort).not.toBe(defaultSpec.port)
+      expect(chosenPort).not.toBe(spec.port)
       expect(calls[1]?.args).toContain(`127.0.0.1:${chosenPort}:18789`)
     })
   })
@@ -300,13 +325,14 @@ describe('ContainerRuntime', () => {
   it('startGateway retries with a different host port when podman reports a bind conflict', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
     let runAttempts = 0
+    const spec = { ...defaultSpec, port: await getAvailablePort() }
     const runtime = createRuntime(async (args, options) => {
       calls.push({ args, cwd: options?.cwd })
       if (args[0] === 'run') {
         runAttempts += 1
         if (runAttempts === 1) {
           options?.onOutput?.(
-            'Error: unable to bind 127.0.0.1:18789: address already in use',
+            `Error: unable to bind 127.0.0.1:${spec.port}: address already in use`,
           )
           return 1
         }
@@ -314,36 +340,37 @@ describe('ContainerRuntime', () => {
       return 0
     })
 
-    const chosenPort = await runtime.startGateway(defaultSpec)
+    const chosenPort = await runtime.startGateway(spec)
 
     expect(calls).toHaveLength(4)
     expect(calls[0]).toEqual({
       cwd: PROJECT_DIR,
       args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
     })
-    expect(calls[1].args).toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[1].args).toContain(`127.0.0.1:${spec.port}:18789`)
     expect(calls[2]).toEqual({
       cwd: PROJECT_DIR,
       args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
     })
-    expect(calls[3].args).not.toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[3].args).not.toContain(`127.0.0.1:${spec.port}:18789`)
     expect(chosenPort).toBeGreaterThan(0)
   })
 
   it('startGateway cleans up the managed container after an exhausted bind-conflict retry sequence', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
+    const spec = { ...defaultSpec, port: await getAvailablePort() }
     const runtime = createRuntime(async (args, options) => {
       calls.push({ args, cwd: options?.cwd })
       if (args[0] === 'run') {
         options?.onOutput?.(
-          'Error: unable to bind 127.0.0.1:18789: address already in use',
+          `Error: unable to bind 127.0.0.1:${spec.port}: address already in use`,
         )
         return 1
       }
       return 0
     })
 
-    await expect(runtime.startGateway(defaultSpec)).rejects.toThrow(
+    await expect(runtime.startGateway(spec)).rejects.toThrow(
       'gateway start failed with code 1',
     )
 
@@ -352,17 +379,17 @@ describe('ContainerRuntime', () => {
       cwd: PROJECT_DIR,
       args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
     })
-    expect(calls[1].args).toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[1].args).toContain(`127.0.0.1:${spec.port}:18789`)
     expect(calls[2]).toEqual({
       cwd: PROJECT_DIR,
       args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
     })
-    expect(calls[3].args).not.toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[3].args).not.toContain(`127.0.0.1:${spec.port}:18789`)
     expect(calls[4]).toEqual({
       cwd: PROJECT_DIR,
       args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
     })
-    expect(calls[5].args).not.toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[5].args).not.toContain(`127.0.0.1:${spec.port}:18789`)
     expect(calls[6]).toEqual({
       cwd: PROJECT_DIR,
       args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
@@ -472,8 +499,9 @@ describe('ContainerRuntime', () => {
       calls.push({ args, cwd: options?.cwd })
       return 0
     })
+    const spec = { ...defaultSpec, port: await getAvailablePort() }
 
-    await runtime.restartGateway(defaultSpec)
+    const chosenPort = await runtime.restartGateway(spec)
 
     expect(calls).toEqual([
       {
@@ -482,7 +510,7 @@ describe('ContainerRuntime', () => {
       },
       {
         cwd: PROJECT_DIR,
-        args: expectedStartGatewayRunArgs(defaultSpec),
+        args: expectedStartGatewayRunArgs({ ...spec, port: chosenPort }),
       },
     ])
   })

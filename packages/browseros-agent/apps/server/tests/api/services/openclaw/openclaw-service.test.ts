@@ -1012,6 +1012,79 @@ describe('OpenClawService', () => {
     })
   })
 
+  it('records failed repair attempts even when repair fails before gateway relaunch', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(
+      join(tempDir, '.openclaw', 'openclaw.json'),
+      JSON.stringify({
+        gateway: {
+          auth: {
+            token: 'cli-token',
+          },
+        },
+      }),
+    )
+    await saveOpenClawRuntimeState(tempDir, {
+      hostGatewayPort: 61234,
+      lastSuccessfulStartAt: '2026-04-20T18:00:00.000Z',
+      repairGeneration: 4,
+      lastRepairOutcome: 'success',
+    })
+    const ensureReady = mock(async () => {
+      throw new Error('machine bootstrap failed')
+    })
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      ensureReady,
+      isReady: async (_port: number) => false,
+      stopGateway: async () => {},
+      stopMachineIfSafe: async () => {},
+    }
+
+    await expect(service.repairRuntime()).rejects.toThrow(
+      'machine bootstrap failed',
+    )
+    await expect(loadOpenClawRuntimeState(tempDir)).resolves.toMatchObject({
+      hostGatewayPort: 61234,
+      repairGeneration: 5,
+      lastRepairOutcome: 'failed',
+    })
+  })
+
+  it('does not clear runtime state when reset teardown fails', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(join(tempDir, '.openclaw', 'openclaw.json'), '{}')
+    await saveOpenClawRuntimeState(tempDir, {
+      hostGatewayPort: 74444,
+      lastSuccessfulStartAt: '2026-04-20T18:00:00.000Z',
+      repairGeneration: 7,
+      lastRepairOutcome: 'success',
+    })
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    service.runtime = {
+      isReady: async (_port: number) => false,
+      stopGateway: async () => {
+        throw new Error('stop failed')
+      },
+      stopMachineIfSafe: async () => {},
+    }
+
+    await expect(service.resetRuntime()).rejects.toThrow('stop failed')
+    expect(
+      JSON.parse(await readFile(join(tempDir, 'runtime-state.json'), 'utf-8')),
+    ).toMatchObject({
+      hostGatewayPort: 74444,
+      repairGeneration: 7,
+      lastRepairOutcome: 'success',
+    })
+  })
+
   it('stop calls runtime.stopGateway', async () => {
     const stopGateway = mock(async () => {})
     const service = new OpenClawService() as MutableOpenClawService
