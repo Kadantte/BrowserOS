@@ -75,7 +75,7 @@ export const ChatMessages: FC<ChatMessagesProps> = ({
         <ConversationContent
           className={cn(
             ambient &&
-              'mx-auto w-full max-w-[760px] gap-4 px-4 pt-10 pb-[160px] sm:px-8 sm:pt-[72px]',
+              'mx-auto w-full max-w-[760px] gap-4 px-4 pt-14 pb-[160px] sm:px-8 sm:pt-[72px]',
           )}
         >
           {header}

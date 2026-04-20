@@ -296,10 +296,12 @@ export const Chat = () => {
   )
 }
 
+// Leaves headroom above the composer even when attached-tab and selected-text
+// rows expand it by ~80px beyond the baseline pill height (~110px).
 const FloatingErrorBanner: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => (
-  <div className="pointer-events-none absolute inset-x-0 bottom-[130px] z-20 flex justify-center px-6">
+  <div className="pointer-events-none absolute inset-x-0 bottom-[220px] z-20 flex justify-center px-6">
     <div className="pointer-events-auto w-full max-w-[720px]">{children}</div>
   </div>
 )
@@ -318,7 +320,7 @@ const AmbientEmptyStateSuggestions: React.FC<{
     {suggestions.map((s) => (
       <button
         type="button"
-        key={s.display}
+        key={s.prompt}
         onClick={() => onClick(s.prompt)}
         className="group flex items-center justify-between rounded-[10px] border border-border bg-background px-3.5 py-3 text-left text-sm transition-all hover:border-[var(--accent-orange)]/50 hover:bg-[var(--accent-orange)]/5"
       >

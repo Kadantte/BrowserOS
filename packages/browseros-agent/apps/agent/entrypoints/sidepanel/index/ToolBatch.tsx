@@ -132,12 +132,36 @@ const formatToolName = (name: string) => {
     ?.replace(/^./, (s) => s.toUpperCase())
 }
 
+// Allowlisted keys that are safe to preview — excludes fields like `token`,
+// `password`, `apiKey`, or arbitrary free-form strings that may contain
+// credentials or page content.
+const SAFE_PREVIEW_KEYS = new Set([
+  'url',
+  'href',
+  'link',
+  'query',
+  'search',
+  'path',
+  'file',
+  'filename',
+  'name',
+  'title',
+  'selector',
+  'tabId',
+  'id',
+])
+const MAX_PREVIEW_LEN = 80
+
 const formatInputPreview = (input: Record<string, unknown> | undefined) => {
   if (!input) return ''
-  const firstValue = Object.values(input).find(
-    (v) => typeof v === 'string' && v.length > 0,
-  )
-  if (typeof firstValue === 'string') return firstValue
+  for (const key of SAFE_PREVIEW_KEYS) {
+    const value = input[key]
+    if (typeof value === 'string' && value.length > 0) {
+      return value.length > MAX_PREVIEW_LEN
+        ? `${value.slice(0, MAX_PREVIEW_LEN)}…`
+        : value
+    }
+  }
   return ''
 }
 
