@@ -128,6 +128,7 @@ export class ContainerRuntime {
           attempt,
           hostPort,
         })
+        await this.removeGatewayContainer(onLog)
         continue
       }
 

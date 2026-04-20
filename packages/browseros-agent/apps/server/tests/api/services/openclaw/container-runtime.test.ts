@@ -316,12 +316,17 @@ describe('ContainerRuntime', () => {
 
     const chosenPort = await runtime.startGateway(defaultSpec)
 
-    const runCalls = calls.filter((call) => call.args[0] === 'run')
-    expect(runCalls).toHaveLength(2)
-    expect(runCalls[0].args).toContain(`127.0.0.1:${defaultSpec.port}:18789`)
-    expect(runCalls[1].args).not.toContain(
-      `127.0.0.1:${defaultSpec.port}:18789`,
-    )
+    expect(calls).toHaveLength(4)
+    expect(calls[0]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+    })
+    expect(calls[1].args).toContain(`127.0.0.1:${defaultSpec.port}:18789`)
+    expect(calls[2]).toEqual({
+      cwd: PROJECT_DIR,
+      args: ['rm', '-f', '--ignore', OPENCLAW_GATEWAY_CONTAINER_NAME],
+    })
+    expect(calls[3].args).not.toContain(`127.0.0.1:${defaultSpec.port}:18789`)
     expect(chosenPort).toBeGreaterThan(0)
   })
 
