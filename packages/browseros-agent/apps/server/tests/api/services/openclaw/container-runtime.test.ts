@@ -213,6 +213,70 @@ describe('ContainerRuntime', () => {
     })
   })
 
+  it('inspectGateway reports an absent container when podman inspect says it is missing', async () => {
+    const runtime = createRuntime(async (args, options) => {
+      if (args[0] === 'inspect') {
+        options?.onOutput?.(
+          `Error: no such object: ${OPENCLAW_GATEWAY_CONTAINER_NAME}`,
+        )
+        return 1
+      }
+      return 0
+    })
+
+    const result = await (
+      runtime as unknown as {
+        inspectGateway: typeof runtime.inspectGateway
+      }
+    ).inspectGateway()
+
+    expect(result).toEqual({
+      exists: false,
+      running: false,
+      hostPort: null,
+    })
+  })
+
+  it('inspectGateway falls back to HostConfig PortBindings for the host port', async () => {
+    const runtime = createRuntime(async (args, options) => {
+      if (args[0] === 'inspect') {
+        options?.onOutput?.(
+          JSON.stringify([
+            {
+              State: { Status: 'running' },
+              NetworkSettings: {
+                Ports: {},
+              },
+              HostConfig: {
+                PortBindings: {
+                  '18789/tcp': [
+                    {
+                      HostIp: '127.0.0.1',
+                      HostPort: '54321',
+                    },
+                  ],
+                },
+              },
+            },
+          ]),
+        )
+      }
+      return 0
+    })
+
+    const result = await (
+      runtime as unknown as {
+        inspectGateway: typeof runtime.inspectGateway
+      }
+    ).inspectGateway()
+
+    expect(result).toEqual({
+      exists: true,
+      running: true,
+      hostPort: 54321,
+    })
+  })
+
   it('runGatewaySetupCommand in direct mode builds a one-off podman run command', async () => {
     const calls: Array<{ args: string[]; cwd?: string }> = []
     const runtime = createRuntime(async (args, options) => {
