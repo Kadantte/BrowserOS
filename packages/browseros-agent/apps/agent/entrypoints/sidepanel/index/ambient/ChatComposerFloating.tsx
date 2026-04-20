@@ -75,6 +75,8 @@ export const ChatComposerFloating: FC<ChatComposerFloatingProps> = ({
 
   useEffect(() => {
     const focusInput = () => {
+      // A Radix popover being open means the user is mid-interaction — don't steal focus.
+      if (document.querySelector('[data-radix-popper-content-wrapper]')) return
       const active = document.activeElement
       const isInteractiveElementFocused =
         active instanceof HTMLInputElement ||

@@ -7,7 +7,7 @@ import {
   Plus,
   SettingsIcon,
 } from 'lucide-react'
-import type { FC } from 'react'
+import { type FC, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { ChatProviderSelector } from '@/components/chat/ChatProviderSelector'
 import type { Provider } from '@/components/chat/chatComponentTypes'
@@ -51,9 +51,32 @@ export const StatusPill: FC<StatusPillProps> = ({
 }) => {
   const elapsed = useElapsedTimer(isBusy(status))
   const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+
+  const close = () => setOpen(false)
+
+  const handleSelectProvider = (p: Provider) => {
+    onSelectProvider(p)
+    queueMicrotask(close)
+  }
+
+  const handleModeChange = (m: ChatMode) => {
+    onModeChange(m)
+    close()
+  }
+
+  const handleNewConversation = () => {
+    onNewConversation()
+    close()
+  }
+
+  const handleNavigateHistory = () => {
+    close()
+    navigate('/history')
+  }
 
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <button
           type="button"
@@ -78,22 +101,22 @@ export const StatusPill: FC<StatusPillProps> = ({
           <ProviderRow
             selectedProvider={selectedProvider}
             providers={providers}
-            onSelectProvider={onSelectProvider}
+            onSelectProvider={handleSelectProvider}
           />
-          <ModeRow mode={mode} onModeChange={onModeChange} />
+          <ModeRow mode={mode} onModeChange={handleModeChange} />
         </div>
         <div className="border-border/60 border-t p-1">
           {hasMessages && (
             <MenuButton
               icon={<Plus className="h-3.5 w-3.5" />}
               label="New conversation"
-              onClick={onNewConversation}
+              onClick={handleNewConversation}
             />
           )}
           <MenuButton
             icon={<History className="h-3.5 w-3.5" />}
             label="Chat history"
-            onClick={() => navigate('/history')}
+            onClick={handleNavigateHistory}
           />
           <MenuLink
             icon={<Github className="h-3.5 w-3.5" />}

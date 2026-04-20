@@ -102,16 +102,14 @@ export const ChatMessages: FC<ChatMessagesProps> = ({
 
             if (ambient && message.role === 'user' && !action) {
               return (
-                <Fragment key={message.id}>
-                  <AmbientUserTurn>
-                    <div className="whitespace-pre-wrap">
-                      {segments
-                        .filter((s) => s.type === 'text')
-                        .map((s) => s.text)
-                        .join('\n\n')}
-                    </div>
-                  </AmbientUserTurn>
-                </Fragment>
+                <AmbientUserTurn key={message.id}>
+                  <div className="whitespace-pre-wrap">
+                    {segments
+                      .filter((s) => s.type === 'text')
+                      .map((s) => s.text)
+                      .join('\n\n')}
+                  </div>
+                </AmbientUserTurn>
               )
             }
 
@@ -216,7 +214,7 @@ export const ChatMessages: FC<ChatMessagesProps> = ({
               showDontShowAgain={showDontShowAgain}
             />
           )}
-          {ambient && isStreaming && <AmbientStreamingIndicator />}
+          {ambient && <AmbientStreamingIndicator visible={isStreaming} />}
         </ConversationContent>
         <ConversationScrollButton offsetBottom={ambient ? 170 : undefined} />
       </Conversation>
@@ -233,17 +231,18 @@ export const ChatMessages: FC<ChatMessagesProps> = ({
           </div>
         </div>
       )}
-      <div />
     </>
   )
 }
 
-const AmbientStreamingIndicator = () => (
-  <div className="mt-2 mb-1 flex items-center gap-2 text-[13px] text-muted-foreground sm:pl-[42px]">
-    <span className="flex gap-1">
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-orange)] [animation-delay:-0.3s]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-orange)] [animation-delay:-0.15s]" />
-      <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-orange)]" />
-    </span>
+const AmbientStreamingIndicator: FC<{ visible: boolean }> = ({ visible }) => (
+  <div className="mt-2 mb-1 flex min-h-[18px] items-center gap-2 text-[13px] text-muted-foreground sm:pl-[42px]">
+    {visible && (
+      <span className="flex gap-1">
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-orange)] [animation-delay:-0.3s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-orange)] [animation-delay:-0.15s]" />
+        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-[var(--accent-orange)]" />
+      </span>
+    )}
   </div>
 )

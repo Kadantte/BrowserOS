@@ -1,5 +1,5 @@
 import { Loader2 } from 'lucide-react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createBrowserOSAction } from '@/lib/chat-actions/types'
 import {
   SIDEPANEL_AI_TRIGGERED_EVENT,
@@ -65,10 +65,8 @@ export const Chat = () => {
   const [attachedTabs, setAttachedTabs] = useState<chrome.tabs.Tab[]>([])
   const [mounted, setMounted] = useState(false)
 
-  const sessionHash = useMemo(() => {
-    return crypto.randomUUID().slice(0, 6)
-    // Rotates on full remount (new provider / new session); fine for display-only.
-  }, [])
+  // Stable across renders; lazy-init via useState so crypto.randomUUID runs once.
+  const [sessionHash] = useState(() => crypto.randomUUID().slice(0, 6))
 
   useEffect(() => {
     setMounted(true)
@@ -265,24 +263,20 @@ export const Chat = () => {
           />
         )}
         {agentUrlError && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-[130px] z-20 flex justify-center px-6">
-            <div className="pointer-events-auto w-full max-w-[720px]">
-              <ChatError
-                error={agentUrlError}
-                providerType={selectedProvider?.type}
-              />
-            </div>
-          </div>
+          <FloatingErrorBanner>
+            <ChatError
+              error={agentUrlError}
+              providerType={selectedProvider?.type}
+            />
+          </FloatingErrorBanner>
         )}
         {chatError && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-[130px] z-20 flex justify-center px-6">
-            <div className="pointer-events-auto w-full max-w-[720px]">
-              <ChatError
-                error={chatError}
-                providerType={selectedProvider?.type}
-              />
-            </div>
-          </div>
+          <FloatingErrorBanner>
+            <ChatError
+              error={chatError}
+              providerType={selectedProvider?.type}
+            />
+          </FloatingErrorBanner>
         )}
       </main>
 
@@ -301,6 +295,14 @@ export const Chat = () => {
     </div>
   )
 }
+
+const FloatingErrorBanner: React.FC<{ children: React.ReactNode }> = ({
+  children,
+}) => (
+  <div className="pointer-events-none absolute inset-x-0 bottom-[130px] z-20 flex justify-center px-6">
+    <div className="pointer-events-auto w-full max-w-[720px]">{children}</div>
+  </div>
+)
 
 const AmbientEmptyStateSuggestions: React.FC<{
   mounted: boolean
