@@ -291,7 +291,7 @@ export function configurePodmanRuntime(config: {
 }): PodmanRuntime {
   const podmanPath =
     config.podmanPath ??
-    resolveBundledPodmanPath(config.resourcesDir) ??
+    resolveBundledPodmanPath(config.resourcesDir, config.platform) ??
     'podman'
 
   runtime = new PodmanRuntime({

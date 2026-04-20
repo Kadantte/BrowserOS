@@ -109,6 +109,25 @@ describe('podman runtime', () => {
     expect(getPodmanRuntime().getPodmanPath()).toBe(bundledPath)
   })
 
+  it('uses the configured platform when resolving the bundled podman path', () => {
+    const bundledPath = path.join(
+      tempDir,
+      'bin',
+      'third_party',
+      'podman',
+      'podman.exe',
+    )
+    fs.mkdirSync(path.dirname(bundledPath), { recursive: true })
+    fs.writeFileSync(bundledPath, 'podman')
+
+    const runtime = configurePodmanRuntime({
+      resourcesDir: tempDir,
+      platform: 'win32',
+    })
+
+    expect(runtime.getPodmanPath()).toBe(bundledPath)
+  })
+
   it('falls back to PATH podman when no bundled executable is present', () => {
     const runtime = configurePodmanRuntime({ resourcesDir: tempDir })
 
