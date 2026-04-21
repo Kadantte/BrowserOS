@@ -231,18 +231,12 @@ export function useOpenClawMutations() {
     onSuccess,
   })
 
-  const pendingGatewayAction: GatewayLifecycleAction | null =
-    setupMutation.isPending
-      ? 'setup'
-      : restartMutation.isPending
-        ? 'restart'
-        : stopMutation.isPending
-          ? 'stop'
-          : startMutation.isPending
-            ? 'start'
-            : reconnectMutation.isPending
-              ? 'reconnect'
-              : null
+  let pendingGatewayAction: GatewayLifecycleAction | null = null
+  if (setupMutation.isPending) pendingGatewayAction = 'setup'
+  else if (restartMutation.isPending) pendingGatewayAction = 'restart'
+  else if (stopMutation.isPending) pendingGatewayAction = 'stop'
+  else if (startMutation.isPending) pendingGatewayAction = 'start'
+  else if (reconnectMutation.isPending) pendingGatewayAction = 'reconnect'
 
   return {
     setupOpenClaw: setupMutation.mutateAsync,
