@@ -63,7 +63,7 @@ function ConversationHeader({
   onGoHome: () => void
 }) {
   return (
-    <div className="flex h-16 items-center justify-between gap-4 border-border/50 border-b px-5">
+    <div className="flex h-14 items-center justify-between gap-4 border-border/50 border-b px-5">
       <div className="flex min-w-0 items-center gap-3">
         <Button
           variant="ghost"
@@ -87,7 +87,7 @@ function ConversationHeader({
 
 function AgentRailHeader({ onGoHome }: { onGoHome: () => void }) {
   return (
-    <div className="hidden h-16 items-center border-border/50 border-r border-b bg-background/70 px-4 lg:flex">
+    <div className="hidden h-14 items-center border-border/50 border-r border-b bg-background/70 px-4 lg:flex">
       <div className="flex min-w-0 items-center gap-3">
         <Button
           variant="ghost"
@@ -239,7 +239,7 @@ export const AgentCommandConversation: FC = () => {
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-background md:pl-[theme(spacing.14)]">
-      <div className="mx-auto grid h-full w-full max-w-[1480px] lg:grid-cols-[288px_minmax(0,1fr)] lg:grid-rows-[4rem_minmax(0,1fr)]">
+      <div className="mx-auto grid h-full w-full max-w-[1480px] lg:grid-cols-[288px_minmax(0,1fr)] lg:grid-rows-[3.5rem_minmax(0,1fr)]">
         <AgentRailHeader onGoHome={() => navigate('/home')} />
 
         <ConversationHeader
