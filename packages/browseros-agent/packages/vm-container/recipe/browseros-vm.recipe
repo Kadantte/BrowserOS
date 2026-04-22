@@ -3,6 +3,11 @@
 # Ops: run-command | copy-in <src>:<dest> | write <path>:<content> | truncate <path>
 # {version} and {manifest_tmp} are substituted at build time.
 
+# Seed /etc/resolv.conf so apt can resolve mirrors inside the libguestfs
+# appliance (cloud-init doesn't run there). Removed at the end of the recipe
+# so the guest's systemd-resolved / DHCP client repopulates it at boot.
+run-command rm -f /etc/resolv.conf
+run-command sh -c 'printf "nameserver 1.1.1.1\nnameserver 8.8.8.8\n" > /etc/resolv.conf'
 run-command apt-get update
 run-command DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends podman crun fuse-overlayfs slirp4netns ca-certificates
 run-command systemctl enable podman.socket
@@ -15,6 +20,9 @@ write /etc/browseros-vm-version:{version}
 copy-in {manifest_tmp}:/etc/browseros-vm-manifest.json
 run-command apt-get clean
 run-command rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+# Drop the build-time resolv.conf. Systemd-resolved / DHCP re-creates this
+# at first boot; leaving a hardcoded file would pin DNS to 1.1.1.1 forever.
+run-command rm -f /etc/resolv.conf
 run-command rm -f /etc/ssh/ssh_host_*
 run-command rm -f /etc/machine-id
 truncate /etc/machine-id
