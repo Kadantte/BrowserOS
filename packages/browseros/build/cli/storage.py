@@ -100,6 +100,8 @@ def upload_lima(
 
             manifest = _build_manifest(tag, tarball_shas, object_shas)
             _upload_manifest(client, env, manifest, tmp_dir, dry_run)
+        # Any failure mid-loop (download, sha verify, extract, upload) must
+        # roll back prior arch uploads so R2 never holds a mixed-version pair.
         except Exception as exc:
             if not dry_run and uploaded_keys:
                 log_warning(f"Upload failed — rolling back {len(uploaded_keys)} object(s)")
@@ -197,8 +199,10 @@ def _extract_limactl(tarball_path: Path, dest: Path) -> None:
 
 def _find_limactl_member(tar: tarfile.TarFile) -> tarfile.TarInfo:
     for member in tar.getmembers():
-        name = member.name.lstrip("./")
-        if member.isfile() and name.endswith("bin/limactl"):
+        if not member.isfile():
+            continue
+        parts = Path(member.name).parts
+        if len(parts) >= 2 and parts[-2:] == ("bin", "limactl"):
             return member
     raise RuntimeError("bin/limactl not found in Lima tarball")
 
@@ -213,7 +217,7 @@ def _build_manifest(
         "tarball_shas_upstream": tarball_shas,
         "r2_object_shas": object_shas,
         "uploaded_at": datetime.now(timezone.utc).isoformat(),
-        "uploaded_by": os.environ.get("USER", "unknown"),
+        "uploaded_by": os.environ.get("USER") or os.environ.get("USERNAME") or "unknown",
     }
 
 
