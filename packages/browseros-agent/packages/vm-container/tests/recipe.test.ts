@@ -79,6 +79,17 @@ describe('composeVirtCustomizeArgv', () => {
     expect(argv).toContain('/tmp/manifest.json:/etc/m.json')
   })
 
+  test('copy-in resolves absolutes from substituted placeholders', () => {
+    const argv = composeVirtCustomizeArgv({
+      diskPath: '/disk.qcow2',
+      recipe: [{ op: 'copy-in', src: '{manifest_tmp}', dest: '/etc/m.json' }],
+      substitutions: { manifest_tmp: '/tmp/vm-dist/manifest-stub.json' },
+      recipeDir: '/recipe',
+    })
+    expect(argv).toContain('/tmp/vm-dist/manifest-stub.json:/etc/m.json')
+    expect(argv.join(' ')).not.toContain('/recipe/tmp/')
+  })
+
   test('unresolved substitutions pass through unchanged', () => {
     const argv = composeVirtCustomizeArgv({
       diskPath: '/disk.qcow2',

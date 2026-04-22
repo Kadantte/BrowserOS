@@ -58,9 +58,10 @@ export function composeVirtCustomizeArgv(opts: ComposeOptions): string[] {
         argv.push('--run-command', substitute(op.cmd))
         break
       case 'copy-in': {
-        const resolvedSrc = op.src.startsWith('/')
-          ? substitute(op.src)
-          : path.join(opts.recipeDir, substitute(op.src))
+        const substituted = substitute(op.src)
+        const resolvedSrc = path.isAbsolute(substituted)
+          ? substituted
+          : path.join(opts.recipeDir, substituted)
         argv.push('--copy-in', `${resolvedSrc}:${op.dest}`)
         break
       }
