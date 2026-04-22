@@ -9,7 +9,7 @@ cpus: 2
 memory: 2GiB
 disk: 10GiB
 
-# Pinned Debian 12 genericcloud -- matches the pin the deprecated build-disk pipeline used.
+# Pinned Debian 12 genericcloud -- matches the deprecated disk pipeline pin.
 # Bump in lockstep with upstream when provisioning changes.
 images:
 - location: "https://cloud.debian.org/images/cloud/bookworm/20260413-2447/debian-12-genericcloud-arm64-20260413-2447.qcow2"
