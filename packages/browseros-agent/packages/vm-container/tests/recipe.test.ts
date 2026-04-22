@@ -78,6 +78,20 @@ describe('composeVirtCustomizeArgv', () => {
     expect(argv).toContain('--copy-in')
     expect(argv).toContain('/tmp/manifest.json:/etc/m.json')
   })
+
+  test('unresolved substitutions pass through unchanged', () => {
+    const argv = composeVirtCustomizeArgv({
+      diskPath: '/disk.qcow2',
+      recipe: [
+        { op: 'run-command', cmd: 'echo {missing}' },
+        { op: 'write', dest: '/etc/x', content: '{also_missing}' },
+      ],
+      substitutions: { version: '2026.04.22-1' },
+      recipeDir: '/recipe',
+    })
+    expect(argv).toContain('echo {missing}')
+    expect(argv).toContain('/etc/x:{also_missing}')
+  })
 })
 
 describe('parsePackagesOutput', () => {

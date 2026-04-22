@@ -5,8 +5,13 @@ import path from 'node:path'
 import { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
 import { $ } from 'bun'
+import type { Arch } from '../schema/arch'
 import { assertCalver } from '../schema/arch'
-import { DEBIAN_BASE_IMAGES, debianSha256SumsUrl } from './base-image'
+import {
+  type BaseImage,
+  DEBIAN_BASE_IMAGES,
+  debianSha256SumsUrl,
+} from './base-image'
 import {
   composeVirtCustomizeArgv,
   parsePackagesOutput,
@@ -16,6 +21,12 @@ import type { BuildOptions, BuildResult } from './types'
 
 const DEFAULT_RECIPE_REL = '../../recipe/browseros-vm.recipe'
 
+const SHA256_HEX = /^[a-f0-9]{64}$/
+
+// Bun's file writer type is mildly hostile to `ReadableStream.pipeTo`, so we
+// hand-pump chunks through a lightweight sink type.
+type ChunkSink = ReturnType<ReturnType<typeof Bun.file>['writer']>
+
 export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   assertCalver(opts.version)
   const base = DEBIAN_BASE_IMAGES[opts.arch]
@@ -23,6 +34,39 @@ export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
     opts.baseImageShaOverride ??
     (await resolvePinnedSha(base.upstreamVersion, base))
 
+  const prepared = await prepareCustomizedDisk(opts, base, pinnedSha)
+  const finalized = await finalizeArtifacts(opts, prepared.workPath)
+  await rm(prepared.workPath, { force: true })
+  await rm(prepared.basePath, { force: true })
+
+  return {
+    arch: opts.arch,
+    version: opts.version,
+    baseImage: { ...base, sha256: pinnedSha },
+    recipeSha256: prepared.recipeSha256,
+    buildLogPath: prepared.buildLogPath,
+    rawQcowPath: finalized.rawQcowPath,
+    rawQcowSha256: finalized.rawQcowSha256,
+    rawQcowSize: finalized.rawQcowSize,
+    compressedPath: finalized.compressedPath,
+    compressedSha256: finalized.compressedSha256,
+    compressedSize: finalized.compressedSize,
+    packages: finalized.packages,
+  }
+}
+
+interface PreparedDisk {
+  basePath: string
+  workPath: string
+  buildLogPath: string
+  recipeSha256: string
+}
+
+async function prepareCustomizedDisk(
+  opts: BuildOptions,
+  base: BaseImage,
+  pinnedSha: string,
+): Promise<PreparedDisk> {
   await $`mkdir -p ${opts.outputDir}`.quiet()
   const basePath = path.join(opts.outputDir, `base-${opts.arch}.qcow2`)
   await downloadTo(base.url, basePath)
@@ -37,7 +81,7 @@ export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   const recipePath =
     opts.recipePath ?? path.resolve(import.meta.dir, DEFAULT_RECIPE_REL)
   const recipeText = await readFile(recipePath, 'utf8')
-  const recipeSha = sha256String(recipeText)
+  const recipeSha256 = sha256String(recipeText)
 
   const manifestStubPath = path.join(
     opts.outputDir,
@@ -51,29 +95,41 @@ export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   const argv = composeVirtCustomizeArgv({
     diskPath: workPath,
     recipe: parseRecipe(recipeText),
-    substitutions: {
-      version: opts.version,
-      manifest_tmp: manifestStubPath,
-    },
+    substitutions: { version: opts.version, manifest_tmp: manifestStubPath },
     recipeDir: path.dirname(recipePath),
   })
   const buildLogPath = path.join(opts.outputDir, `build-${opts.arch}.log`)
   await spawnToLog(['virt-customize', ...argv], buildLogPath)
-
   await $`virt-sparsify --in-place ${workPath}`.quiet()
 
-  const finalRawPath = path.join(
+  return { basePath, workPath, buildLogPath, recipeSha256 }
+}
+
+interface FinalizedArtifacts {
+  rawQcowPath: string
+  rawQcowSha256: string
+  rawQcowSize: number
+  compressedPath: string
+  compressedSha256: string
+  compressedSize: number
+  packages: Record<string, string>
+}
+
+async function finalizeArtifacts(
+  opts: BuildOptions,
+  workPath: string,
+): Promise<FinalizedArtifacts> {
+  const rawQcowPath = path.join(
     opts.outputDir,
     `browseros-vm-${opts.version}-${opts.arch}.qcow2`,
   )
-  await $`qemu-img convert -O qcow2 -c ${workPath} ${finalRawPath}`.quiet()
+  await $`qemu-img convert -O qcow2 -c ${workPath} ${rawQcowPath}`.quiet()
+  const rawQcowSha256 = await sha256File(rawQcowPath)
+  const rawQcowSize = (await stat(rawQcowPath)).size
 
-  const rawSha = await sha256File(finalRawPath)
-  const rawSize = (await stat(finalRawPath)).size
-
-  const compressedPath = `${finalRawPath}.zst`
-  await $`zstd -19 --long=30 -T0 -f -o ${compressedPath} ${finalRawPath}`.quiet()
-  const compressedSha = await sha256File(compressedPath)
+  const compressedPath = `${rawQcowPath}.zst`
+  await $`zstd -19 --long=30 -T0 -f -o ${compressedPath} ${rawQcowPath}`.quiet()
+  const compressedSha256 = await sha256File(compressedPath)
   const compressedSize = (await stat(compressedPath)).size
 
   const packages = await readPackagesFromDisk(
@@ -82,22 +138,14 @@ export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
     opts.arch,
   )
 
-  await rm(workPath, { force: true })
-  await rm(basePath, { force: true })
-
   return {
-    arch: opts.arch,
-    version: opts.version,
-    baseImage: { ...base, sha256: pinnedSha },
-    recipeSha256: recipeSha,
-    rawQcowPath: finalRawPath,
-    rawQcowSha256: rawSha,
-    rawQcowSize: rawSize,
+    rawQcowPath,
+    rawQcowSha256,
+    rawQcowSize,
     compressedPath,
-    compressedSha256: compressedSha,
+    compressedSha256,
     compressedSize,
     packages,
-    buildLogPath,
   }
 }
 
@@ -154,7 +202,7 @@ async function spawnToLog(argv: string[], logPath: string): Promise<void> {
 
 async function pumpStream(
   stream: ReadableStream<Uint8Array>,
-  sink: ReturnType<typeof Bun.file>['writer'] extends () => infer W ? W : never,
+  sink: ChunkSink,
 ): Promise<void> {
   const reader = stream.getReader()
   for (;;) {
@@ -167,7 +215,7 @@ async function pumpStream(
 async function readPackagesFromDisk(
   diskPath: string,
   outputDir: string,
-  arch: string,
+  arch: Arch,
 ): Promise<Record<string, string>> {
   const dumpPath = path.join(outputDir, `pkgs-${arch}.txt`)
   await $`virt-copy-out -a ${diskPath} /var/lib/browseros-vm-pkg-versions ${outputDir}`.quiet()
@@ -178,10 +226,9 @@ async function readPackagesFromDisk(
 
 async function resolvePinnedSha(
   upstreamVersion: string,
-  base: { arch: string; url: string; sha256: string },
+  base: BaseImage,
 ): Promise<string> {
-  if (base.sha256 && !base.sha256.startsWith('replace-with-real'))
-    return base.sha256
+  if (SHA256_HEX.test(base.sha256)) return base.sha256
   const sumsUrl = debianSha256SumsUrl(upstreamVersion)
   const response = await fetch(sumsUrl)
   if (!response.ok) throw new Error(`SHA256SUMS fetch failed: ${sumsUrl}`)

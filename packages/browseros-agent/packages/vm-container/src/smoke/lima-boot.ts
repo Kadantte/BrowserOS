@@ -7,6 +7,11 @@ const INSTANCE_NAME = 'browseros-vm-smoke'
 const SOCKET_POLL_INTERVAL_MS = 2000
 const SOCKET_POLL_TIMEOUT_MS = 120_000
 
+// Bun's fetch accepts a `unix` socket key at runtime, but the web-standard
+// `RequestInit` type doesn't include it. Declare the Bun-specific shape
+// locally so callers don't need to cast inline.
+type BunRequestInit = RequestInit & { unix?: string }
+
 export interface BootProbeOptions {
   limactlPath?: string
 }
@@ -15,7 +20,10 @@ export async function bootAndProbe(
   qcowZstPath: string,
   opts: BootProbeOptions = {},
 ): Promise<void> {
-  const limactl = opts.limactlPath ?? 'limactl'
+  const limactl = (opts.limactlPath ?? 'limactl').trim()
+  if (!limactl) {
+    throw new Error('bootAndProbe: limactlPath cannot be an empty string')
+  }
   const workDir = await mkdtemp(path.join(tmpdir(), 'vm-smoke-'))
   const qcowPath = path.join(workDir, 'disk.qcow2')
   const configPath = path.join(workDir, 'lima.yaml')
@@ -65,9 +73,8 @@ async function waitForSocket(sockPath: string): Promise<void> {
 }
 
 async function probePodmanSocket(sockPath: string): Promise<void> {
-  const response = await fetch('http://d/v4.0.0/libpod/_ping', {
-    unix: sockPath,
-  } as RequestInit)
+  const init: BunRequestInit = { unix: sockPath }
+  const response = await fetch('http://d/v4.0.0/libpod/_ping', init)
   if (!response.ok) {
     throw new Error(`podman ping failed: ${response.status}`)
   }

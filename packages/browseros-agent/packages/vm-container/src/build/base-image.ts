@@ -12,10 +12,11 @@ export interface BaseImage {
 
 const BOOKWORM_VERSION = '20260401-1234'
 
-// Sentinel sha256s must be replaced with real upstream hashes before the
-// first real publish. The scheduled base-image-bump workflow (follow-up PR)
-// will automate updates.
-const PINNED_SHA = 'replace-with-real-sha256-before-first-publish'
+// Empty-string sentinel: orchestrator.resolvePinnedSha checks against the
+// 64-hex-char regex and falls back to fetching SHA256SUMS when empty. Before
+// a real publish, replace these with the upstream sha256 (or let the
+// scheduled base-image-bump workflow do it in a follow-up PR).
+const PINNED_SHA = ''
 
 export const DEBIAN_BASE_IMAGES: Record<Arch, BaseImage> = {
   arm64: {

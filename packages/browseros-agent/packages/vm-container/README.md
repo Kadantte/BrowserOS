@@ -40,7 +40,7 @@ workflow sets them from repo secrets — no `.env` file needed.
 | `R2_ACCESS_KEY_ID`      | upload   | —                           |                                            |
 | `R2_SECRET_ACCESS_KEY`  | upload   | —                           |                                            |
 | `R2_BUCKET`             | upload   | —                           | e.g. `browseros`                           |
-| `CDN_BASE_URL`          | optional | `https://cdn.browseros.com` | Only affects URLs written into `manifest.json`. |
+| `CDN_BASE_URL`          | optional | `https://cdn.browseros.com` | Only affects URLs written into `manifest.json`. An explicit `cdnBaseUrl` option passed to `publishDisks()` overrides this env var. |
 
 If you already have R2 credentials in another repo `.env`, symlink it to avoid
 duplicating secrets:

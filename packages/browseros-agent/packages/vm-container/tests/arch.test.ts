@@ -12,6 +12,11 @@ describe('parseArch', () => {
     expect(() => parseArch('')).toThrow(/invalid arch/)
   })
 
+  test('is case-sensitive — uppercase is rejected', () => {
+    expect(() => parseArch('ARM64')).toThrow(/invalid arch/)
+    expect(() => parseArch('X64')).toThrow(/invalid arch/)
+  })
+
   test('ARCHES contains exactly the supported set', () => {
     expect([...ARCHES].sort()).toEqual(['arm64', 'x64'])
   })

@@ -134,4 +134,39 @@ describe('publishDisks', () => {
       `vm/${version}/browseros-vm-${version}-arm64.qcow2.zst.sha256`,
     ])
   })
+
+  test('rollback on mid-manifest failure deletes every qcow+sha already uploaded', async () => {
+    s3Mock.reset()
+    s3Mock.on(PutCmd).callsFake((input: { Key?: string }) => {
+      if (input.Key?.endsWith('manifest.json')) {
+        throw new Error('simulated manifest upload failure')
+      }
+      return {}
+    })
+    s3Mock.on(DeleteCmd).resolves({})
+
+    const results = {
+      arm64: await makeResult('arm64'),
+      x64: await makeResult('x64'),
+    }
+    await expect(
+      publishDisks({ version, results, updateLatest: true, client, bucket }),
+    ).rejects.toThrow(/simulated manifest upload failure/)
+
+    const deletedKeys = s3Mock
+      .commandCalls(DeleteCmd)
+      .map((c) => c.args[0].input.Key as string)
+      .sort()
+    expect(deletedKeys).toEqual([
+      `vm/${version}/browseros-vm-${version}-arm64.qcow2.zst`,
+      `vm/${version}/browseros-vm-${version}-arm64.qcow2.zst.sha256`,
+      `vm/${version}/browseros-vm-${version}-x64.qcow2.zst`,
+      `vm/${version}/browseros-vm-${version}-x64.qcow2.zst.sha256`,
+    ])
+    const uploadedKeys = s3Mock
+      .commandCalls(PutCmd)
+      .filter((c) => !(c.args[0].input.Key as string).endsWith('manifest.json'))
+      .map((c) => c.args[0].input.Key as string)
+    expect(uploadedKeys).not.toContain('vm/latest.json')
+  })
 })
