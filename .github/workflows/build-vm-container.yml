@@ -83,6 +83,17 @@ jobs:
             cmd+=(--base-image-sha512 "$BASE_IMAGE_SHA512_INPUT")
           fi
           "${cmd[@]}"
+      - name: Dump build log on failure
+        if: ${{ failure() }}
+        run: |
+          LOG_PATH="$GITHUB_WORKSPACE/dist/vm/${{ matrix.arch }}/build-${{ matrix.arch }}.log"
+          if [ -f "$LOG_PATH" ]; then
+            echo "::group::$(basename "$LOG_PATH")"
+            tail -n 200 "$LOG_PATH"
+            echo "::endgroup::"
+          else
+            echo "missing build log: $LOG_PATH"
+          fi
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
