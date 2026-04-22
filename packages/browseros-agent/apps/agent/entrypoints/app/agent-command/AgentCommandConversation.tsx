@@ -1,8 +1,7 @@
-import { ArrowLeft, Bot, History, Home, RotateCcw, Search } from 'lucide-react'
+import { ArrowLeft, Bot, History, RotateCcw } from 'lucide-react'
 import { type FC, useEffect, useRef } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
 import { Separator } from '@/components/ui/separator'
 import {
   type AgentEntry,
@@ -26,7 +25,7 @@ function ConversationHeader({
   onReset: () => void
 }) {
   return (
-    <div className="flex items-center justify-between gap-4 border-border/50 border-b px-6 py-4">
+    <div className="flex h-24 items-center justify-between gap-4 border-border/50 border-b px-6">
       <div className="flex min-w-0 items-center gap-3">
         <Button
           variant="ghost"
@@ -82,19 +81,8 @@ function AgentRail({
 }) {
   return (
     <aside className="hidden h-full min-h-0 flex-col border-border/50 border-r bg-background/70 lg:flex">
-      <div className="space-y-4 px-4 py-4">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <div className="flex size-9 items-center justify-center rounded-2xl border border-border/60 bg-card text-muted-foreground">
-              <Home className="size-4" />
-            </div>
-            <div>
-              <div className="font-semibold text-sm">Agents</div>
-              <div className="text-muted-foreground text-xs">
-                Switch conversations
-              </div>
-            </div>
-          </div>
+      <div className="flex h-24 items-center justify-between gap-3 px-4">
+        <div className="flex min-w-0 items-center gap-3">
           <Button
             variant="ghost"
             size="icon"
@@ -102,18 +90,11 @@ function AgentRail({
             className="rounded-xl"
             title="Back to home"
           >
-            <Home className="size-4" />
+            <ArrowLeft className="size-4" />
           </Button>
-        </div>
-
-        <div className="relative">
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value=""
-            readOnly
-            placeholder="Search agents"
-            className="rounded-xl border-border/60 bg-card pl-9 text-sm shadow-none"
-          />
+          <div className="min-w-0">
+            <div className="truncate font-semibold text-sm">Agents</div>
+          </div>
         </div>
       </div>
 
