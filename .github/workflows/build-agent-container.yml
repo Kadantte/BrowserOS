@@ -60,7 +60,7 @@ jobs:
           if [ -n "$INPUT_AGENT" ]; then
             args+=(--agent "$INPUT_AGENT")
           fi
-          matrix="$(bun run --filter @browseros/agent-container list-matrix -- "${args[@]}")"
+          matrix="$(bun run packages/agent-container/scripts/list-matrix.ts "${args[@]}")"
           echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
 
   build:
