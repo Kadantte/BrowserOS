@@ -3,7 +3,7 @@ import { writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { buildDisk } from '../src/build/orchestrator'
-import { parseArch } from '../src/schema/arch'
+import { parseArch, todayCalver } from '../src/schema/arch'
 
 const { values } = parseArgs({
   args: Bun.argv.slice(2),
@@ -15,15 +15,17 @@ const { values } = parseArgs({
   },
 })
 
-if (!values.version || !values.arch) {
+if (!values.arch) {
   console.error(
-    'usage: bun run build -- --version <YYYY.MM.DD-N> --arch <arm64|x64> [--output-dir ./dist] [--base-image-sha256 <sha>]',
+    'usage: bun run build -- --arch <arm64|x64> [--version <YYYY.MM.DD[-suffix]>] [--output-dir ./dist] [--base-image-sha256 <sha>]',
   )
   process.exit(1)
 }
 
+const version = values.version ?? todayCalver('dev1')
+
 const result = await buildDisk({
-  version: values.version,
+  version,
   arch: parseArch(values.arch),
   outputDir: values['output-dir'] ?? './dist',
   baseImageShaOverride: values['base-image-sha256'],

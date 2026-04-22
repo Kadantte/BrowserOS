@@ -2,15 +2,13 @@ import { createHash } from 'node:crypto'
 import { createReadStream } from 'node:fs'
 import { copyFile, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { Readable } from 'node:stream'
-import { pipeline } from 'node:stream/promises'
 import { $ } from 'bun'
 import type { Arch } from '../schema/arch'
 import { assertCalver } from '../schema/arch'
 import {
   type BaseImage,
   DEBIAN_BASE_IMAGES,
-  debianSha256SumsUrl,
+  debianSha512SumsUrl,
 } from './base-image'
 import {
   composeVirtCustomizeArgv,
@@ -21,7 +19,7 @@ import type { BuildOptions, BuildResult } from './types'
 
 const DEFAULT_RECIPE_REL = '../../recipe/browseros-vm.recipe'
 
-const SHA256_HEX = /^[a-f0-9]{64}$/
+const SHA512_HEX = /^[a-f0-9]{128}$/
 
 // Bun's file writer type is mildly hostile to `ReadableStream.pipeTo`, so we
 // hand-pump chunks through a lightweight sink type.
@@ -30,11 +28,11 @@ type ChunkSink = ReturnType<ReturnType<typeof Bun.file>['writer']>
 export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   assertCalver(opts.version)
   const base = DEBIAN_BASE_IMAGES[opts.arch]
-  const pinnedSha =
+  const pinnedSha512 =
     opts.baseImageShaOverride ??
-    (await resolvePinnedSha(base.upstreamVersion, base))
+    (await resolvePinnedSha512(base.upstreamVersion, base))
 
-  const prepared = await prepareCustomizedDisk(opts, base, pinnedSha)
+  const prepared = await prepareCustomizedDisk(opts, base, pinnedSha512)
   const finalized = await finalizeArtifacts(opts, prepared.workPath)
   await rm(prepared.workPath, { force: true })
   await rm(prepared.basePath, { force: true })
@@ -42,7 +40,7 @@ export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   return {
     arch: opts.arch,
     version: opts.version,
-    baseImage: { ...base, sha256: pinnedSha },
+    baseImage: { ...base, sha512: pinnedSha512 },
     recipeSha256: prepared.recipeSha256,
     buildLogPath: prepared.buildLogPath,
     rawQcowPath: finalized.rawQcowPath,
@@ -65,12 +63,12 @@ interface PreparedDisk {
 async function prepareCustomizedDisk(
   opts: BuildOptions,
   base: BaseImage,
-  pinnedSha: string,
+  pinnedSha512: string,
 ): Promise<PreparedDisk> {
   await $`mkdir -p ${opts.outputDir}`.quiet()
   const basePath = path.join(opts.outputDir, `base-${opts.arch}.qcow2`)
   await downloadTo(base.url, basePath)
-  await verifySha256(basePath, pinnedSha)
+  await verifySha512(basePath, pinnedSha512)
 
   const workPath = path.join(
     opts.outputDir,
@@ -154,23 +152,37 @@ async function downloadTo(url: string, dest: string): Promise<void> {
   if (!response.ok || !response.body) {
     throw new Error(`download failed: ${url} (${response.status})`)
   }
-  await pipeline(
-    Readable.fromWeb(response.body as never),
-    Bun.file(dest).writer() as never,
-  )
+  const sink = Bun.file(dest).writer()
+  const reader = response.body.getReader()
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      sink.write(value)
+    }
+  } finally {
+    await sink.end()
+  }
 }
 
-async function verifySha256(filePath: string, expected: string): Promise<void> {
-  const actual = await sha256File(filePath)
+async function verifySha512(filePath: string, expected: string): Promise<void> {
+  const actual = await hashFile(filePath, 'sha512')
   if (actual !== expected) {
     throw new Error(
-      `sha256 mismatch for ${filePath}: expected ${expected}, got ${actual}`,
+      `sha512 mismatch for ${filePath}: expected ${expected}, got ${actual}`,
     )
   }
 }
 
 async function sha256File(filePath: string): Promise<string> {
-  const hash = createHash('sha256')
+  return hashFile(filePath, 'sha256')
+}
+
+async function hashFile(
+  filePath: string,
+  algo: 'sha256' | 'sha512',
+): Promise<string> {
+  const hash = createHash(algo)
   for await (const chunk of createReadStream(filePath)) hash.update(chunk)
   return hash.digest('hex')
 }
@@ -224,19 +236,19 @@ async function readPackagesFromDisk(
   return parsePackagesOutput(text)
 }
 
-async function resolvePinnedSha(
+async function resolvePinnedSha512(
   upstreamVersion: string,
   base: BaseImage,
 ): Promise<string> {
-  if (SHA256_HEX.test(base.sha256)) return base.sha256
-  const sumsUrl = debianSha256SumsUrl(upstreamVersion)
+  if (SHA512_HEX.test(base.sha512)) return base.sha512
+  const sumsUrl = debianSha512SumsUrl(upstreamVersion)
   const response = await fetch(sumsUrl)
-  if (!response.ok) throw new Error(`SHA256SUMS fetch failed: ${sumsUrl}`)
+  if (!response.ok) throw new Error(`SHA512SUMS fetch failed: ${sumsUrl}`)
   const text = await response.text()
   const filename = base.url.slice(base.url.lastIndexOf('/') + 1)
   for (const line of text.split('\n')) {
     const [sha, name] = line.trim().split(/\s+/)
     if (name === filename && sha) return sha
   }
-  throw new Error(`SHA256SUMS missing entry for ${filename}`)
+  throw new Error(`SHA512SUMS missing entry for ${filename}`)
 }

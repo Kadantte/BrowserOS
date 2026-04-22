@@ -23,9 +23,9 @@ const validManifest: VmManifest = {
     distro: 'debian',
     release: 'bookworm',
     channel: 'genericcloud',
-    upstream_version: '20260401-1234',
-    sha256_url:
-      'https://cloud.debian.org/images/cloud/bookworm/20260401-1234/SHA256SUMS',
+    upstream_version: '20260413-2447',
+    sha512_url:
+      'https://cloud.debian.org/images/cloud/bookworm/20260413-2447/SHA512SUMS',
   },
   packages: { podman: '4.3.1+ds1-8+deb12u1' },
   providers: [
@@ -37,7 +37,7 @@ const validManifest: VmManifest = {
       compressed_size_bytes: 200_000_000,
       uncompressed_sha256: sha('c'),
       uncompressed_size_bytes: 500_000_000,
-      base_image_sha256: sha('d'),
+      base_image_sha512: sha('d').repeat(2),
       url: 'https://cdn.browseros.com/vm/2026.04.22-1/browseros-vm-2026.04.22-1-arm64.qcow2.zst',
     },
     {
@@ -48,7 +48,7 @@ const validManifest: VmManifest = {
       compressed_size_bytes: 210_000_000,
       uncompressed_sha256: sha('f'),
       uncompressed_size_bytes: 520_000_000,
-      base_image_sha256: sha('d'),
+      base_image_sha512: sha('d').repeat(2),
       url: 'https://cdn.browseros.com/vm/2026.04.22-1/browseros-vm-2026.04.22-1-x64.qcow2.zst',
     },
   ],

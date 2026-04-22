@@ -61,7 +61,7 @@ jobs:
           if [ -n "${{ inputs.version }}" ]; then
             echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
           else
-            echo "value=$(date -u +%Y.%m.%d)-${{ github.run_id }}" >> "$GITHUB_OUTPUT"
+            echo "value=$(date -u +%Y.%m.%d)-${{ github.run_number }}" >> "$GITHUB_OUTPUT"
           fi
       - name: Build
         working-directory: ${{ env.PKG_DIR }}

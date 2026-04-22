@@ -1,5 +1,11 @@
 export type { Arch } from './arch'
-export { ARCHES, assertCalver, CALVER_REGEX, parseArch } from './arch'
+export {
+  ARCHES,
+  assertCalver,
+  CALVER_REGEX,
+  parseArch,
+  todayCalver,
+} from './arch'
 export type { LatestPointer, VmManifest, VmProvider } from './manifest'
 export {
   latestPointerSchema,

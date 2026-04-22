@@ -4,6 +4,7 @@ import { ARCHES, CALVER_REGEX } from './arch'
 export const MANIFEST_SCHEMA_VERSION = 'v1' as const
 
 const sha256Hex = z.string().regex(/^[a-f0-9]{64}$/)
+const sha512Hex = z.string().regex(/^[a-f0-9]{128}$/)
 
 export const vmProviderSchema = z.object({
   arch: z.enum(ARCHES),
@@ -13,7 +14,7 @@ export const vmProviderSchema = z.object({
   compressed_size_bytes: z.number().int().positive(),
   uncompressed_sha256: sha256Hex,
   uncompressed_size_bytes: z.number().int().positive(),
-  base_image_sha256: sha256Hex,
+  base_image_sha512: sha512Hex,
   url: z.string().url(),
 })
 
@@ -33,7 +34,7 @@ export const vmManifestSchema = z.object({
     release: z.string().min(1),
     channel: z.literal('genericcloud'),
     upstream_version: z.string().min(1),
-    sha256_url: z.string().url(),
+    sha512_url: z.string().url(),
   }),
   packages: z.record(z.string(), z.string()),
   providers: z.array(vmProviderSchema).length(2),
