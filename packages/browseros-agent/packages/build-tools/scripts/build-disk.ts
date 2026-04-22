@@ -1,6 +1,5 @@
 #!/usr/bin/env bun
 import { createHash } from 'node:crypto'
-import { resolve4 } from 'node:dns/promises'
 import { createReadStream } from 'node:fs'
 import {
   copyFile,
@@ -70,11 +69,7 @@ try {
     diskPath: workPath,
     recipeText,
     recipeDir: path.dirname(recipePath),
-    substitutions: {
-      version,
-      manifest_tmp: buildMarkerPath,
-      apt_hosts: await composeAptHosts(),
-    },
+    substitutions: { version, manifest_tmp: buildMarkerPath },
   })
 
   await spawnChecked(['virt-customize', ...args])
@@ -158,15 +153,6 @@ function composeVirtCustomizeArgs(opts: {
     throw new Error(`unknown recipe op: ${op}`)
   }
   return out
-}
-
-async function composeAptHosts(): Promise<string> {
-  const ips = await resolve4('deb.debian.org')
-  if (ips.length === 0) throw new Error('no A records for deb.debian.org')
-  return ips
-    .slice(0, 4)
-    .map((ip) => `${ip} deb.debian.org # browseros-build-mirror\\n`)
-    .join('')
 }
 
 function subst(value: string, vars: Record<string, string>): string {

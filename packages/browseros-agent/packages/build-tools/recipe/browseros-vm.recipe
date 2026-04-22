@@ -3,9 +3,8 @@
 # Ops: run-command | copy-in <src>:<dest-dir> | upload <src>:<dest-file> | write <path>:<content> | truncate <path>
 # {version} and {manifest_tmp} are substituted at build time.
 
-# libguestfs can lose DNS inside the appliance; seed Debian mirror host entries
-# from host DNS and remove them after package installation.
-run-command printf '{apt_hosts}' >> /etc/hosts && printf 'nameserver 169.254.2.3\nnameserver 1.1.1.1\noptions timeout:2 attempts:3\n' > /etc/resolv.conf && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends podman crun fuse-overlayfs slirp4netns ca-certificates && sed -i '/browseros-build-mirror/d' /etc/hosts
+run-command apt-get update
+run-command DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends podman crun fuse-overlayfs slirp4netns ca-certificates
 run-command systemctl enable podman.socket
 copy-in auth.json:/etc/containers/
 run-command useradd --create-home --uid 1000 --shell /bin/bash browseros

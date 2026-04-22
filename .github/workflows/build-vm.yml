@@ -42,6 +42,7 @@ jobs:
 
   build:
     needs: check
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     strategy:
       fail-fast: false
       matrix:
@@ -90,6 +91,7 @@ jobs:
 
   smoke:
     needs: build
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
