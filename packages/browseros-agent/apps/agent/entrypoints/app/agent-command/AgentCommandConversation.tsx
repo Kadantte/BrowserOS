@@ -242,7 +242,7 @@ export const AgentCommandConversation: FC = () => {
   const statusCopy = getConversationStatusCopy(status?.status, streaming)
 
   return (
-    <div className="absolute inset-0 overflow-hidden bg-background px-4 py-4">
+    <div className="absolute inset-0 overflow-hidden bg-background px-4 py-4 md:pl-[calc(theme(spacing.4)+theme(spacing.14))]">
       <div className="mx-auto grid h-full w-full max-w-[1600px] lg:grid-cols-[300px_minmax(0,1fr)]">
         <AgentRail
           activeAgentId={resolvedAgentId}
