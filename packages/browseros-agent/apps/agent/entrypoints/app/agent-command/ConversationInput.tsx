@@ -319,8 +319,9 @@ export const ConversationInput: FC<ConversationInputProps> = ({
     <Shell>
       <div
         className={cn(
-          'flex items-end gap-3',
+          'flex gap-3',
           variant === 'home' ? 'px-5 py-4' : 'px-4 py-3',
+          variant === 'home' ? 'items-end' : 'items-center',
         )}
       >
         <BotInputIcon variant={variant} />
@@ -344,11 +345,11 @@ export const ConversationInput: FC<ConversationInputProps> = ({
             }
             disabled={disabled || voice.isTranscribing}
             className={cn(
-              'resize-none border-none bg-transparent px-0 py-0 text-[15px] shadow-none focus-visible:ring-0',
+              'resize-none border-none bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0',
               '[field-sizing:fixed]',
               variant === 'home'
-                ? 'min-h-[72px] leading-7'
-                : 'min-h-[40px] leading-6',
+                ? 'min-h-[72px] py-0 leading-7'
+                : 'min-h-[40px] py-2 leading-6',
               'placeholder:text-muted-foreground/80',
             )}
           />
