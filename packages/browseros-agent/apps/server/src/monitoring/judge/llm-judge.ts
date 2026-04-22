@@ -131,7 +131,7 @@ function sanitizeForPrompt(value: unknown, depth = 0): unknown {
       .map((item) => sanitizeForPrompt(item, depth + 1))
   }
 
-  if (value && typeof value === 'object') {
+  if (typeof value === 'object') {
     if (depth >= 4) {
       return '[truncated]'
     }

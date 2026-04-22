@@ -1,7 +1,7 @@
 import {
-  getRequiredLazyMonitoringJudgeConfig,
   LazyMonitoringJudgeError,
   RemoteLazyMonitoringJudgeClient,
+  resolveLazyMonitoringJudgeConfig,
 } from './llm-judge'
 import type { LazyMonitoringJudgeInput, LazyMonitoringJudgment } from './types'
 
@@ -26,7 +26,8 @@ export class LazyMonitoringJudgeService {
 }
 
 export function createLazyMonitoringJudgeService(): LazyMonitoringJudgeService {
+  const config = resolveLazyMonitoringJudgeConfig()
   return new LazyMonitoringJudgeService(
-    new RemoteLazyMonitoringJudgeClient(getRequiredLazyMonitoringJudgeConfig()),
+    config ? new RemoteLazyMonitoringJudgeClient(config) : undefined,
   )
 }
