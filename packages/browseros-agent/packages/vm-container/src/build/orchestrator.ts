@@ -28,11 +28,18 @@ type ChunkSink = ReturnType<ReturnType<typeof Bun.file>['writer']>
 export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   assertCalver(opts.version)
   const base = DEBIAN_BASE_IMAGES[opts.arch]
-  const pinnedSha512 =
-    opts.baseImageSha512Override ??
-    (await resolvePinnedSha512(base.upstreamVersion, base))
+  const pinnedSha512 = await resolvePinnedSha512(base.upstreamVersion, base)
 
   const prepared = await prepareCustomizedDisk(opts, base, pinnedSha512)
+  const baseImageSha256 = await sha256File(prepared.basePath)
+  if (
+    opts.baseImageSha256Override &&
+    opts.baseImageSha256Override !== baseImageSha256
+  ) {
+    throw new Error(
+      `base image sha256 mismatch: override ${opts.baseImageSha256Override}, computed ${baseImageSha256}`,
+    )
+  }
   const finalized = await finalizeArtifacts(opts, prepared.workPath)
   await rm(prepared.workPath, { force: true })
   await rm(prepared.basePath, { force: true })
@@ -40,7 +47,7 @@ export async function buildDisk(opts: BuildOptions): Promise<BuildResult> {
   return {
     arch: opts.arch,
     version: opts.version,
-    baseImage: { ...base, sha512: pinnedSha512 },
+    baseImage: { ...base, sha512: pinnedSha512, sha256: baseImageSha256 },
     recipeSha256: prepared.recipeSha256,
     buildLogPath: prepared.buildLogPath,
     rawQcowPath: finalized.rawQcowPath,

@@ -11,13 +11,13 @@ const { values } = parseArgs({
     version: { type: 'string' },
     arch: { type: 'string' },
     'output-dir': { type: 'string', default: './dist' },
-    'base-image-sha512': { type: 'string' },
+    'base-image-sha256': { type: 'string' },
   },
 })
 
 if (!values.arch) {
   console.error(
-    'usage: bun run build -- --arch <arm64|x64> [--version <YYYY.MM.DD[-N]>] [--output-dir ./dist] [--base-image-sha512 <sha>]',
+    'usage: bun run build -- --arch <arm64|x64> [--version <YYYY.MM.DD[-N]>] [--output-dir ./dist] [--base-image-sha256 <sha>]',
   )
   process.exit(1)
 }
@@ -28,7 +28,7 @@ const result = await buildDisk({
   version,
   arch: parseArch(values.arch),
   outputDir: values['output-dir'] ?? './dist',
-  baseImageSha512Override: values['base-image-sha512'],
+  baseImageSha256Override: values['base-image-sha256'],
 })
 
 const resultPath = path.join(

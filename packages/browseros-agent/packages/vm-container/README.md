@@ -104,8 +104,13 @@ upstream Debian drift.
 
 ## Repro + pinning
 
-- Base Debian image is pinned by sha512 in `src/build/base-image.ts`. Update
-  the pin (and the upstream version) together when bumping to a newer daily.
+- Base Debian image is pinned by sha512 in `src/build/base-image.ts` because
+  Debian's cloud-image snapshots publish `SHA512SUMS` (not `SHA256SUMS`). The
+  build verifies the download against that pinned sha512, then also computes
+  a local sha256 of the same bytes and records it as `base_image_sha256` in
+  the published `manifest.json` so WS4 can verify using the stable contract.
+  Update both the pin and the upstream version together when bumping to a
+  newer daily.
 - Recipe file (`recipe/browseros-vm.recipe`) is git-tracked and its sha256
   lands in `manifest.build.recipe_sha256`.
 - Installed package versions are captured post-install via `dpkg-query` and

@@ -6,7 +6,6 @@ import {
   PutObjectCommand,
   type S3Client,
 } from '@aws-sdk/client-s3'
-import { debianSha512SumsUrl } from '../build/base-image'
 import type { BuildResult } from '../build/types'
 import {
   keyForLatest,
@@ -66,7 +65,7 @@ export async function publishDisks(opts: PublishOptions): Promise<void> {
         compressed_size_bytes: result.compressedSize,
         uncompressed_sha256: result.rawQcowSha256,
         uncompressed_size_bytes: result.rawQcowSize,
-        base_image_sha512: result.baseImage.sha512,
+        base_image_sha256: result.baseImage.sha256,
         url: `${cdnBase}/${qcowKey}`,
       })
     }
@@ -125,7 +124,6 @@ function buildManifest(
       release: reference.baseImage.release,
       channel: 'genericcloud' as const,
       upstream_version: reference.baseImage.upstreamVersion,
-      sha512_url: debianSha512SumsUrl(reference.baseImage.upstreamVersion),
     },
     packages: reference.packages,
     providers,

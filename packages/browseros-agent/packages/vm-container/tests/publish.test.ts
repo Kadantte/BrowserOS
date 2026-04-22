@@ -51,6 +51,7 @@ async function makeResult(arch: Arch): Promise<BuildResult> {
       arch,
       url: `https://cloud.debian.org/.../${arch}.qcow2`,
       sha512: sha('d').repeat(2),
+      sha256: sha('d'),
     },
     recipeSha256: sha('a'),
     rawQcowPath: path.join(workDir, `browseros-vm-2026.04.22-1-${arch}.qcow2`),
