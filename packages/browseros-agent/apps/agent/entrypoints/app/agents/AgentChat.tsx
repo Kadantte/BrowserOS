@@ -22,7 +22,9 @@ import { Textarea } from '@/components/ui/textarea'
 import { consumeSSEStream } from '@/lib/sse'
 import {
   buildChatHistoryFromTurns,
+  type ChatHistoryEntry,
   chatWithAgent,
+  fetchAgentHistory,
   type OpenClawStreamEvent,
 } from './useOpenClaw'
 
@@ -43,6 +45,75 @@ interface ChatTurn {
   userText: string
   parts: AssistantPart[]
   done: boolean
+  source?: string
+}
+
+function cleanUserText(text: string): string {
+  return text
+    .replace(/^\[cron:[^\]]*\]\s*/i, '')
+    .replace(/Current time:.*$/gm, '')
+    .trim()
+}
+
+function historyToTurns(entries: ChatHistoryEntry[]): ChatTurn[] {
+  const sorted = [...entries].sort((a, b) => {
+    const aTs = a.messages[0]?.timestamp ?? 0
+    const bTs = b.messages[0]?.timestamp ?? 0
+    return aTs - bTs
+  })
+
+  const turns: ChatTurn[] = []
+
+  for (const entry of sorted) {
+    // Limit to last 20 messages per session to avoid huge histories
+    const msgs = entry.messages.slice(-20)
+    let current: ChatTurn | null = null
+
+    for (const msg of msgs) {
+      if (msg.role === 'user') {
+        if (current) turns.push(current)
+        const rawText = msg.content
+          .filter((b) => b.type === 'text' && b.text)
+          .map((b) => b.text ?? '')
+          .join('\n')
+
+        const userText = cleanUserText(rawText)
+        if (!userText) {
+          current = null
+          continue
+        }
+
+        current = {
+          id: crypto.randomUUID(),
+          userText,
+          parts: [],
+          done: true,
+          source: entry.session.source,
+        }
+      } else if (msg.role === 'assistant') {
+        // If no current turn (e.g. user message was filtered), create
+        // one without user text — this handles proactive/cron responses
+        if (!current) {
+          current = {
+            id: crypto.randomUUID(),
+            userText: '',
+            parts: [],
+            done: true,
+            source: entry.session.source,
+          }
+        }
+        for (const block of msg.content) {
+          if (block.type === 'text' && block.text) {
+            current.parts.push({ kind: 'text', text: block.text })
+          }
+        }
+      }
+    }
+
+    if (current && current.parts.length > 0) turns.push(current)
+  }
+
+  return turns
 }
 
 interface AgentChatProps {
@@ -59,6 +130,7 @@ export const AgentChat: FC<AgentChatProps> = ({
   const [turns, setTurns] = useState<ChatTurn[]>([])
   const [input, setInput] = useState('')
   const [streaming, setStreaming] = useState(false)
+  const [historyLoaded, setHistoryLoaded] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const sessionKeyRef = useRef(crypto.randomUUID())
   const streamAbortRef = useRef<AbortController | null>(null)
@@ -74,6 +146,23 @@ export const AgentChat: FC<AgentChatProps> = ({
   useEffect(() => {
     scrollToBottom()
   }, [turns])
+
+  useEffect(() => {
+    let active = true
+    fetchAgentHistory(agentId)
+      .then((entries) => {
+        if (!active) return
+        const historicTurns = historyToTurns(entries)
+        if (historicTurns.length > 0) setTurns(historicTurns)
+        setHistoryLoaded(true)
+      })
+      .catch(() => {
+        if (active) setHistoryLoaded(true)
+      })
+    return () => {
+      active = false
+    }
+  }, [agentId])
 
   useEffect(() => {
     return () => {
@@ -263,6 +352,22 @@ export const AgentChat: FC<AgentChatProps> = ({
     }
   }
 
+  if (!historyLoaded) {
+    return (
+      <div className="flex h-[calc(100vh-4rem)] flex-col">
+        <div className="flex items-center gap-2 border-b px-4 py-3">
+          <Button variant="ghost" size="icon" onClick={onBack}>
+            <ArrowLeft className="size-4" />
+          </Button>
+          <h2 className="font-semibold text-lg">{agentName}</h2>
+        </div>
+        <div className="flex flex-1 items-center justify-center">
+          <Loader2 className="size-6 animate-spin text-muted-foreground" />
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className="flex h-[calc(100vh-4rem)] flex-col">
       <div className="flex items-center gap-2 border-b px-4 py-3">
@@ -275,14 +380,27 @@ export const AgentChat: FC<AgentChatProps> = ({
       <div ref={scrollRef} className="flex-1 space-y-4 overflow-y-auto p-4">
         {turns.map((turn) => (
           <div key={turn.id} className="space-y-3">
-            {/* User message */}
-            <Message from="user">
-              <MessageContent>
-                <pre className="whitespace-pre-wrap font-sans text-sm">
-                  {turn.userText}
-                </pre>
-              </MessageContent>
-            </Message>
+            {turn.source &&
+              turn.source !== 'user-chat' &&
+              turn.source !== 'other' && (
+                <div className="mb-1 text-muted-foreground text-xs">
+                  {turn.source === 'cron'
+                    ? 'Scheduled Task'
+                    : turn.source === 'hook'
+                      ? 'Hook'
+                      : turn.source}
+                </div>
+              )}
+            {/* User message (skip if empty — proactive/cron response) */}
+            {turn.userText && (
+              <Message from="user">
+                <MessageContent>
+                  <pre className="whitespace-pre-wrap font-sans text-sm">
+                    {turn.userText}
+                  </pre>
+                </MessageContent>
+              </Message>
+            )}
 
             {/* Assistant response — all parts grouped */}
             {turn.parts.length > 0 && (

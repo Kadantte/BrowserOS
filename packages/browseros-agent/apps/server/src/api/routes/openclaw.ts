@@ -20,8 +20,72 @@ import {
   OpenClawInvalidAgentNameError,
   OpenClawProtectedAgentError,
 } from '../services/openclaw/errors'
+import type { OpenClawChatMessage } from '../services/openclaw/openclaw-cli-client'
 import { isUnsupportedOpenClawProviderError } from '../services/openclaw/openclaw-provider-map'
 import { getOpenClawService } from '../services/openclaw/openclaw-service'
+
+/**
+ * Filter non-user-facing messages from chat.history.
+ *
+ * OpenClaw's session history contains three kinds of noise:
+ *
+ * 1. Context replays — When a new message arrives in an existing session,
+ *    OpenClaw bundles the entire prior conversation into a single user
+ *    message prefixed with "[Chat messages since your last reply]".
+ *    This is internal context for the model, not user input.
+ *
+ * 2. System events — Cron/heartbeat triggers formatted as user messages
+ *    starting with "System: [timestamp]" and containing
+ *    "Handle this reminder internally".
+ *
+ * 3. Heartbeat responses — Assistant messages that are just "HEARTBEAT_OK",
+ *    which is OpenClaw's standard heartbeat acknowledgment token.
+ */
+function filterSystemMessages(
+  messages: OpenClawChatMessage[],
+): OpenClawChatMessage[] {
+  const result: OpenClawChatMessage[] = []
+
+  for (const msg of messages) {
+    const text = msg.content
+      .filter((b) => b.type === 'text')
+      .map((b) => b.text ?? '')
+      .join('')
+      .trim()
+
+    // Skip heartbeat responses
+    if (msg.role === 'assistant' && text.startsWith('HEARTBEAT')) continue
+
+    // Skip system event triggers (cron/heartbeat)
+    if (msg.role === 'user' && text.includes('Handle this reminder internally'))
+      continue
+
+    // Context-replay messages: extract the actual new user message
+    if (
+      msg.role === 'user' &&
+      text.startsWith('[Chat messages since your last reply')
+    ) {
+      const marker = '[Current message - respond to this]'
+      const idx = text.indexOf(marker)
+      if (idx >= 0) {
+        let actual = text.slice(idx + marker.length).trim()
+        // Strip "User: " prefix
+        actual = actual.replace(/^User:\s*/i, '')
+        if (actual) {
+          result.push({
+            ...msg,
+            content: [{ type: 'text', text: actual }],
+          })
+        }
+      }
+      continue
+    }
+
+    result.push(msg)
+  }
+
+  return result
+}
 
 function getCreateAgentValidationError(body: { name?: string }): string | null {
   if (!body.name?.trim()) {
@@ -339,6 +403,52 @@ export function createOpenClawRoutes() {
         if (isUnsupportedOpenClawProviderError(err)) {
           return c.json({ error: err.message }, 400)
         }
+        const message = err instanceof Error ? err.message : String(err)
+        return c.json({ error: message }, 500)
+      }
+    })
+
+    .get('/agents/:id/history', async (c) => {
+      const { id } = c.req.param()
+      const limit = Number(c.req.query('limit')) || 10
+
+      try {
+        const allSessions = await getOpenClawService().listSessions(id)
+        const filtered = allSessions
+          .filter((s) => s.agentId === id || s.key.includes(`agent:${id}:`))
+          .sort((a, b) => b.updatedAt - a.updatedAt)
+          .slice(0, limit)
+
+        const classifySource = (key: string): string => {
+          if (key.includes(':cron:')) return 'cron'
+          if (key.includes(':hook:')) return 'hook'
+          if (key.includes('openai-user:browseros')) return 'user-chat'
+          if (key.includes('qa-channel')) return 'channel'
+          return 'other'
+        }
+
+        const entries = await Promise.all(
+          filtered.map(async (s) => {
+            const source = classifySource(s.key)
+            try {
+              const rawMessages = await getOpenClawService().getChatHistory(
+                s.key,
+              )
+
+              const messages = filterSystemMessages(rawMessages)
+
+              return { session: { ...s, source }, messages }
+            } catch {
+              return { session: { ...s, source }, messages: [] }
+            }
+          }),
+        )
+
+        // Filter out entries with no meaningful messages
+        const nonEmpty = entries.filter((e) => e.messages.length > 0)
+
+        return c.json({ entries: nonEmpty })
+      } catch (err) {
         const message = err instanceof Error ? err.message : String(err)
         return c.json({ error: message }, 500)
       }

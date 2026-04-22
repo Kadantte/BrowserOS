@@ -30,8 +30,11 @@ import {
 } from './errors'
 import {
   type OpenClawAgentRecord,
+  type OpenClawChatBlock,
+  type OpenClawChatMessage,
   OpenClawCliClient,
   type OpenClawConfigBatchEntry,
+  type OpenClawSessionEntry,
 } from './openclaw-cli-client'
 import {
   getHostWorkspaceDir,
@@ -91,6 +94,7 @@ export interface OpenClawStatusResponse {
 }
 
 export type OpenClawAgentEntry = OpenClawAgentRecord
+export type { OpenClawChatBlock, OpenClawChatMessage, OpenClawSessionEntry }
 
 export interface SetupInput {
   providerType?: string
@@ -571,6 +575,19 @@ export class OpenClawService {
     await this.assertGatewayReady()
     logger.debug('Listing OpenClaw agents')
     return this.runControlPlaneCall(() => this.cliClient.listAgents())
+  }
+
+  async listSessions(agentId?: string): Promise<OpenClawSessionEntry[]> {
+    logger.debug('Listing OpenClaw sessions', { agentId })
+    return this.cliClient.listSessions(agentId)
+  }
+
+  async getChatHistory(sessionKey: string): Promise<OpenClawChatMessage[]> {
+    await this.assertGatewayReady()
+    logger.debug('Fetching OpenClaw chat history', { sessionKey })
+    return this.runControlPlaneCall(() =>
+      this.cliClient.getChatHistory(sessionKey),
+    )
   }
 
   // ── Chat Stream (HTTP) ───────────────────────────────────────────────

@@ -361,6 +361,50 @@ export function buildChatHistoryFromTurns(
   return messages
 }
 
+export interface ChatHistoryBlock {
+  type: 'text' | 'toolCall' | 'thinking'
+  text?: string
+  name?: string
+  arguments?: unknown
+  thinking?: string
+}
+
+export interface ChatHistoryMessage {
+  role: 'user' | 'assistant' | 'toolResult'
+  content: ChatHistoryBlock[]
+  timestamp?: number
+  usage?: { input: number; output: number }
+  stopReason?: string
+  toolName?: string
+  isError?: boolean
+}
+
+export interface ChatHistorySession {
+  key: string
+  updatedAt: number
+  sessionId: string
+  agentId: string
+  source: string
+}
+
+export interface ChatHistoryEntry {
+  session: ChatHistorySession
+  messages: ChatHistoryMessage[]
+}
+
+export async function fetchAgentHistory(
+  agentId: string,
+  limit = 10,
+): Promise<ChatHistoryEntry[]> {
+  const baseUrl = await getAgentServerUrl()
+  const res = await fetch(
+    `${baseUrl}/claw/agents/${agentId}/history?limit=${limit}`,
+  )
+  if (!res.ok) return []
+  const data = (await res.json()) as { entries: ChatHistoryEntry[] }
+  return data.entries ?? []
+}
+
 export async function chatWithAgent(
   agentId: string,
   message: string,
