@@ -18,7 +18,7 @@ const { values } = parseArgs({
 
 if (values.help) {
   console.log(
-    'Usage: bun run smoke -- --tarball <path> --expected-image <ref> [--expected-fingerprint <sha256-hex>] [--expected-image-id <sha256:...>]',
+    'Usage: bun run smoke -- --tarball <path> --expected-image <ref> [--expected-fingerprint <sha256-hex>] [--expected-image-id <sha256:...> | --expected-digest <sha256:...>]',
   )
   process.exit(0)
 }

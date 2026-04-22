@@ -308,4 +308,58 @@ describe('publish', () => {
       'podman version 5.9.0',
     ])
   })
+
+  it('records all build provenance values in the aggregate manifest', async () => {
+    const root = await createTempDir()
+    const buildResults = [
+      await createBuildResult(root, 'amd64', {
+        name: 'claude-code',
+        publishAs: 'claude-code',
+        image: 'ghcr.io/example/claude-code',
+        version: '1.0.0',
+        builtBy: 'workflow-a@refs/heads/dev',
+      }),
+      await createBuildResult(root, 'arm64', {
+        name: 'openclaw',
+        publishAs: 'openclaw',
+        image: 'ghcr.io/openclaw/openclaw',
+        version: '2026.4.12',
+        builtBy: 'workflow-b@refs/heads/dev',
+      }),
+    ]
+    const puts: Array<{ key: string; body: unknown }> = []
+
+    const client = {
+      send: async (command: unknown) => {
+        if (command instanceof GetObjectCommand) {
+          throw { name: 'NoSuchKey', $metadata: { httpStatusCode: 404 } }
+        }
+        if (command instanceof PutObjectCommand) {
+          puts.push({
+            key: String(command.input.Key),
+            body: command.input.Body,
+          })
+          return {}
+        }
+        if (command instanceof DeleteObjectCommand) {
+          return {}
+        }
+        throw new Error('unexpected command')
+      },
+      destroy: () => {},
+    } as unknown as S3Client
+
+    await publishAgents({
+      buildResults,
+      updateAggregate: true,
+      bucket: 'test-bucket',
+      client,
+      now: () => new Date('2026-04-22T18:00:00.000Z'),
+    })
+
+    const aggregateManifest = JSON.parse(String(puts.at(-1)?.body))
+    expect(aggregateManifest.built_by).toBe(
+      'workflow-a@refs/heads/dev, workflow-b@refs/heads/dev',
+    )
+  })
 })

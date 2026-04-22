@@ -29,6 +29,11 @@ interface PodmanImageMetadata {
   smokeFingerprint: string
 }
 
+interface RepoDigestCount {
+  digest: string
+  count: number
+}
+
 export interface BuildOptions {
   agent: AgentEntry
   arch: ContainerArch
@@ -97,6 +102,38 @@ function normalizeSha256Like(value: string): string {
   }
 
   throw new Error(`unexpected sha256-like value: ${value}`)
+}
+
+function selectSourceOciDigest(
+  platformDigest: string,
+  repoDigests: string[],
+): string {
+  const counts = new Map<string, number>()
+  for (const digest of repoDigests) {
+    counts.set(digest, (counts.get(digest) ?? 0) + 1)
+  }
+
+  const candidates: RepoDigestCount[] = [...counts.entries()]
+    .filter(([digest]) => digest !== platformDigest)
+    .map(([digest, count]) => ({ digest, count }))
+    .sort(
+      (left, right) =>
+        right.count - left.count || left.digest.localeCompare(right.digest),
+    )
+
+  const [firstCandidate, secondCandidate] = candidates
+  if (!firstCandidate) {
+    return platformDigest
+  }
+  if (!secondCandidate || firstCandidate.count > secondCandidate.count) {
+    return firstCandidate.digest
+  }
+
+  throw new Error(
+    `ambiguous source OCI digest for ${platformDigest}: ${candidates
+      .map((candidate) => `${candidate.digest} (${candidate.count})`)
+      .join(', ')}`,
+  )
 }
 
 async function runPodman(
@@ -267,16 +304,11 @@ export async function podmanInspectImage(
   const inspected = JSON.parse(stdout.trim()) as PodmanInspectShape
   const imageId = normalizeSha256Like(inspected.Id ?? '')
   const platformDigest = normalizeSha256Like(inspected.Digest ?? imageId)
-  const repoDigests = [
-    ...new Set(
-      (inspected.RepoDigests ?? [])
-        .map((entry) => entry.split('@')[1] ?? '')
-        .filter(Boolean)
-        .map((entry) => normalizeSha256Like(entry)),
-    ),
-  ]
-  const sourceOciDigest =
-    repoDigests.find((digest) => digest !== platformDigest) ?? platformDigest
+  const repoDigests = (inspected.RepoDigests ?? [])
+    .map((entry) => entry.split('@')[1] ?? '')
+    .filter(Boolean)
+    .map((entry) => normalizeSha256Like(entry))
+  const sourceOciDigest = selectSourceOciDigest(platformDigest, repoDigests)
 
   return {
     imageId,

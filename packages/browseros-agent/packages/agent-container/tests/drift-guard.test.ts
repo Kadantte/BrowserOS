@@ -31,12 +31,16 @@ describe('OpenClaw drift guard', () => {
     expect(openclaw).toBeDefined()
 
     const match = runtimeSource.match(
-      /return process\.env\.OPENCLAW_IMAGE \|\| '([^']+)'/,
+      /return process\.env\.OPENCLAW_IMAGE \|\| ['"]([^'"]+)['"]/,
     )
-    expect(match?.[1]).toBeDefined()
+    if (!match?.[1]) {
+      throw new Error(
+        `failed to extract OpenClaw image fallback from ${runtimePath}`,
+      )
+    }
 
     const recipeImage = `${openclaw?.image}:${openclaw?.version}`
-    expect(recipeImage).toBe(match?.[1], {
+    expect(recipeImage).toBe(match[1], {
       message: `OpenClaw image drifted between ${recipePath} and ${runtimePath}`,
     })
   })

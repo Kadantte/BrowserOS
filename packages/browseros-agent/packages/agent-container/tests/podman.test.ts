@@ -4,7 +4,11 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { buildTarball, registryForImage } from '../src/build'
+import {
+  buildTarball,
+  podmanInspectImage,
+  registryForImage,
+} from '../src/build'
 
 const tempDirs: string[] = []
 
@@ -142,5 +146,78 @@ describe('build', () => {
           command.includes('arm64'),
       ),
     ).toBe(true)
+  })
+
+  it('prefers the repeated non-platform repo digest as the source OCI digest', async () => {
+    const originalSpawn = Bun.spawn
+    spyOn(Bun, 'spawn').mockImplementation((command, options) => {
+      if (
+        Array.isArray(command) &&
+        command[0] === 'podman' &&
+        command[1] === 'inspect'
+      ) {
+        return processResult(
+          JSON.stringify({
+            Id: 'f'.repeat(64),
+            Digest: `sha256:${'1'.repeat(64)}`,
+            RepoDigests: [
+              `ghcr.io/openclaw/openclaw@sha256:${'2'.repeat(64)}`,
+              `mirror.example/openclaw/openclaw@sha256:${'2'.repeat(64)}`,
+              `docker.io/openclaw/openclaw@sha256:${'1'.repeat(64)}`,
+            ],
+            Architecture: 'arm64',
+            Os: 'linux',
+            Config: {},
+            RootFS: {},
+          }),
+        )
+      }
+
+      return originalSpawn(
+        command as string[],
+        options as SpawnOptions.OptionsObject<string[]>,
+      )
+    })
+
+    const inspection = await podmanInspectImage(
+      'ghcr.io/openclaw/openclaw:2026.4.12',
+    )
+    expect(inspection.sourceOciDigest).toBe(`sha256:${'2'.repeat(64)}`)
+  })
+
+  it('fails when repo digests disagree without a clear winner', async () => {
+    const originalSpawn = Bun.spawn
+    spyOn(Bun, 'spawn').mockImplementation((command, options) => {
+      if (
+        Array.isArray(command) &&
+        command[0] === 'podman' &&
+        command[1] === 'inspect'
+      ) {
+        return processResult(
+          JSON.stringify({
+            Id: 'f'.repeat(64),
+            Digest: `sha256:${'1'.repeat(64)}`,
+            RepoDigests: [
+              `ghcr.io/openclaw/openclaw@sha256:${'2'.repeat(64)}`,
+              `mirror.example/openclaw/openclaw@sha256:${'3'.repeat(64)}`,
+              `docker.io/openclaw/openclaw@sha256:${'1'.repeat(64)}`,
+            ],
+            Architecture: 'arm64',
+            Os: 'linux',
+            Config: {},
+            RootFS: {},
+          }),
+        )
+      }
+
+      return originalSpawn(
+        command as string[],
+        options as SpawnOptions.OptionsObject<string[]>,
+      )
+    })
+
+    await expect(
+      podmanInspectImage('ghcr.io/openclaw/openclaw:2026.4.12'),
+    ).rejects.toThrow('ambiguous source OCI digest')
   })
 })

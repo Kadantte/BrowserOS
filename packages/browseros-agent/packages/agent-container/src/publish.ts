@@ -224,6 +224,13 @@ function buildAggregateEntries(
     .sort((left, right) => left.name.localeCompare(right.name))
 }
 
+function aggregateBuiltBy(groups: ResultGroup[]): string {
+  const builtByValues = [
+    ...new Set(groups.map((group) => group.builtBy)),
+  ].sort()
+  return builtByValues.join(', ')
+}
+
 function buildGroup(results: BuildResult[]): ResultGroup {
   const [firstResult, ...rest] = results
   if (!firstResult) {
@@ -409,7 +416,7 @@ export async function publishAgents(options: PublishOptions): Promise<void> {
         existingEntries,
         buildAggregateEntries(groups, cdnBaseURL),
         builtAt,
-        groups[0]?.builtBy ?? 'unknown',
+        aggregateBuiltBy(groups),
       )
       const aggregateKey = keyForAggregateManifest()
       await uploadBody(
