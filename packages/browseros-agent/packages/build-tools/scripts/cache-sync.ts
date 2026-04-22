@@ -5,10 +5,9 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { PATHS } from '@browseros/shared/constants/paths'
 import { ARCHES, type Arch } from './common/arch'
+import { fetchWithTimeout } from './common/fetch'
 import type { Artifact, VmManifest } from './common/manifest'
 import { verifySha256 } from './common/sha256'
-
-const DEV_BROWSEROS_DIR_NAME = '.browseros-dev'
 
 type ChunkSink = ReturnType<ReturnType<typeof Bun.file>['writer']>
 
@@ -71,7 +70,7 @@ if (import.meta.main) {
   const cacheRoot = values['cache-dir'] ?? getCacheDir()
   const arches = selectSyncArches(values['all-arches'] ?? false)
 
-  const response = await fetch(manifestUrl)
+  const response = await fetchWithTimeout(manifestUrl)
   if (!response.ok) {
     throw new Error(
       `manifest fetch failed: ${manifestUrl} (${response.status})`,
@@ -122,23 +121,24 @@ function maybeAdd(
 function getCacheDir(): string {
   const dirName =
     process.env.NODE_ENV === 'development'
-      ? DEV_BROWSEROS_DIR_NAME
+      ? PATHS.DEV_BROWSEROS_DIR_NAME
       : PATHS.BROWSEROS_DIR_NAME
   return path.join(homedir(), dirName, PATHS.CACHE_DIR_NAME)
 }
 
-async function readLocalManifest(
+export async function readLocalManifest(
   manifestPath: string,
 ): Promise<VmManifest | null> {
   try {
     return JSON.parse(await readFile(manifestPath, 'utf8')) as VmManifest
-  } catch {
-    return null
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+    throw error
   }
 }
 
 async function downloadToFile(url: string, dest: string): Promise<void> {
-  const response = await fetch(url)
+  const response = await fetchWithTimeout(url)
   if (!response.ok || !response.body) {
     throw new Error(`download failed: ${url} (${response.status})`)
   }

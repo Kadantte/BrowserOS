@@ -5,6 +5,7 @@ import path from 'node:path'
 import {
   type PlanItem,
   planSync,
+  readLocalManifest,
   selectSyncArches,
 } from '../scripts/cache-sync'
 import type { VmManifest } from '../scripts/common/manifest'
@@ -105,6 +106,32 @@ describe('planSync', () => {
   it('selects host arch by default and both arches when requested', () => {
     expect(selectSyncArches(false, 'x64')).toEqual(['x64'])
     expect(selectSyncArches(true, 'x64')).toEqual(['arm64', 'x64'])
+  })
+})
+
+describe('readLocalManifest', () => {
+  let dir: string | null = null
+
+  afterEach(async () => {
+    if (!dir) return
+    await rm(dir, { recursive: true, force: true })
+    dir = null
+  })
+
+  it('returns null only when the local manifest is absent', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'browseros-cache-manifest-'))
+
+    await expect(
+      readLocalManifest(path.join(dir, 'missing.json')),
+    ).resolves.toBeNull()
+  })
+
+  it('surfaces corrupt local manifest files', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'browseros-cache-manifest-'))
+    const manifestPath = path.join(dir, 'manifest.json')
+    await writeFile(manifestPath, '{not json')
+
+    await expect(readLocalManifest(manifestPath)).rejects.toThrow()
   })
 })
 

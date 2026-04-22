@@ -80,7 +80,7 @@ export async function getBody(
     const body = response.Body as
       | { transformToByteArray(): Promise<Uint8Array> }
       | undefined
-    if (!body) return ''
+    if (!body) throw new Error(`missing response body for R2 key: ${key}`)
     const bytes = await body.transformToByteArray()
     return new TextDecoder().decode(bytes)
   } catch (error) {

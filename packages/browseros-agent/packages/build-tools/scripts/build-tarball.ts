@@ -38,9 +38,11 @@ const tarballPath = path.join(
   outDir,
   path.basename(tarballKey(agent.name, agent.version, arch)),
 )
+const tarPath = tarballPath.slice(0, -'.gz'.length)
 
 await rm(tarballPath, { force: true })
 await rm(`${tarballPath}.sha256`, { force: true })
+await rm(tarPath, { force: true })
 await spawnChecked([
   'podman',
   'pull',
@@ -51,10 +53,14 @@ await spawnChecked([
   ref,
 ])
 await spawnChecked([
-  'bash',
-  '-c',
-  `podman save --format=oci-archive ${JSON.stringify(ref)} | gzip -9 > ${JSON.stringify(tarballPath)}`,
+  'podman',
+  'save',
+  '--format=oci-archive',
+  '--output',
+  tarPath,
+  ref,
 ])
+await spawnChecked(['gzip', '-9', '-f', tarPath])
 
 const sha = await sha256File(tarballPath)
 const size = (await stat(tarballPath)).size

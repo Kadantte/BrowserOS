@@ -1,6 +1,6 @@
 # BrowserOS VM recipe — Debian 12 (bookworm) genericcloud
-# Consumed by src/build/orchestrator.ts. One virt-customize primitive per line.
-# Ops: run-command | copy-in <src>:<dest> | write <path>:<content> | truncate <path>
+# Consumed by scripts/build-disk.ts. One virt-customize primitive per line.
+# Ops: run-command | copy-in <src>:<dest-dir> | upload <src>:<dest-file> | write <path>:<content> | truncate <path>
 # {version} and {manifest_tmp} are substituted at build time.
 
 run-command apt-get update
@@ -12,7 +12,7 @@ run-command usermod -aG sudo browseros
 copy-in sudoers-browseros:/etc/sudoers.d/
 run-command chmod 0440 /etc/sudoers.d/sudoers-browseros
 write /etc/browseros-vm-version:{version}
-copy-in {manifest_tmp}:/etc/browseros-vm-manifest.json
+upload {manifest_tmp}:/etc/browseros-vm-manifest.json
 run-command apt-get clean
 run-command rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 run-command rm -f /etc/ssh/ssh_host_*

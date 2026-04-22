@@ -61,6 +61,18 @@ jobs:
           echo "LIBGUESTFS_BACKEND=direct" >> "$GITHUB_ENV"
       - working-directory: packages/browseros-agent
         run: bun install --frozen-lockfile
+      - name: Validate VM version input
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        working-directory: ${{ env.PKG_DIR }}
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          bundle_version="$(bun -e "const b = await Bun.file('bundle.json').json(); console.log(b.vmVersion)")"
+          if [ "$VERSION" != "$bundle_version" ]; then
+            echo "inputs.version ($VERSION) must match bundle.json vmVersion ($bundle_version)" >&2
+            exit 1
+          fi
       - name: Build disk
         working-directory: ${{ env.PKG_DIR }}
         env:
@@ -73,8 +85,44 @@ jobs:
           path: dist/vm/
           retention-days: 7
 
-  publish:
+  smoke:
     needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: vm-disk-x64
+          path: dist/vm
+      - name: Install qemu, zstd, curl, and Lima
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils zstd curl
+          lima_version="$(cat "${PKG_DIR}/recipe/LIMA_VERSION.pin")"
+          lima_sha256="$(cat "${PKG_DIR}/recipe/LIMA_LINUX_X86_64_SHA256.pin")"
+          curl -fsSL -o /tmp/lima.tar.gz \
+            "https://github.com/lima-vm/lima/releases/download/${lima_version}/lima-${lima_version#v}-Linux-x86_64.tar.gz"
+          echo "${lima_sha256}  /tmp/lima.tar.gz" | sha256sum --check --strict
+          sudo tar -C /usr/local -xzf /tmp/lima.tar.gz
+      - working-directory: packages/browseros-agent
+        run: bun install --frozen-lockfile
+      - name: Smoke test VM disk
+        working-directory: ${{ env.PKG_DIR }}
+        run: |
+          set -euo pipefail
+          qcow="$(find "$GITHUB_WORKSPACE/dist/vm" -name 'browseros-vm-*-x64.qcow2.zst' -print -quit)"
+          if [ -z "$qcow" ]; then
+            echo "missing x64 VM disk artifact" >&2
+            exit 1
+          fi
+          bun run smoke:vm -- --qcow "$qcow" --limactl /usr/local/bin/limactl
+
+  publish:
+    needs: [build, smoke]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
     runs-on: ubuntu-24.04
     environment: release
@@ -113,14 +161,14 @@ jobs:
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || 'https://cdn.browseros.com' }}
         run: |
           set -euo pipefail
           mkdir -p dist
           cp -R "$GITHUB_WORKSPACE"/dist/* dist/
+          bun run download -- --key vm/manifest.json --out dist/baseline-manifest.json
           bun run emit-manifest -- \
             --slice vm \
             --dist-dir dist \
-            --merge-from "${R2_PUBLIC_BASE_URL}/vm/manifest.json" \
+            --merge-from dist/baseline-manifest.json \
             --out dist/manifest.json
           bun run upload -- --file dist/manifest.json --key vm/manifest.json --content-type "application/json"

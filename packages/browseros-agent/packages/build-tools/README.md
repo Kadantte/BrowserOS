@@ -27,13 +27,22 @@ bun run --filter @browseros/build-tools build:tarball -- --agent openclaw --arch
 bun run --filter @browseros/build-tools build:tarball -- --agent openclaw --arch x64
 ```
 
+## Smoke test artifacts
+
+VM smoke tests require `limactl`, `qemu`, and `zstd`. Agent tarball smoke tests require `podman`.
+
+```bash
+bun run --filter @browseros/build-tools smoke:vm -- --qcow ./dist/browseros-vm-2026.04.22-x64.qcow2.zst
+bun run --filter @browseros/build-tools smoke:tarball -- --agent openclaw --arch x64 --tarball ./dist/images/openclaw-2026.4.12-x64.tar.gz
+```
+
 ## Emit a manifest
 
 ```bash
 bun run --filter @browseros/build-tools emit-manifest -- --dist-dir packages/build-tools/dist
 ```
 
-Publish workflows can update only one manifest slice at a time:
+Publish workflows can update only one manifest slice at a time. Sliced publishing requires an existing R2 `vm/manifest.json` baseline; bootstrap first releases with `--slice full`.
 
 ```bash
 bun run --filter @browseros/build-tools emit-manifest -- --slice vm --merge-from https://cdn.browseros.com/vm/manifest.json

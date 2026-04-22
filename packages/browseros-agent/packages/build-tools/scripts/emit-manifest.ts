@@ -3,6 +3,7 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { ARCHES, type Arch } from './common/arch'
+import { fetchWithTimeout } from './common/fetch'
 import {
   type AgentEntry,
   type Artifact,
@@ -163,7 +164,7 @@ async function readArtifactInput(
 
 async function loadBaseline(src: string): Promise<VmManifest> {
   if (src.startsWith('http://') || src.startsWith('https://')) {
-    const response = await fetch(src)
+    const response = await fetchWithTimeout(src)
     if (!response.ok) {
       throw new Error(`baseline fetch failed: ${src} (${response.status})`)
     }

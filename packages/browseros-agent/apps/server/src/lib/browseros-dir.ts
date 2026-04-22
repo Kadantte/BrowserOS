@@ -6,12 +6,10 @@ import { PATHS } from '@browseros/shared/constants/paths'
 import type { ServerDiscoveryConfig } from '@browseros/shared/types/server-config'
 import { logger } from './logger'
 
-const DEV_BROWSEROS_DIR_NAME = '.browseros-dev'
-
 export function getBrowserosDir(): string {
   const dirName =
     process.env.NODE_ENV === 'development'
-      ? DEV_BROWSEROS_DIR_NAME
+      ? PATHS.DEV_BROWSEROS_DIR_NAME
       : PATHS.BROWSEROS_DIR_NAME
   return join(homedir(), dirName)
 }

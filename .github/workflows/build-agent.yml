@@ -70,8 +70,39 @@ jobs:
           path: dist/images/
           retention-days: 7
 
-  publish:
+  smoke:
     needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+      - uses: actions/download-artifact@v4
+        with:
+          name: tarball-${{ inputs.agent || 'openclaw' }}-x64
+          path: dist/images
+      - name: Install podman
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y podman
+      - working-directory: packages/browseros-agent
+        run: bun install --frozen-lockfile
+      - name: Smoke test tarball
+        working-directory: ${{ env.PKG_DIR }}
+        env:
+          AGENT: ${{ inputs.agent || 'openclaw' }}
+        run: |
+          set -euo pipefail
+          tarball="$(find "$GITHUB_WORKSPACE/dist/images" -name "${AGENT}-*-x64.tar.gz" -print -quit)"
+          if [ -z "$tarball" ]; then
+            echo "missing x64 tarball artifact for ${AGENT}" >&2
+            exit 1
+          fi
+          bun run smoke:tarball -- --agent "$AGENT" --arch x64 --tarball "$tarball"
+
+  publish:
+    needs: [build, smoke]
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.publish == true }}
     runs-on: ubuntu-24.04
     environment: release
@@ -106,19 +137,19 @@ jobs:
       - name: Merge agent slice into manifest
         working-directory: ${{ env.PKG_DIR }}
         env:
-          AGENT: ${{ inputs.agent }}
+          AGENT: ${{ inputs.agent || 'openclaw' }}
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
-          R2_PUBLIC_BASE_URL: ${{ vars.R2_PUBLIC_BASE_URL || 'https://cdn.browseros.com' }}
         run: |
           set -euo pipefail
           mkdir -p dist/images
           cp -R "$GITHUB_WORKSPACE"/dist/images/* dist/images/
+          bun run download -- --key vm/manifest.json --out dist/baseline-manifest.json
           bun run emit-manifest -- \
             --slice "agents:${AGENT}" \
             --dist-dir dist \
-            --merge-from "${R2_PUBLIC_BASE_URL}/vm/manifest.json" \
+            --merge-from dist/baseline-manifest.json \
             --out dist/manifest.json
           bun run upload -- --file dist/manifest.json --key vm/manifest.json --content-type "application/json"

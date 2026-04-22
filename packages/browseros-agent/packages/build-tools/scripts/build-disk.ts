@@ -13,6 +13,7 @@ import path from 'node:path'
 import { parseArgs } from 'node:util'
 import { $ } from 'bun'
 import { type Arch, parseArch } from './common/arch'
+import { fetchWithTimeout } from './common/fetch'
 import { qcow2Key } from './common/manifest'
 import { sha256File } from './common/sha256'
 
@@ -48,57 +49,56 @@ const base = baseImages[arch]
 if (!base) throw new Error(`missing base image for arch ${arch}`)
 
 const basePath = path.join(outDir, `base-${arch}.qcow2`)
-await download(base.url, basePath)
-await verifySha512(basePath, base.sha512)
-
 const workPath = path.join(outDir, `work-${version}-${arch}.qcow2`)
-await copyFile(basePath, workPath)
-
 const buildMarkerPath = path.join(outDir, `build-marker-${arch}.json`)
-await writeFile(
-  buildMarkerPath,
-  `${JSON.stringify({ name: 'browseros-vm', version, arch, phase: 'build' }, null, 2)}\n`,
-)
-
 const recipePath = path.join(pkgRoot, 'recipe/browseros-vm.recipe')
-const recipeText = await readFile(recipePath, 'utf8')
-const args = composeVirtCustomizeArgs({
-  diskPath: workPath,
-  recipeText,
-  recipeDir: path.dirname(recipePath),
-  substitutions: { version, manifest_tmp: buildMarkerPath },
-})
-
-await spawnChecked(['virt-customize', ...args])
-await $`virt-sparsify --in-place ${workPath}`.quiet()
-
 const rawOut = path.join(outDir, `browseros-vm-${version}-${arch}.qcow2`)
-await $`qemu-img convert -O qcow2 -c ${workPath} ${rawOut}`.quiet()
-
 const zstOut = `${rawOut}.zst`
-await $`zstd -19 --long=30 -T0 -f -o ${zstOut} ${rawOut}`.quiet()
 
-const sha = await sha256File(zstOut)
-const size = (await stat(zstOut)).size
-await writeFile(`${zstOut}.sha256`, `${sha}  ${path.basename(zstOut)}\n`)
+try {
+  await download(base.url, basePath)
+  await verifySha512(basePath, base.sha512)
+  await copyFile(basePath, workPath)
+  await writeFile(
+    buildMarkerPath,
+    `${JSON.stringify({ name: 'browseros-vm', version, arch, phase: 'build' }, null, 2)}\n`,
+  )
 
-await rm(workPath, { force: true })
-await rm(basePath, { force: true })
-await rm(rawOut, { force: true })
-await rm(buildMarkerPath, { force: true })
+  const recipeText = await readFile(recipePath, 'utf8')
+  const args = composeVirtCustomizeArgs({
+    diskPath: workPath,
+    recipeText,
+    recipeDir: path.dirname(recipePath),
+    substitutions: { version, manifest_tmp: buildMarkerPath },
+  })
 
-console.log(
-  JSON.stringify(
-    {
-      key: qcow2Key(version, arch),
-      path: zstOut,
-      sha256: sha,
-      sizeBytes: size,
-    },
-    null,
-    2,
-  ),
-)
+  await spawnChecked(['virt-customize', ...args])
+  await $`virt-sparsify --in-place ${workPath}`.quiet()
+  await $`qemu-img convert -O qcow2 -c ${workPath} ${rawOut}`.quiet()
+  await $`zstd -19 --long=30 -T0 -f -o ${zstOut} ${rawOut}`.quiet()
+
+  const sha = await sha256File(zstOut)
+  const size = (await stat(zstOut)).size
+  await writeFile(`${zstOut}.sha256`, `${sha}  ${path.basename(zstOut)}\n`)
+
+  console.log(
+    JSON.stringify(
+      {
+        key: qcow2Key(version, arch),
+        path: zstOut,
+        sha256: sha,
+        sizeBytes: size,
+      },
+      null,
+      2,
+    ),
+  )
+} finally {
+  await rm(workPath, { force: true })
+  await rm(basePath, { force: true })
+  await rm(rawOut, { force: true })
+  await rm(buildMarkerPath, { force: true })
+}
 
 function composeVirtCustomizeArgs(opts: {
   diskPath: string
@@ -131,6 +131,15 @@ function composeVirtCustomizeArgs(opts: {
       continue
     }
 
+    if (op === 'upload') {
+      const colonAt = rest.indexOf(':')
+      if (colonAt === -1) throw new Error(`invalid upload line: ${line}`)
+      const source = rest.slice(0, colonAt)
+      const target = rest.slice(colonAt + 1)
+      out.push('--upload', `${path.resolve(opts.recipeDir, source)}:${target}`)
+      continue
+    }
+
     if (op === 'write') {
       out.push('--write', rest)
       continue
@@ -155,7 +164,7 @@ function subst(value: string, vars: Record<string, string>): string {
 }
 
 async function download(url: string, dest: string): Promise<void> {
-  const response = await fetch(url)
+  const response = await fetchWithTimeout(url)
   if (!response.ok || !response.body) {
     throw new Error(`download failed: ${url} (${response.status})`)
   }
