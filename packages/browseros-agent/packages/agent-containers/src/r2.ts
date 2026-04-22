@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises'
+import { createReadStream } from 'node:fs'
 import {
   PutObjectCommand,
   S3Client,
@@ -54,7 +54,7 @@ export async function uploadFileToObject(
     new PutObjectCommand({
       Bucket: config.bucket,
       Key: joinObjectKey(request.key),
-      Body: await readFile(request.filePath),
+      Body: createReadStream(request.filePath),
       ContentType: request.contentType ?? 'application/octet-stream',
     }),
   )

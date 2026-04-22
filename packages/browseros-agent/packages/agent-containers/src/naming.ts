@@ -40,6 +40,14 @@ export function archiveObjectKey(
   )
 }
 
-export function manifestObjectKey(uploadPrefix: string): string {
+export function releaseManifestObjectKey(
+  uploadPrefix: string,
+  agentId: string,
+  version: string,
+): string {
+  return joinObjectKey(uploadPrefix, agentId, version, 'manifest.json')
+}
+
+export function latestManifestObjectKey(uploadPrefix: string): string {
   return joinObjectKey(uploadPrefix, 'latest', 'manifest.json')
 }

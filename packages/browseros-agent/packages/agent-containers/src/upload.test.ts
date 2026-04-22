@@ -1,14 +1,21 @@
 import { describe, expect, it } from 'bun:test'
-import { mkdtemp, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import type { BuiltAgentTarball, UploadFileRequest } from './types'
 import { publishAgentTarballs } from './upload'
 
 describe('publishAgentTarballs', () => {
   it('uploads tarballs and the generated manifest', async () => {
     const dir = await mkdtemp(join(tmpdir(), 'agent-container-upload-'))
-    const tarballPath = join(dir, 'openclaw.tar.gz')
+    const tarballPath = join(
+      dir,
+      'openclaw',
+      '2026.4.12',
+      'linux-amd64',
+      'openclaw.tar.gz',
+    )
+    await mkdir(dirname(tarballPath), { recursive: true })
     await writeFile(tarballPath, 'archive')
 
     const uploads: UploadFileRequest[] = []
@@ -47,6 +54,11 @@ describe('publishAgentTarballs', () => {
         key: 'agent-containers/openclaw/2026.4.12/linux-amd64/openclaw-2026.4.12-linux-amd64.tar.gz',
         filePath: tarballPath,
         contentType: 'application/gzip',
+      },
+      {
+        key: 'agent-containers/openclaw/2026.4.12/manifest.json',
+        filePath: join(dir, 'openclaw', '2026.4.12', 'manifest.json'),
+        contentType: 'application/json; charset=utf-8',
       },
       {
         key: 'agent-containers/latest/manifest.json',
