@@ -270,6 +270,7 @@ export const ConversationInput: FC<ConversationInputProps> = ({
 }) => {
   const [input, setInput] = useState('')
   const [selectedTabs, setSelectedTabs] = useState<chrome.tabs.Tab[]>([])
+  const [isExpandedDraft, setIsExpandedDraft] = useState(false)
   const voice = useVoiceInput()
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const selectedAgent = agents.find(
@@ -282,10 +283,13 @@ export const ConversationInput: FC<ConversationInputProps> = ({
     if (!element) return
 
     const maxHeight = isConversation ? 176 : 224
+    const collapsedHeight = isConversation ? 56 : 72
     element.style.height = '0px'
-    element.style.height = `${Math.min(element.scrollHeight, maxHeight)}px`
+    const nextHeight = Math.min(element.scrollHeight, maxHeight)
+    element.style.height = `${nextHeight}px`
     element.style.overflowY =
       element.scrollHeight > maxHeight ? 'auto' : 'hidden'
+    setIsExpandedDraft(nextHeight > collapsedHeight)
   })
 
   useEffect(() => {
@@ -321,7 +325,11 @@ export const ConversationInput: FC<ConversationInputProps> = ({
         className={cn(
           'flex gap-3',
           variant === 'home' ? 'px-5 py-4' : 'px-4 py-3',
-          variant === 'home' ? 'items-end' : 'items-center',
+          variant === 'home'
+            ? 'items-end'
+            : isExpandedDraft
+              ? 'items-end'
+              : 'items-center',
         )}
       >
         <BotInputIcon variant={variant} />
