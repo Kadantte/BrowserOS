@@ -7,8 +7,8 @@ on:
         description: "CalVer identifier (e.g., 2026.04.22-1)"
         required: true
         type: string
-      base_image_sha512:
-        description: "Override pinned Debian sha512 (debugging only)"
+      base_image_sha256:
+        description: "Verify base image locally against this sha256 (debugging only)"
         required: false
         type: string
       publish:
@@ -46,6 +46,13 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libguestfs-tools qemu-utils zstd
           echo "LIBGUESTFS_BACKEND=direct" >> "$GITHUB_ENV"
+          # Ubuntu 24.04 ships /boot/vmlinuz-* as mode 0600, which breaks
+          # libguestfs's supermin appliance build when virt-customize runs
+          # as a non-root user. Loosen to 0644 so supermin can read them.
+          # This is the well-known CI workaround; it only affects the runner's
+          # own kernel files and is discarded when the runner is torn down.
+          sudo chmod 0644 /boot/vmlinuz-* || true
+          sudo chmod 0644 /boot/initrd.img-* || true
       - name: Install deps
         working-directory: packages/browseros-agent
         run: bun install --frozen-lockfile
@@ -71,7 +78,7 @@ jobs:
           VERSION_VALUE: ${{ steps.version.outputs.value }}
           ARCH_VALUE: ${{ matrix.arch }}
           OUTPUT_DIR: ${{ github.workspace }}/dist/vm/${{ matrix.arch }}
-          BASE_IMAGE_SHA512_INPUT: ${{ inputs.base_image_sha512 || '' }}
+          BASE_IMAGE_SHA256_INPUT: ${{ inputs.base_image_sha256 || '' }}
         run: |
           cmd=(
             bun run build --
@@ -79,8 +86,8 @@ jobs:
             --arch "$ARCH_VALUE"
             --output-dir "$OUTPUT_DIR"
           )
-          if [ -n "$BASE_IMAGE_SHA512_INPUT" ]; then
-            cmd+=(--base-image-sha512 "$BASE_IMAGE_SHA512_INPUT")
+          if [ -n "$BASE_IMAGE_SHA256_INPUT" ]; then
+            cmd+=(--base-image-sha256 "$BASE_IMAGE_SHA256_INPUT")
           fi
           "${cmd[@]}"
       - name: Dump build log on failure
