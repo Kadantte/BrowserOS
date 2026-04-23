@@ -293,7 +293,7 @@ describe('VmRuntime', () => {
     expect(await readInstalledUpdatedAt(root)).toBe('2026-04-21T00:00:00.000Z')
   })
 
-  it('preserves a newer installed manifest when cached manifest is older', async () => {
+  it('logs downgrade mismatch and preserves a newer installed manifest', async () => {
     await writeInstalledManifest(root, '2026-04-23T00:00:00.000Z')
     const limactlPath = await fakeLimactl(
       {
@@ -313,9 +313,26 @@ describe('VmRuntime', () => {
       templatePath,
       browserosRoot: root,
     })
+    const originalWarn = logger.warn
+    const warnings: Array<{
+      message: string
+      meta?: Record<string, unknown>
+    }> = []
+    logger.warn = (message, meta) => warnings.push({ message, meta })
 
-    await runtime.ensureReady()
+    try {
+      await runtime.ensureReady()
+    } finally {
+      logger.warn = originalWarn
+    }
 
+    expect(warnings).toContainEqual({
+      message: VM_TELEMETRY_EVENTS.downgradeDetected,
+      meta: {
+        from: '2026-04-23T00:00:00.000Z',
+        to: '2026-04-22T00:00:00.000Z',
+      },
+    })
     expect(await readInstalledUpdatedAt(root)).toBe('2026-04-23T00:00:00.000Z')
   })
 

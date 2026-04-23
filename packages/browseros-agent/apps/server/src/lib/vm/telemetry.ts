@@ -12,6 +12,7 @@ export const VM_TELEMETRY_EVENTS = {
   start: 'vm.start',
   stop: 'vm.stop',
   upgradeDetected: 'vm.upgrade.detected',
+  downgradeDetected: 'vm.downgrade.detected',
   upgradeSwap: 'vm.upgrade.swap',
   upgradeReplay: 'vm.upgrade.replay',
   resetDetected: 'vm.reset.detected',

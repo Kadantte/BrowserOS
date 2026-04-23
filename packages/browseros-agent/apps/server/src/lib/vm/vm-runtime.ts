@@ -77,7 +77,9 @@ export class VmRuntime {
         ? 'start-existing'
         : versionComparison === 'upgrade'
           ? 'running-upgrade-warn'
-          : 'running-same'
+          : versionComparison === 'downgrade'
+            ? 'running-downgrade-warn'
+            : 'running-same'
     logger.info(VM_TELEMETRY_EVENTS.ensureReadyBranch, {
       branch,
       existingStatus: existing?.status ?? null,
@@ -100,6 +102,11 @@ export class VmRuntime {
         await this.recreateForContainerd(onLog)
       } else if (versionComparison === 'upgrade') {
         logger.warn(VM_TELEMETRY_EVENTS.upgradeDetected, {
+          from: installed?.updatedAt ?? null,
+          to: cached.updatedAt,
+        })
+      } else if (versionComparison === 'downgrade') {
+        logger.warn(VM_TELEMETRY_EVENTS.downgradeDetected, {
           from: installed?.updatedAt ?? null,
           to: cached.updatedAt,
         })
