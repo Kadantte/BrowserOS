@@ -1,5 +1,6 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { ArrowLeft, Bot } from 'lucide-react'
-import type { FC } from 'react'
+import { type FC, useEffect, useMemo, useRef, useState } from 'react'
 import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router'
 import { Button } from '@/components/ui/button'
 import {
@@ -9,6 +10,17 @@ import {
 import { cn } from '@/lib/utils'
 import { useAgentCommandData } from './agent-command-layout'
 import { ClawChat } from './ClawChat'
+import { ConversationInput } from './ConversationInput'
+import {
+  buildChatHistoryFromClawMessages,
+  flattenHistoryPages,
+} from './claw-chat-types'
+import { useAgentConversation } from './useAgentConversation'
+import {
+  CLAW_CHAT_QUERY_KEYS,
+  useClawAgentSession,
+  useClawChatHistory,
+} from './useClawChatHistory'
 
 function StatusBadge({ status }: { status: string }) {
   return (
@@ -161,6 +173,150 @@ function getConversationStatusCopy(status: string | undefined): string {
   return 'Setup'
 }
 
+function AgentConversationController({
+  agentId,
+  initialMessage,
+  onInitialMessageConsumed,
+  status,
+  agents,
+}: {
+  agentId: string
+  initialMessage: string | null
+  onInitialMessageConsumed: () => void
+  status: ReturnType<typeof useAgentCommandData>['status']
+  agents: AgentEntry[]
+}) {
+  const queryClient = useQueryClient()
+  const navigate = useNavigate()
+  const initialMessageSentRef = useRef<string | null>(null)
+  const onInitialMessageConsumedRef = useRef(onInitialMessageConsumed)
+  const [streamSessionKey, setStreamSessionKey] = useState<string | null>(null)
+  const agent = agents.find((entry) => entry.agentId === agentId)
+  const agentName = agent?.name || agentId || 'Agent'
+  const sessionQuery = useClawAgentSession(agentId)
+  const resolvedSessionKey =
+    streamSessionKey ?? sessionQuery.data?.sessionKey ?? null
+  const historyQuery = useClawChatHistory({
+    agentId,
+    sessionKey: resolvedSessionKey,
+    enabled: Boolean(resolvedSessionKey),
+  })
+
+  const historyMessages = useMemo(
+    () => flattenHistoryPages(historyQuery.data?.pages ?? []),
+    [historyQuery.data?.pages],
+  )
+  const chatHistory = useMemo(
+    () => buildChatHistoryFromClawMessages(historyMessages),
+    [historyMessages],
+  )
+
+  const { turns, streaming, send } = useAgentConversation(agentId, {
+    sessionKey: resolvedSessionKey,
+    history: chatHistory,
+    onSessionKeyChange: (sessionKey) => {
+      setStreamSessionKey(sessionKey)
+      void queryClient.invalidateQueries({
+        queryKey: [CLAW_CHAT_QUERY_KEYS.session],
+      })
+    },
+    onStreamComplete: () => {
+      return queryClient.invalidateQueries({
+        queryKey: [CLAW_CHAT_QUERY_KEYS.history],
+      })
+    },
+  })
+  const sendRef = useRef(send)
+  sendRef.current = send
+  onInitialMessageConsumedRef.current = onInitialMessageConsumed
+
+  const disabled = status?.status !== 'running'
+  const isInitialLoading =
+    sessionQuery.isLoading ||
+    (Boolean(resolvedSessionKey) && historyQuery.isLoading)
+  const historyReady =
+    !resolvedSessionKey || historyQuery.isFetched || historyQuery.isError
+  const initialMessageKey = initialMessage
+    ? `${agentId}:${initialMessage}`
+    : null
+  const error = sessionQuery.error ?? historyQuery.error ?? null
+
+  useEffect(() => {
+    const query = initialMessage?.trim()
+    if (!initialMessageKey) {
+      initialMessageSentRef.current = null
+      return
+    }
+
+    if (
+      !query ||
+      initialMessageSentRef.current === initialMessageKey ||
+      disabled ||
+      sessionQuery.isLoading ||
+      !historyReady ||
+      streaming
+    ) {
+      return
+    }
+
+    initialMessageSentRef.current = initialMessageKey
+    onInitialMessageConsumedRef.current()
+    void sendRef.current(query)
+  }, [
+    disabled,
+    historyReady,
+    initialMessage,
+    initialMessageKey,
+    sessionQuery.isLoading,
+    streaming,
+  ])
+
+  const handleSelectAgent = (entry: AgentEntry) => {
+    navigate(`/home/agents/${entry.agentId}`)
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col overflow-hidden">
+      <ClawChat
+        agentName={agentName}
+        historyMessages={historyMessages}
+        turns={turns}
+        streaming={streaming}
+        isInitialLoading={isInitialLoading}
+        error={error}
+        hasNextPage={Boolean(historyQuery.hasNextPage)}
+        isFetchingNextPage={historyQuery.isFetchingNextPage}
+        onFetchNextPage={() => {
+          void historyQuery.fetchNextPage()
+        }}
+        onRetry={() => {
+          void sessionQuery.refetch()
+          void historyQuery.refetch()
+        }}
+      />
+
+      <div className="border-border/50 border-t bg-background/88 px-4 py-3 backdrop-blur-md">
+        <div className="mx-auto max-w-3xl">
+          <ConversationInput
+            variant="conversation"
+            agents={agents}
+            selectedAgentId={agentId}
+            onSelectAgent={handleSelectAgent}
+            onSend={(text) => {
+              void send(text)
+            }}
+            onCreateAgent={() => navigate('/agents')}
+            streaming={streaming}
+            disabled={disabled}
+            status={status?.status}
+            placeholder={`Message ${agentName}...`}
+          />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export const AgentCommandConversation: FC = () => {
   const { agentId } = useParams<{ agentId: string }>()
   const [searchParams, setSearchParams] = useSearchParams()
@@ -201,16 +357,11 @@ export const AgentCommandConversation: FC = () => {
           onSelectAgent={handleSelectAgent}
         />
 
-        <ClawChat
+        <AgentConversationController
           key={resolvedAgentId}
           agentId={resolvedAgentId}
-          agentName={agentName}
           agents={agents}
-          selectedAgentId={resolvedAgentId}
-          onSelectAgent={handleSelectAgent}
-          onCreateAgent={() => navigate('/agents')}
-          disabled={status?.status !== 'running'}
-          status={status?.status}
+          status={status}
           initialMessage={initialMessage}
           onInitialMessageConsumed={() =>
             setSearchParams({}, { replace: true })

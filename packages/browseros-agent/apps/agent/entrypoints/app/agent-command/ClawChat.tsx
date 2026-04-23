@@ -1,38 +1,27 @@
-import { useQueryClient } from '@tanstack/react-query'
 import { Bot, Loader2, RefreshCw } from 'lucide-react'
-import { type FC, useEffect, useMemo, useRef, useState } from 'react'
+import { type FC, useEffect, useRef } from 'react'
 import {
   Conversation,
   ConversationContent,
   ConversationScrollButton,
 } from '@/components/ai-elements/conversation'
-import type { AgentEntry } from '@/entrypoints/app/agents/useOpenClaw'
+import type { AgentConversationTurn } from '@/lib/agent-conversations/types'
 import { cn } from '@/lib/utils'
 import { ClawChatMessage } from './ClawChatMessage'
-import { ConversationInput } from './ConversationInput'
 import { ConversationMessage } from './ConversationMessage'
-import {
-  buildChatHistoryFromClawMessages,
-  flattenHistoryPages,
-} from './claw-chat-types'
-import { useAgentConversation } from './useAgentConversation'
-import {
-  CLAW_CHAT_QUERY_KEYS,
-  useClawAgentSession,
-  useClawChatHistory,
-} from './useClawChatHistory'
+import type { ClawChatMessage as ClawChatMessageModel } from './claw-chat-types'
 
 interface ClawChatProps {
-  agentId: string
   agentName: string
-  agents: AgentEntry[]
-  selectedAgentId: string
-  onSelectAgent: (agent: AgentEntry) => void
-  onCreateAgent: () => void
-  disabled?: boolean
-  status?: string
-  initialMessage?: string | null
-  onInitialMessageConsumed?: () => void
+  historyMessages: ClawChatMessageModel[]
+  turns: AgentConversationTurn[]
+  streaming: boolean
+  isInitialLoading: boolean
+  error: Error | null
+  hasNextPage: boolean
+  isFetchingNextPage: boolean
+  onFetchNextPage: () => void
+  onRetry: () => void
   className?: string
 }
 
@@ -86,67 +75,22 @@ function ConversationErrorState({
 }
 
 export const ClawChat: FC<ClawChatProps> = ({
-  agentId,
   agentName,
-  agents,
-  selectedAgentId,
-  onSelectAgent,
-  onCreateAgent,
-  disabled,
-  status,
-  initialMessage,
-  onInitialMessageConsumed,
+  historyMessages,
+  turns,
+  streaming,
+  isInitialLoading,
+  error,
+  hasNextPage,
+  isFetchingNextPage,
+  onFetchNextPage,
+  onRetry,
   className,
 }) => {
-  const queryClient = useQueryClient()
   const topSentinelRef = useRef<HTMLDivElement>(null)
-  const initialMessageSentRef = useRef(false)
-  const [activeSessionKey, setActiveSessionKey] = useState<string | null>(null)
-
-  const sessionQuery = useClawAgentSession(agentId)
-  const resolvedSessionKey =
-    activeSessionKey ?? sessionQuery.data?.sessionKey ?? null
-  const historyQuery = useClawChatHistory({
-    agentId,
-    sessionKey: resolvedSessionKey,
-    enabled: Boolean(resolvedSessionKey),
-  })
-
-  const historyMessages = useMemo(
-    () => flattenHistoryPages(historyQuery.data?.pages ?? []),
-    [historyQuery.data?.pages],
-  )
-  const chatHistory = useMemo(
-    () => buildChatHistoryFromClawMessages(historyMessages),
-    [historyMessages],
-  )
-
-  const { turns, streaming, send } = useAgentConversation(agentId, {
-    sessionKey: resolvedSessionKey,
-    history: chatHistory,
-    onSessionKeyChange: (sessionKey) => {
-      setActiveSessionKey(sessionKey)
-      void queryClient.invalidateQueries({
-        queryKey: [CLAW_CHAT_QUERY_KEYS.session],
-      })
-    },
-    onStreamComplete: () => {
-      return queryClient.invalidateQueries({
-        queryKey: [CLAW_CHAT_QUERY_KEYS.history],
-      })
-    },
-  })
-
+  const onFetchNextPageRef = useRef(onFetchNextPage)
+  onFetchNextPageRef.current = onFetchNextPage
   const hasMessages = historyMessages.length > 0 || turns.length > 0
-  const isInitialLoading =
-    sessionQuery.isLoading ||
-    (Boolean(resolvedSessionKey) && historyQuery.isLoading)
-  const error = sessionQuery.error ?? historyQuery.error
-
-  useEffect(() => {
-    if (!sessionQuery.data?.sessionKey) return
-    setActiveSessionKey(sessionQuery.data.sessionKey)
-  }, [sessionQuery.data?.sessionKey])
 
   useEffect(() => {
     const sentinel = topSentinelRef.current
@@ -155,15 +99,11 @@ export const ClawChat: FC<ClawChatProps> = ({
     const observer = new IntersectionObserver(
       (entries) => {
         const [entry] = entries
-        if (
-          !entry?.isIntersecting ||
-          !historyQuery.hasNextPage ||
-          historyQuery.isFetchingNextPage
-        ) {
+        if (!entry?.isIntersecting || !hasNextPage || isFetchingNextPage) {
           return
         }
 
-        void historyQuery.fetchNextPage()
+        onFetchNextPageRef.current()
       },
       {
         root: null,
@@ -174,46 +114,7 @@ export const ClawChat: FC<ClawChatProps> = ({
 
     observer.observe(sentinel)
     return () => observer.disconnect()
-  }, [
-    historyQuery.fetchNextPage,
-    historyQuery.hasNextPage,
-    historyQuery.isFetchingNextPage,
-  ])
-
-  useEffect(() => {
-    const query = initialMessage?.trim()
-    const historyReady =
-      !resolvedSessionKey || historyQuery.isFetched || historyQuery.isError
-    if (
-      !query ||
-      initialMessageSentRef.current ||
-      disabled ||
-      sessionQuery.isLoading ||
-      !historyReady ||
-      streaming
-    ) {
-      return
-    }
-
-    initialMessageSentRef.current = true
-    onInitialMessageConsumed?.()
-    void send(query)
-  }, [
-    historyQuery.isError,
-    historyQuery.isFetched,
-    initialMessage,
-    onInitialMessageConsumed,
-    resolvedSessionKey,
-    send,
-    sessionQuery.isLoading,
-    streaming,
-    disabled,
-  ])
-
-  const retry = () => {
-    void sessionQuery.refetch()
-    void historyQuery.refetch()
-  }
+  }, [hasNextPage, isFetchingNextPage])
 
   return (
     <div
@@ -229,19 +130,19 @@ export const ClawChat: FC<ClawChatProps> = ({
           {isInitialLoading ? (
             <LoadingConversationState />
           ) : error && !hasMessages ? (
-            <ConversationErrorState message={error.message} onRetry={retry} />
+            <ConversationErrorState message={error.message} onRetry={onRetry} />
           ) : !hasMessages ? (
             <EmptyConversationState agentName={agentName} />
           ) : (
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-3">
               <div ref={topSentinelRef} aria-hidden="true" className="h-px" />
-              {historyQuery.isFetchingNextPage ? (
+              {isFetchingNextPage ? (
                 <div className="flex justify-center py-2 text-muted-foreground text-xs">
                   <Loader2 className="mr-2 size-3.5 animate-spin" />
                   Loading older messages...
                 </div>
               ) : null}
-              {!historyQuery.hasNextPage && historyMessages.length > 0 ? (
+              {!hasNextPage && historyMessages.length > 0 ? (
                 <div className="py-1 text-center text-muted-foreground text-xs">
                   Start of conversation
                 </div>
@@ -266,25 +167,6 @@ export const ClawChat: FC<ClawChatProps> = ({
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
-
-      <div className="border-border/50 border-t bg-background/88 px-4 py-3 backdrop-blur-md">
-        <div className="mx-auto max-w-3xl">
-          <ConversationInput
-            variant="conversation"
-            agents={agents}
-            selectedAgentId={selectedAgentId}
-            onSelectAgent={onSelectAgent}
-            onSend={(text) => {
-              void send(text)
-            }}
-            onCreateAgent={onCreateAgent}
-            streaming={streaming}
-            disabled={disabled}
-            status={status}
-            placeholder={`Message ${agentName}...`}
-          />
-        </div>
-      </div>
     </div>
   )
 }
