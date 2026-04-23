@@ -96,7 +96,7 @@ function runCommand(cmd: string[], label: string): number {
   console.log(`\n==> ${label}`)
   const result = spawnSync(cmd[0], cmd.slice(1), {
     cwd: projectRoot,
-    env: process.env,
+    env: withTestEnv(process.env),
     stdio: 'inherit',
   })
 
@@ -105,6 +105,11 @@ function runCommand(cmd: string[], label: string): number {
   }
 
   return result.status ?? 1
+}
+
+export function withTestEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  if (env.NODE_ENV) return env
+  return { ...env, NODE_ENV: 'test' }
 }
 
 function runAtomicGroup(group: string): number {
@@ -141,6 +146,7 @@ function runGroup(group: string): number {
   return runAtomicGroup(group)
 }
 
-const requestedGroup = process.argv[2] ?? 'all'
-
-process.exit(runGroup(requestedGroup))
+if (import.meta.main) {
+  const requestedGroup = process.argv[2] ?? 'all'
+  process.exit(runGroup(requestedGroup))
+}
