@@ -63,7 +63,7 @@ export class LimaCli {
         cwd: '/',
         env: this.env(),
         stdout: streams?.onStdout ? 'pipe' : 'ignore',
-        stderr: streams?.onStderr ? 'pipe' : 'pipe',
+        stderr: streams?.onStderr ? 'pipe' : 'ignore',
       },
     )
 

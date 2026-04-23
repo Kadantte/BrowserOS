@@ -3,7 +3,15 @@
  * Copyright 2025 BrowserOS
  */
 
-import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  mock,
+  spyOn,
+} from 'bun:test'
 import { mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,6 +31,7 @@ describe('LimaCli', () => {
   })
 
   afterEach(async () => {
+    mock.restore()
     await rm(tempDir, { recursive: true, force: true })
   })
 
@@ -125,6 +134,33 @@ describe('LimaCli', () => {
     expect(lines).toContain('stderr:err')
     await expect(readFile(logPath, 'utf8')).resolves.toContain(
       'ARGS:shell browseros-vm -- podman ps',
+    )
+  })
+
+  it('ignores shell stderr when no stderr stream handler is provided', async () => {
+    const spawn = spyOn(Bun, 'spawn')
+    spawn.mockImplementation(
+      () =>
+        ({
+          stdout: null,
+          stderr: null,
+          exited: Promise.resolve(0),
+        }) as never,
+    )
+    const cli = new LimaCli({ limactlPath: 'limactl', limaHome })
+
+    await expect(
+      cli.shell('browseros-vm', ['true'], {
+        onStdout: () => {},
+      }),
+    ).resolves.toBe(0)
+
+    expect(spawn).toHaveBeenCalledWith(
+      ['limactl', 'shell', 'browseros-vm', '--', 'true'],
+      expect.objectContaining({
+        stdout: 'pipe',
+        stderr: 'ignore',
+      }),
     )
   })
 })
