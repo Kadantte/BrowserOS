@@ -9,7 +9,7 @@ The built-in browser extension that powers BrowserOS's AI interface — new tab 
 ## Features
 
 - **AI-Powered New Tab**: Custom new tab page with unified search across Google and AI assistants
-- **Agent Command Center**: Alpha new tab command surface for launching and resuming OpenClaw agent conversations
+- **Agent Command Center**: Alpha agent command surface in the app shell for launching and resuming OpenClaw agent conversations
 - **Side Panel Chat**: Full-featured chat interface for interacting with BrowserOS
 - **Multi-Provider Support**: Connect to various LLM providers (OpenAI, Anthropic, Azure, Bedrock, and more)
 - **MCP Integration**: Model Context Protocol support for extending AI capabilities
@@ -64,17 +64,17 @@ Custom new tab replacement featuring:
 
 Full-page extension app mounted at `app.html` with sidebar navigation, settings, onboarding redirects, and alpha-only OpenClaw agent surfaces.
 
-The Agent Command Center is mounted under `/home` when `ALPHA_FEATURES_SUPPORT` is available:
+Inside the `/home` route, the Agent Command Center replaces the default `NewTab` view when `ALPHA_FEATURES_SUPPORT` is enabled:
+- `agent-command-layout.tsx` wraps the command-center routes and polls OpenClaw status and agent metadata through `useOpenClawStatus` and `useOpenClawAgents`.
 - `/home` renders `AgentCommandHome`, which lists OpenClaw agents, selects an active agent, and routes prompt submissions to the selected conversation.
 - `/home/agents/:agentId` renders `AgentCommandConversation`, which owns the focused chat view for one OpenClaw agent.
-- `agent-command-layout.tsx` polls OpenClaw status and agent metadata through `useOpenClawStatus` and `useOpenClawAgents`.
 - `useAgentConversation.ts` sends messages through `chatWithAgent` to `/claw/agents/:agentId/chat`, consumes BrowserOS SSE chat events, and persists completed turns.
 
 #### Command Center History Integration
 
 Command-center conversations have two history layers:
 - **Local UI cache**: `lib/agent-conversations/storage.ts` stores conversations in IndexedDB with keys shaped as `agent-conv:${agentId}:${sessionKey}`. `useAgentConversation.ts` loads the latest local conversation for an agent, keeps its `sessionKey`, saves completed turns, and sends text-only prior turns as the `history` payload for the next chat request.
-- **OpenClaw session history**: BrowserOS Server exposes `GET /claw/session/:sessionKey/history`, which proxies OpenClaw's `/sessions/:sessionKey/history` endpoint. The default response is JSON `{ sessionKey, messages, cursor, hasMore, truncated }`; `limit` and `cursor` query params are forwarded for pagination.
+- **OpenClaw session history**: BrowserOS Server exposes `GET /claw/session/:sessionKey/history`, which proxies OpenClaw's `/sessions/:sessionKey/history` endpoint. The default response is JSON `{ sessionKey, messages, cursor?, hasMore?, truncated? }`; `limit` and `cursor` query params are forwarded for pagination.
 
 When the command center needs gateway-backed restore or live sync, use the same `sessionKey` carried by the local conversation:
 - Fetch JSON history for initial restore or backfill.
