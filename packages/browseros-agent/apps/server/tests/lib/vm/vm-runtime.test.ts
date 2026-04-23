@@ -18,6 +18,7 @@ import {
 import { VM_TELEMETRY_EVENTS } from '../../../src/lib/vm/telemetry'
 import { VmRuntime } from '../../../src/lib/vm/vm-runtime'
 import { fakeLimactl } from '../../__helpers__/fake-limactl'
+import { fakeSsh } from '../../__helpers__/fake-ssh'
 
 const manifest: VmManifest = {
   schemaVersion: 2,
@@ -291,14 +292,15 @@ describe('VmRuntime', () => {
     expect(resetCalled).toBe(false)
   })
 
-  it('delegates runCommand and listRunningContainers through limactl shell', async () => {
-    const limactlPath = await fakeLimactl(
-      { shell: { stdout: 'gateway\nworker\n' } },
-      logPath,
-    )
+  it('delegates runCommand and listRunningContainers through ssh', async () => {
+    const sshPath = await fakeSsh({ stdout: 'gateway\nworker\n' }, logPath)
+    const sshConfig = join(limaHome, VM_NAME, 'ssh.config')
+    await mkdir(join(limaHome, VM_NAME), { recursive: true })
+    await writeFile(sshConfig, '')
     const runtime = new VmRuntime({
-      limactlPath,
+      limactlPath: 'unused',
       limaHome,
+      sshPath,
       browserosRoot: root,
     })
 
@@ -309,20 +311,23 @@ describe('VmRuntime', () => {
     ])
 
     const log = await readFile(logPath, 'utf8')
-    expect(log).toContain(`ARGS:shell ${VM_NAME} -- podman version`)
     expect(log).toContain(
-      `ARGS:shell ${VM_NAME} -- podman ps --format {{.Names}}`,
+      `ARGS:-F ${sshConfig} lima-${VM_NAME} -- podman version`,
+    )
+    expect(log).toContain(
+      `ARGS:-F ${sshConfig} lima-${VM_NAME} -- podman ps --format {{.Names}}`,
     )
   })
 
   it('returns a stop handle for tailing container logs', async () => {
-    const limactlPath = await fakeLimactl(
-      { shell: { stdout: 'line\n' } },
-      logPath,
-    )
+    const sshPath = await fakeSsh({ stdout: 'line\n' }, logPath)
+    const sshConfig = join(limaHome, VM_NAME, 'ssh.config')
+    await mkdir(join(limaHome, VM_NAME), { recursive: true })
+    await writeFile(sshConfig, '')
     const runtime = new VmRuntime({
-      limactlPath,
+      limactlPath: 'unused',
       limaHome,
+      sshPath,
       browserosRoot: root,
     })
     const lines: string[] = []
@@ -335,7 +340,7 @@ describe('VmRuntime', () => {
 
     expect(lines).toEqual(['line'])
     await expect(readFile(logPath, 'utf8')).resolves.toContain(
-      `ARGS:shell ${VM_NAME} -- podman logs -f --tail 0 gateway`,
+      `ARGS:-F ${sshConfig} lima-${VM_NAME} -- podman logs -f --tail 0 gateway`,
     )
   })
 })

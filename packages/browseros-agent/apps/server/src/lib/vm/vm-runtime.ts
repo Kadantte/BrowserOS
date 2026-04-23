@@ -29,6 +29,7 @@ export type LogFn = (msg: string) => void
 export interface VmRuntimeDeps {
   limactlPath: string
   limaHome: string
+  sshPath?: string
   templatePath?: string
   browserosRoot?: string
   socketTimeoutMs?: number
@@ -44,6 +45,7 @@ export class VmRuntime {
     this.cli = new LimaCli({
       limactlPath: deps.limactlPath,
       limaHome: deps.limaHome,
+      sshPath: deps.sshPath,
     })
     this.socketTimeoutMs = deps.socketTimeoutMs ?? 60_000
     this.socketPollMs = deps.socketPollMs ?? 500
@@ -144,38 +146,17 @@ export class VmRuntime {
   }
 
   tailContainerLogs(containerName: string, onLine: LogFn): () => void {
-    const proc = Bun.spawn(
-      [
-        this.deps.limactlPath,
-        'shell',
-        VM_NAME,
-        '--',
-        'podman',
-        'logs',
-        '-f',
-        '--tail',
-        '0',
-        containerName,
-      ],
-      {
-        cwd: '/',
-        env: { ...process.env, LIMA_HOME: this.deps.limaHome },
-        stdout: 'pipe',
-        stderr: 'pipe',
-      },
+    const proc = this.cli.spawnShell(
+      VM_NAME,
+      ['podman', 'logs', '-f', '--tail', '0', containerName],
+      { onStdout: onLine, onStderr: onLine },
     )
-    void drainStream(proc.stdout ?? null, onLine)
-    void drainStream(proc.stderr ?? null, onLine)
 
     let stopped = false
     return () => {
       if (stopped) return
       stopped = true
-      try {
-        proc.kill()
-      } catch {
-        return
-      }
+      proc.kill()
     }
   }
 
@@ -296,27 +277,4 @@ function isAlreadyStopped(stderr: string): boolean {
     lower.includes('already stopped') ||
     lower.includes('not found')
   )
-}
-
-async function drainStream(
-  stream: ReadableStream<Uint8Array> | null,
-  onLine: LogFn,
-): Promise<void> {
-  if (!stream) return
-  const reader = stream.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    const lines = buffer.split('\n')
-    buffer = lines.pop() ?? ''
-    for (const line of lines) {
-      if (line.trim()) onLine(line.trim())
-    }
-  }
-
-  if (buffer.trim()) onLine(buffer.trim())
 }

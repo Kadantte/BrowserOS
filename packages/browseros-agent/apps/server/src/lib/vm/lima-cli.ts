@@ -4,8 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+import { existsSync } from 'node:fs'
 import { logger } from '../logger'
-import { LimaCommandError } from './errors'
+import { LimaCommandError, VmNotReadyError } from './errors'
+import { getLimaSshConfigPath } from './paths'
 import { VM_TELEMETRY_EVENTS } from './telemetry'
 
 export interface LimaListEntry {
@@ -17,11 +19,17 @@ export interface LimaListEntry {
 export interface LimaCliConfig {
   limactlPath: string
   limaHome: string
+  sshPath?: string
 }
 
 export interface LimaShellStreams {
   onStdout?: (line: string) => void
   onStderr?: (line: string) => void
+}
+
+export interface LimaShellProcess {
+  kill: () => void
+  exited: Promise<number>
 }
 
 export class LimaCli {
@@ -75,8 +83,30 @@ export class LimaCli {
     args: string[],
     streams?: LimaShellStreams,
   ): Promise<number> {
+    const proc = this.spawnShell(name, args, streams)
+    return proc.exited
+  }
+
+  spawnShell(
+    name: string,
+    args: string[],
+    streams?: LimaShellStreams,
+  ): LimaShellProcess {
+    const configPath = getLimaSshConfigPath(this.cfg.limaHome, name)
+    if (!existsSync(configPath)) {
+      throw new VmNotReadyError(
+        `lima ssh.config not found at ${configPath}; VM has not been started`,
+      )
+    }
     const proc = Bun.spawn(
-      [this.cfg.limactlPath, 'shell', name, '--', ...args],
+      [
+        this.cfg.sshPath ?? 'ssh',
+        '-F',
+        configPath,
+        `lima-${name}`,
+        '--',
+        ...args,
+      ],
       {
         cwd: '/',
         env: this.env(),
@@ -85,11 +115,21 @@ export class LimaCli {
       },
     )
 
-    await Promise.all([
+    const drained = Promise.all([
       drainStream(proc.stdout ?? null, streams?.onStdout),
       drainStream(proc.stderr ?? null, streams?.onStderr),
     ])
-    return proc.exited
+    const exited = drained.then(() => proc.exited)
+    return {
+      exited,
+      kill: () => {
+        try {
+          proc.kill()
+        } catch {
+          return
+        }
+      },
+    }
   }
 
   private async runChecked(command: string, args: string[]): Promise<void> {

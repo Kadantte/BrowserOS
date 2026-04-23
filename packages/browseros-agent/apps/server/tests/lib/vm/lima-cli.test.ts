@@ -12,12 +12,13 @@ import {
   mock,
   spyOn,
 } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { LimaCommandError } from '../../../src/lib/vm/errors'
+import { LimaCommandError, VmNotReadyError } from '../../../src/lib/vm/errors'
 import { LimaCli } from '../../../src/lib/vm/lima-cli'
 import { fakeLimactl } from '../../__helpers__/fake-limactl'
+import { fakeSsh } from '../../__helpers__/fake-ssh'
 
 describe('LimaCli', () => {
   let tempDir: string
@@ -116,11 +117,11 @@ describe('LimaCli', () => {
   })
 
   it('runs shell commands and streams stdout and stderr', async () => {
-    const limactlPath = await fakeLimactl(
-      { shell: { stdout: 'out\n', stderr: 'err\n' } },
-      logPath,
-    )
-    const cli = new LimaCli({ limactlPath, limaHome })
+    const sshPath = await fakeSsh({ stdout: 'out\n', stderr: 'err\n' }, logPath)
+    const sshConfig = join(limaHome, 'browseros-vm', 'ssh.config')
+    await mkdir(join(limaHome, 'browseros-vm'), { recursive: true })
+    await writeFile(sshConfig, '')
+    const cli = new LimaCli({ limactlPath: 'unused', limaHome, sshPath })
     const lines: string[] = []
 
     await expect(
@@ -133,11 +134,14 @@ describe('LimaCli', () => {
     expect(lines).toContain('stdout:out')
     expect(lines).toContain('stderr:err')
     await expect(readFile(logPath, 'utf8')).resolves.toContain(
-      'ARGS:shell browseros-vm -- podman ps',
+      `ARGS:-F ${sshConfig} lima-browseros-vm -- podman ps`,
     )
   })
 
   it('ignores shell stderr when no stderr stream handler is provided', async () => {
+    const sshConfig = join(limaHome, 'browseros-vm', 'ssh.config')
+    await mkdir(join(limaHome, 'browseros-vm'), { recursive: true })
+    await writeFile(sshConfig, '')
     const spawn = spyOn(Bun, 'spawn')
     spawn.mockImplementation(
       () =>
@@ -156,11 +160,17 @@ describe('LimaCli', () => {
     ).resolves.toBe(0)
 
     expect(spawn).toHaveBeenCalledWith(
-      ['limactl', 'shell', 'browseros-vm', '--', 'true'],
+      ['ssh', '-F', sshConfig, 'lima-browseros-vm', '--', 'true'],
       expect.objectContaining({
         stdout: 'pipe',
         stderr: 'ignore',
       }),
     )
+  })
+
+  it('throws VmNotReadyError when ssh.config is missing', async () => {
+    const cli = new LimaCli({ limactlPath: 'limactl', limaHome })
+    const error = await cli.shell('browseros-vm', ['true']).catch((err) => err)
+    expect(error).toBeInstanceOf(VmNotReadyError)
   })
 })
