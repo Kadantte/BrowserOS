@@ -47,7 +47,9 @@ type MutableOpenClawService = OpenClawService & {
     probe?: ReturnType<typeof mock>
     createAgent?: ReturnType<typeof mock>
     getConfig?: ReturnType<typeof mock>
+    getChatHistory?: ReturnType<typeof mock>
     listAgents?: ReturnType<typeof mock>
+    listSessions?: ReturnType<typeof mock>
     setDefaultModel?: ReturnType<typeof mock>
   }
   bootstrapCliClient: {
@@ -145,6 +147,118 @@ describe('OpenClawService', () => {
         model: 'openai/gpt-5.4-mini',
       },
     ])
+  })
+
+  it('resolves the latest user-chat session for an agent', async () => {
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.cliClient = {
+      listSessions: mock(async () => [
+        {
+          key: 'agent:main:cron:daily',
+          updatedAt: 30,
+          sessionId: 'cron-session',
+          agentId: 'main',
+          kind: 'cron',
+        },
+        {
+          key: 'openai-user:browseros:main:chat-session',
+          updatedAt: 20,
+          sessionId: 'chat-session',
+          agentId: 'main',
+          kind: 'chat',
+        },
+      ]),
+    }
+
+    await expect(service.resolveAgentSession('main')).resolves.toEqual({
+      agentId: 'main',
+      exists: true,
+      sessionKey: 'openai-user:browseros:main:chat-session',
+      session: {
+        key: 'openai-user:browseros:main:chat-session',
+        updatedAt: 20,
+        sessionId: 'chat-session',
+        agentId: 'main',
+        kind: 'chat',
+        source: 'user-chat',
+      },
+    })
+  })
+
+  it('returns normalized paginated chat history for an agent session', async () => {
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.runtime = {
+      isReady: async () => true,
+    }
+    service.cliClient = {
+      listSessions: mock(async () => [
+        {
+          key: 'openai-user:browseros:main:chat-session',
+          updatedAt: 20,
+          sessionId: 'chat-session',
+          agentId: 'main',
+          kind: 'chat',
+        },
+      ]),
+      getChatHistory: mock(async () => [
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'HEARTBEAT_OK' }],
+        },
+        {
+          role: 'user',
+          content: [{ type: 'text', text: 'First question' }],
+          timestamp: 1,
+        },
+        {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'First answer' }],
+          timestamp: 2,
+        },
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text:
+                '[Chat messages since your last reply]\n' +
+                '[Current message - respond to this]\n' +
+                'User: Second question',
+            },
+          ],
+          timestamp: 3,
+        },
+      ]),
+    }
+
+    const page = await service.getAgentHistoryPage('main', { limit: 2 })
+
+    expect(page.agentId).toBe('main')
+    expect(page.sessionKey).toBe('openai-user:browseros:main:chat-session')
+    expect(page.items).toEqual([
+      {
+        id: 'openai-user:browseros:main:chat-session:1',
+        role: 'assistant',
+        text: 'First answer',
+        timestamp: 2,
+        messageSeq: 1,
+        sessionKey: 'openai-user:browseros:main:chat-session',
+        source: 'user-chat',
+      },
+      {
+        id: 'openai-user:browseros:main:chat-session:2',
+        role: 'user',
+        text: 'Second question',
+        timestamp: 3,
+        messageSeq: 2,
+        sessionKey: 'openai-user:browseros:main:chat-session',
+        source: 'user-chat',
+      },
+    ])
+    expect(page.page.hasMore).toBe(true)
+    expect(typeof page.page.cursor).toBe('string')
   })
 
   it('maps successful cli client probes into connected status', async () => {

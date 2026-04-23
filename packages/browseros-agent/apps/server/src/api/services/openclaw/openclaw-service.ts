@@ -30,8 +30,10 @@ import {
 } from './errors'
 import {
   type OpenClawAgentRecord,
+  type OpenClawChatMessage,
   OpenClawCliClient,
   type OpenClawConfigBatchEntry,
+  type OpenClawSessionEntry,
 } from './openclaw-cli-client'
 import {
   getHostWorkspaceDir,
@@ -113,6 +115,188 @@ export interface OpenClawServiceConfig {
 export interface OpenClawPodmanOverridesResponse {
   podmanPath: string | null
   effectivePodmanPath: string
+}
+
+export type OpenClawSessionSource =
+  | 'user-chat'
+  | 'cron'
+  | 'hook'
+  | 'channel'
+  | 'other'
+
+export interface BrowserOSOpenClawSession {
+  key: string
+  updatedAt: number
+  sessionId: string
+  agentId: string
+  kind: string
+  source: OpenClawSessionSource
+  status?: string
+  totalTokens?: number
+  model?: string
+  modelProvider?: string
+}
+
+export interface BrowserOSOpenClawAgentSessionResponse {
+  agentId: string
+  exists: boolean
+  sessionKey: string | null
+  session: BrowserOSOpenClawSession | null
+}
+
+export interface BrowserOSChatHistoryItem {
+  id: string
+  role: 'user' | 'assistant'
+  text: string
+  timestamp?: number
+  messageSeq: number
+  sessionKey: string
+  source: OpenClawSessionSource
+}
+
+export interface BrowserOSOpenClawHistoryPageResponse {
+  agentId: string
+  sessionKey: string | null
+  session: BrowserOSOpenClawSession | null
+  items: BrowserOSChatHistoryItem[]
+  page: {
+    cursor?: string
+    hasMore: boolean
+    limit: number
+  }
+}
+
+interface HistoryPageInput {
+  sessionKey?: string
+  cursor?: string
+  limit?: number
+}
+
+function normalizeHistoryLimit(limit?: number): number {
+  if (limit === undefined || !Number.isFinite(limit)) return 50
+  return Math.max(1, Math.min(100, Math.trunc(limit)))
+}
+
+function toBrowserOSSession(
+  session: OpenClawSessionEntry,
+): BrowserOSOpenClawSession {
+  return {
+    ...session,
+    source: classifySessionSource(session.key),
+  }
+}
+
+function classifySessionSource(key: string): OpenClawSessionSource {
+  if (key.includes(':cron:')) return 'cron'
+  if (key.includes(':hook:')) return 'hook'
+  if (key.includes('openai-user:browseros')) return 'user-chat'
+  if (key.includes('qa-channel')) return 'channel'
+  return 'other'
+}
+
+function filterOpenClawSystemMessages(
+  messages: OpenClawChatMessage[],
+): OpenClawChatMessage[] {
+  const result: OpenClawChatMessage[] = []
+
+  for (const message of messages) {
+    const text = getTextContent(message).trim()
+
+    if (message.role === 'assistant' && text.startsWith('HEARTBEAT')) continue
+    if (
+      message.role === 'user' &&
+      text.includes('Handle this reminder internally')
+    ) {
+      continue
+    }
+
+    if (
+      message.role === 'user' &&
+      text.startsWith('[Chat messages since your last reply')
+    ) {
+      const marker = '[Current message - respond to this]'
+      const index = text.indexOf(marker)
+      if (index >= 0) {
+        const actual = text
+          .slice(index + marker.length)
+          .trim()
+          .replace(/^User:\s*/i, '')
+        if (actual) {
+          result.push({
+            ...message,
+            content: [{ type: 'text', text: actual }],
+          })
+        }
+      }
+      continue
+    }
+
+    result.push(message)
+  }
+
+  return result
+}
+
+function normalizeChatHistoryMessages(input: {
+  sessionKey: string
+  source: OpenClawSessionSource
+  messages: OpenClawChatMessage[]
+}): BrowserOSChatHistoryItem[] {
+  return input.messages
+    .map((message, index): BrowserOSChatHistoryItem | null => {
+      if (message.role !== 'user' && message.role !== 'assistant') return null
+      const text = getTextContent(message).trim()
+      if (!text) return null
+
+      return {
+        id: `${input.sessionKey}:${index}`,
+        role: message.role,
+        text,
+        timestamp: message.timestamp,
+        messageSeq: index,
+        sessionKey: input.sessionKey,
+        source: input.source,
+      }
+    })
+    .filter((item): item is BrowserOSChatHistoryItem => item !== null)
+}
+
+function getTextContent(message: OpenClawChatMessage): string {
+  return message.content
+    .filter((block) => block.type === 'text')
+    .map((block) => block.text ?? '')
+    .join('')
+}
+
+function encodeHistoryCursor(input: {
+  sessionKey: string
+  end: number
+}): string {
+  return Buffer.from(JSON.stringify(input), 'utf-8').toString('base64url')
+}
+
+function decodeHistoryCursor(
+  cursor?: string,
+): { sessionKey: string; end: number } | null {
+  if (!cursor) return null
+  try {
+    const parsed = JSON.parse(
+      Buffer.from(cursor, 'base64url').toString('utf-8'),
+    ) as {
+      sessionKey?: unknown
+      end?: unknown
+    }
+    if (typeof parsed.sessionKey !== 'string') return null
+    if (typeof parsed.end !== 'number' || !Number.isFinite(parsed.end)) {
+      return null
+    }
+    return {
+      sessionKey: parsed.sessionKey,
+      end: Math.max(0, Math.trunc(parsed.end)),
+    }
+  } catch {
+    return null
+  }
 }
 
 export class OpenClawService {
@@ -573,6 +757,87 @@ export class OpenClawService {
     return this.runControlPlaneCall(() => this.cliClient.listAgents())
   }
 
+  async listSessions(agentId?: string): Promise<BrowserOSOpenClawSession[]> {
+    logger.debug('Listing OpenClaw sessions', { agentId })
+    const sessions = await this.cliClient.listSessions(agentId)
+    return sessions
+      .map(toBrowserOSSession)
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
+  async resolveAgentSession(
+    agentId: string,
+  ): Promise<BrowserOSOpenClawAgentSessionResponse> {
+    const sessions = await this.listSessions(agentId)
+    const session =
+      sessions.find((entry) => entry.source === 'user-chat') ??
+      sessions.find((entry) => entry.kind.toLowerCase().includes('chat')) ??
+      sessions[0] ??
+      null
+
+    return {
+      agentId,
+      exists: !!session,
+      sessionKey: session?.key ?? null,
+      session,
+    }
+  }
+
+  async getChatHistory(sessionKey: string): Promise<OpenClawChatMessage[]> {
+    await this.assertGatewayReady()
+    logger.debug('Fetching OpenClaw chat history', { sessionKey })
+    return this.runControlPlaneCall(() =>
+      this.cliClient.getChatHistory(sessionKey),
+    )
+  }
+
+  async getAgentHistoryPage(
+    agentId: string,
+    input: HistoryPageInput = {},
+  ): Promise<BrowserOSOpenClawHistoryPageResponse> {
+    const limit = normalizeHistoryLimit(input.limit)
+    const cursor = decodeHistoryCursor(input.cursor)
+    const resolved = input.sessionKey
+      ? await this.resolveSpecificAgentSession(agentId, input.sessionKey)
+      : await this.resolveAgentSession(agentId)
+
+    const session = resolved.session
+    if (!session) {
+      return {
+        agentId,
+        sessionKey: null,
+        session: null,
+        items: [],
+        page: { hasMore: false, limit },
+      }
+    }
+
+    const sessionKey = cursor?.sessionKey ?? session.key
+    const rawMessages = await this.getChatHistory(sessionKey)
+    const items = normalizeChatHistoryMessages({
+      sessionKey,
+      source: session.source,
+      messages: filterOpenClawSystemMessages(rawMessages),
+    })
+    const end = Math.min(cursor?.end ?? items.length, items.length)
+    const start = Math.max(0, end - limit)
+    const pageItems = items.slice(start, end)
+    const nextCursor =
+      start > 0 ? encodeHistoryCursor({ sessionKey, end: start }) : undefined
+
+    return {
+      agentId,
+      sessionKey,
+      session,
+      items: pageItems,
+      page: {
+        cursor: nextCursor,
+        hasMore: start > 0,
+        limit,
+      },
+    }
+  }
+
   // ── Chat Stream (HTTP) ───────────────────────────────────────────────
 
   async chatStream(
@@ -596,6 +861,29 @@ export class OpenClawService {
         history,
       }),
     )
+  }
+
+  private async resolveSpecificAgentSession(
+    agentId: string,
+    sessionKey: string,
+  ): Promise<BrowserOSOpenClawAgentSessionResponse> {
+    const sessions = await this.listSessions(agentId)
+    const session =
+      sessions.find((entry) => entry.key === sessionKey) ??
+      toBrowserOSSession({
+        key: sessionKey,
+        updatedAt: 0,
+        sessionId: '',
+        agentId,
+        kind: '',
+      })
+
+    return {
+      agentId,
+      exists: true,
+      sessionKey,
+      session,
+    }
   }
 
   // ── Podman Overrides ─────────────────────────────────────────────────
