@@ -5,6 +5,7 @@ import { dirname, resolve } from 'node:path'
 const projectRoot = resolve(import.meta.dir, '..', '..')
 const testsRoot = resolve(projectRoot, 'tests')
 const cleanupScript = resolve(testsRoot, '__helpers__/cleanup.sh')
+const testPreloadPath = './tests/__helpers__/test-env.ts'
 const preferredDirectoryGroups = [
   'agent',
   'api',
@@ -112,6 +113,25 @@ export function withTestEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return { ...env, NODE_ENV: 'test' }
 }
 
+export function buildTestCommand(
+  targets: string[],
+  junitPath?: string,
+): string[] {
+  const cmd = [
+    process.execPath,
+    '--env-file=.env.development',
+    'test',
+    `--preload=${testPreloadPath}`,
+  ]
+  if (junitPath) {
+    const outputPath = resolve(projectRoot, junitPath)
+    mkdirSync(dirname(outputPath), { recursive: true })
+    cmd.push('--reporter=junit', `--reporter-outfile=${outputPath}`)
+  }
+  cmd.push(...targets)
+  return cmd
+}
+
 function runAtomicGroup(group: string): number {
   const targets = getAtomicGroupTargets(group)
   if (targets.length === 0) {
@@ -121,13 +141,7 @@ function runAtomicGroup(group: string): number {
   }
   runCommand(['bash', cleanupScript], `Cleaning up test resources for ${group}`)
   const junitPath = process.env.BROWSEROS_JUNIT_PATH?.trim()
-  const cmd = [process.execPath, '--env-file=.env.development', 'test']
-  if (junitPath) {
-    const outputPath = resolve(projectRoot, junitPath)
-    mkdirSync(dirname(outputPath), { recursive: true })
-    cmd.push('--reporter=junit', `--reporter-outfile=${outputPath}`)
-  }
-  cmd.push(...targets)
+  const cmd = buildTestCommand(targets, junitPath)
   return runCommand(cmd, `Running ${group} tests`)
 }
 

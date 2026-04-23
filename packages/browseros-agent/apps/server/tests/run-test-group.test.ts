@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { withTestEnv } from './__helpers__/run-test-group'
+import { buildTestCommand, withTestEnv } from './__helpers__/run-test-group'
 
 describe('withTestEnv', () => {
   it('defaults NODE_ENV to test when absent', () => {
@@ -13,5 +13,17 @@ describe('withTestEnv', () => {
 
   it('preserves an explicit NODE_ENV', () => {
     expect(withTestEnv({ NODE_ENV: 'production' }).NODE_ENV).toBe('production')
+  })
+})
+
+describe('buildTestCommand', () => {
+  it('preloads the test env bootstrap before running targets', () => {
+    expect(buildTestCommand(['./tests/api'])).toEqual([
+      process.execPath,
+      '--env-file=.env.development',
+      'test',
+      '--preload=./tests/__helpers__/test-env.ts',
+      './tests/api',
+    ])
   })
 })
