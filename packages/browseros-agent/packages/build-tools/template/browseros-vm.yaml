@@ -7,7 +7,10 @@ minimumLimaVersion: 2.0.0
 vmType: vz
 cpus: 2
 memory: 2GiB
-disk: 10GiB
+# 30GiB covers Debian base (~2GiB), provisioning apt cache, and podman's
+# storage graph for the bundled OpenClaw image (~10GiB unpacked) plus one
+# additional agent image. Bump when a new bundled agent tips it over.
+disk: 30GiB
 
 # Pinned Debian 12 genericcloud -- matches the deprecated disk pipeline pin.
 # Bump in lockstep with upstream when provisioning changes.
@@ -50,6 +53,18 @@ provision:
     mkdir -p /etc/containers
     containers_auth=/etc/containers/auth
     printf '{}\n' > "${containers_auth}.json"
+
+    # Force overlay + fuse-overlayfs. Default vfs copies every layer into every
+    # child layer, so a 2.2 GB OpenClaw image explodes to 25+ GB on disk and
+    # `podman load` trips ENOSPC on a 30 GiB VM disk. Overlay dedups layers and
+    # keeps the same image at ~2.6 GB.
+    cat > /etc/containers/storage.conf <<'STORAGE_CONF'
+    [storage]
+    driver = "overlay"
+
+    [storage.options.overlay]
+    mount_program = "/usr/bin/fuse-overlayfs"
+    STORAGE_CONF
 
     # Single-tenant appliance user (spec D7).
     id browseros >/dev/null 2>&1 || useradd --create-home --uid 1000 --shell /bin/bash browseros
