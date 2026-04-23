@@ -349,8 +349,9 @@ export function createOpenClawRoutes() {
       const key = c.req.param('key')
       const limitRaw = c.req.query('limit')
       const cursor = c.req.query('cursor')
-      const limit =
-        limitRaw !== undefined ? Number.parseInt(limitRaw, 10) : undefined
+      const limitParsed =
+        limitRaw !== undefined ? Number.parseInt(limitRaw, 10) : Number.NaN
+      const limit = Number.isFinite(limitParsed) ? limitParsed : undefined
       const wantsStream = (c.req.header('accept') ?? '').includes(
         'text/event-stream',
       )
