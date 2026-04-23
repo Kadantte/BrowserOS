@@ -50,13 +50,40 @@ export class VmRuntime {
   }
 
   async ensureReady(onLog?: LogFn): Promise<void> {
+    const started = Date.now()
+    logger.info(VM_TELEMETRY_EVENTS.ensureReadyStart, {
+      limaHome: this.deps.limaHome,
+      browserosRoot: this.deps.browserosRoot,
+      templatePath: this.deps.templatePath,
+      limactlPath: this.deps.limactlPath,
+    })
+
     const cached = await readCachedManifest(this.deps.browserosRoot)
     const installed = await readInstalledManifest(this.deps.browserosRoot)
     const versionComparison = compareVersions(installed, cached)
+    logger.debug(VM_TELEMETRY_EVENTS.manifestCompared, {
+      versionComparison,
+      installedUpdatedAt: installed?.updatedAt ?? null,
+      cachedUpdatedAt: cached.updatedAt,
+    })
+
     const vms = await this.cli.list()
     const existing = vms.find((vm) => vm.name === VM_NAME)
     const shouldWriteInstalledManifest =
       !existing || versionComparison === 'fresh' || versionComparison === 'same'
+
+    const branch = !existing
+      ? 'provision-fresh'
+      : existing.status !== 'Running'
+        ? 'start-existing'
+        : versionComparison === 'upgrade'
+          ? 'running-upgrade-warn'
+          : 'running-same'
+    logger.info(VM_TELEMETRY_EVENTS.ensureReadyBranch, {
+      branch,
+      existingStatus: existing?.status ?? null,
+      versionComparison,
+    })
 
     if (!existing) {
       await this.provisionFresh(onLog)
@@ -76,7 +103,15 @@ export class VmRuntime {
     await this.waitForSocket(this.socketTimeoutMs)
     if (shouldWriteInstalledManifest) {
       await writeInstalledManifest(cached, this.deps.browserosRoot)
+      logger.debug(VM_TELEMETRY_EVENTS.manifestWritten, {
+        updatedAt: cached.updatedAt,
+      })
     }
+
+    logger.info(VM_TELEMETRY_EVENTS.ensureReadyOk, {
+      durationMs: Date.now() - started,
+      branch,
+    })
   }
 
   async stopVm(): Promise<void> {
@@ -170,11 +205,27 @@ export class VmRuntime {
     const yamlPath = join(this.deps.limaHome, `${VM_NAME}.yaml`)
     await mkdir(dirname(yamlPath), { recursive: true })
     await writeFile(yamlPath, yaml)
+    logger.info(VM_TELEMETRY_EVENTS.provisionYamlWrite, {
+      yamlPath,
+      yamlBytes: yaml.length,
+      templatePath: this.deps.templatePath,
+    })
 
     onLog?.('Creating BrowserOS VM...')
+    logger.info(VM_TELEMETRY_EVENTS.provisionCreateStart, { yamlPath })
+    const createStarted = Date.now()
     await this.cli.create(VM_NAME, yamlPath)
+    logger.info(VM_TELEMETRY_EVENTS.provisionCreateOk, {
+      durationMs: Date.now() - createStarted,
+    })
+
     onLog?.('Starting BrowserOS VM...')
+    logger.info(VM_TELEMETRY_EVENTS.provisionStartBegin, {})
+    const startStarted = Date.now()
     await this.cli.start(VM_NAME)
+    logger.info(VM_TELEMETRY_EVENTS.provisionStartOk, {
+      durationMs: Date.now() - startStarted,
+    })
   }
 
   private async buildLimaYaml(): Promise<string> {
@@ -191,14 +242,40 @@ export class VmRuntime {
   }
 
   private async waitForSocket(timeoutMs: number): Promise<void> {
-    const deadline = Date.now() + timeoutMs
+    const started = Date.now()
+    const deadline = started + timeoutMs
+    const sockPath = this.socketPath()
+    logger.info(VM_TELEMETRY_EVENTS.socketWaitStart, {
+      sockPath,
+      timeoutMs,
+      pollMs: this.socketPollMs,
+    })
+    let pollCount = 0
     while (Date.now() < deadline) {
-      if (await this.isReady()) return
+      pollCount += 1
+      if (await this.isReady()) {
+        logger.info(VM_TELEMETRY_EVENTS.socketWaitOk, {
+          sockPath,
+          pollCount,
+          waitMs: Date.now() - started,
+        })
+        return
+      }
+      if (pollCount === 1 || pollCount % 10 === 0) {
+        logger.debug(VM_TELEMETRY_EVENTS.socketWaitPoll, {
+          sockPath,
+          pollCount,
+          elapsedMs: Date.now() - started,
+        })
+      }
       await Bun.sleep(this.socketPollMs)
     }
-    throw new VmNotReadyError(
-      `podman.sock never appeared at ${this.socketPath()}`,
-    )
+    logger.error(VM_TELEMETRY_EVENTS.socketWaitTimeout, {
+      sockPath,
+      timeoutMs,
+      pollCount,
+    })
+    throw new VmNotReadyError(`podman.sock never appeared at ${sockPath}`)
   }
 
   private socketPath(): string {
