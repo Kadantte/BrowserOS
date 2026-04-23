@@ -746,6 +746,10 @@ export class OpenClawService {
   private async ensureAllCliProvidersInstalled(
     onLog?: (msg: string) => void,
   ): Promise<void> {
+    // Test mocks may swap `this.runtime` for a partial stub without
+    // execInContainer. Skip silently — production ContainerRuntime always
+    // provides it.
+    if (typeof this.runtime.execInContainer !== 'function') return
     for (const provider of OPENCLAW_CLI_PROVIDERS) {
       await this.ensureCliProviderInstalled(provider, onLog)
     }
