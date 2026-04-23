@@ -726,13 +726,9 @@ export class OpenClawService {
 
   // CLI-provider short-circuit: skip env writes and custom-provider merges,
   // just build the `<id>/<model>` ref that OpenClaw's own plugin routes to.
-  private resolveProviderForAgent(input: {
-    providerType?: string
-    providerName?: string
-    baseUrl?: string
-    apiKey?: string
-    modelId?: string
-  }): ResolvedOpenClawProviderConfig {
+  private resolveProviderForAgent(
+    input: SetupInput,
+  ): ResolvedOpenClawProviderConfig {
     const cliProvider = input.providerType
       ? getOpenClawCliProvider(input.providerType)
       : undefined
@@ -759,12 +755,24 @@ export class OpenClawService {
     provider: OpenClawCliProvider,
     onLog?: (msg: string) => void,
   ): Promise<void> {
-    // Idempotent: no-op if binary is already on PATH (mounted npm-global
-    // persists across container restarts).
-    const installCmd = `command -v ${provider.binary} >/dev/null 2>&1 || npm install -g ${provider.npmPackage}@latest`
+    // Probe first so the log tells us whether install actually ran.
+    const alreadyInstalled =
+      (await this.runtime.execInContainer([
+        'sh',
+        '-lc',
+        `command -v ${provider.binary} >/dev/null 2>&1`,
+      ])) === 0
+
+    if (alreadyInstalled) {
+      logger.info('CLI-backed provider already present', {
+        providerId: provider.id,
+      })
+      return
+    }
+
     const lines: string[] = []
     const exitCode = await this.runtime.execInContainer(
-      ['sh', '-lc', installCmd],
+      ['sh', '-lc', `npm install -g ${provider.npmPackage}@latest`],
       (line) => {
         lines.push(line)
         onLog?.(line)
@@ -778,7 +786,7 @@ export class OpenClawService {
       })
       return
     }
-    logger.info('CLI-backed provider ready', { providerId: provider.id })
+    logger.info('CLI-backed provider installed', { providerId: provider.id })
   }
 
   private buildBootstrapCliClient(): OpenClawCliClient {

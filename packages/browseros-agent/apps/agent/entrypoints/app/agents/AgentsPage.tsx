@@ -32,6 +32,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
+import type { LlmProviderConfig } from '@/lib/llm-providers/types'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { AgentTerminal } from './AgentTerminal'
 import {
@@ -782,19 +783,18 @@ export const AgentsPage: FC = () => {
     )
     const normalizedName = newName.trim().toLowerCase().replace(/\s+/g, '-')
     const isCli = !!option && !!findOpenClawCliProviderById(option.type)
-    // LlmProviderConfig carries apiKey/baseUrl; CLI synthetic options do not.
-    const apiKeyOption =
-      !isCli && option && 'apiKey' in option ? option.apiKey : undefined
-    const baseUrlOption =
-      !isCli && option && 'baseUrl' in option ? option.baseUrl : undefined
+    // LlmProviderConfig carries apiKey/baseUrl; CLI synthetic options don't —
+    // once we know isCli=false, narrow to the config type for property access.
+    const llmOption =
+      !isCli && option ? (option as LlmProviderConfig) : undefined
 
     await runWithErrorHandling(async () => {
       await createAgent({
         name: normalizedName,
         providerType: option?.type,
         providerName: isCli ? undefined : option?.name,
-        baseUrl: baseUrlOption,
-        apiKey: apiKeyOption,
+        baseUrl: llmOption?.baseUrl,
+        apiKey: llmOption?.apiKey,
         modelId: option?.modelId,
       })
       setCreateOpen(false)

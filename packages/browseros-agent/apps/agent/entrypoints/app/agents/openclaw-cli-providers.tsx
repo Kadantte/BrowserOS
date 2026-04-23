@@ -25,7 +25,6 @@ export interface OpenClawCliProviderOption {
   type: string
   name: string
   modelId: string
-  providerId: string
 }
 
 const CLAUDE_CLI_PROVIDER: OpenClawCliProvider = {
@@ -53,7 +52,6 @@ export function buildOpenClawCliProviderOptions(): OpenClawCliProviderOption[] {
       type: provider.id,
       name: provider.displayName,
       modelId,
-      providerId: provider.id,
     })),
   )
 }
