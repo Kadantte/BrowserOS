@@ -10,6 +10,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from '@/components/ai-elements/reasoning'
+import { cn } from '@/lib/utils'
 import type { ClawChatMessage as ClawChatMessageType } from './claw-chat-types'
 
 interface ClawChatMessageProps {
@@ -17,14 +18,29 @@ interface ClawChatMessageProps {
 }
 
 export const ClawChatMessage: FC<ClawChatMessageProps> = ({ message }) => (
-  <Message from={message.role}>
-    <MessageContent>
+  <Message
+    from={message.role}
+    className="max-w-full group-[.is-user]:max-w-[80%]"
+  >
+    <MessageContent className="max-w-full overflow-hidden group-[.is-assistant]:w-full group-[.is-user]:max-w-full">
       {message.parts.map((part, index) => {
         const key = `${message.id}-part-${index}`
 
         switch (part.type) {
           case 'text':
-            return <MessageResponse key={key}>{part.text}</MessageResponse>
+            return (
+              <MessageResponse
+                key={key}
+                className={cn(
+                  'max-w-full overflow-hidden break-words',
+                  '[&_[data-streamdown="code-block"]]:!w-full [&_[data-streamdown="code-block"]]:!max-w-full [&_[data-streamdown="code-block"]]:overflow-x-auto',
+                  '[&_[data-streamdown="table-wrapper"]]:!w-full [&_[data-streamdown="table-wrapper"]]:!max-w-full [&_[data-streamdown="table-wrapper"]]:overflow-x-auto',
+                  '[&_table]:w-max [&_table]:min-w-full',
+                )}
+              >
+                {part.text}
+              </MessageResponse>
+            )
 
           case 'reasoning':
             return (

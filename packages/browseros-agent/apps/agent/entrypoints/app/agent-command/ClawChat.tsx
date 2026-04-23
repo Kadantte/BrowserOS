@@ -44,6 +44,15 @@ function isNearBottom(element: HTMLElement, threshold = 120): boolean {
   )
 }
 
+function scrollToLatestMessage(element: HTMLElement, behavior: ScrollBehavior) {
+  requestAnimationFrame(() => {
+    element.scrollTo({
+      top: element.scrollHeight,
+      behavior,
+    })
+  })
+}
+
 function EmptyConversationState({ agentName }: { agentName: string }) {
   return (
     <div className="flex h-full items-center justify-center px-6 py-12">
@@ -214,14 +223,14 @@ export const ClawChat: FC<ClawChatProps> = ({
     const container = scrollRef.current
     if (!container || didInitialScrollRef.current || isInitialLoading) return
 
-    container.scrollTop = container.scrollHeight
+    scrollToLatestMessage(container, 'auto')
     didInitialScrollRef.current = true
   })
 
   useLayoutEffect(() => {
     const container = scrollRef.current
     if (!container || !stickToBottomRef.current) return
-    container.scrollTop = container.scrollHeight
+    scrollToLatestMessage(container, 'smooth')
   })
 
   useEffect(() => {
@@ -270,7 +279,7 @@ export const ClawChat: FC<ClawChatProps> = ({
         }}
         className={cn(
           'styled-scrollbar min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-background px-5 py-5',
-          '[&_[data-streamdown="code-block"]]:!max-w-full [&_[data-streamdown="table-wrapper"]]:!max-w-full [&_[data-streamdown="code-block"]]:overflow-x-auto [&_[data-streamdown="table-wrapper"]]:overflow-x-auto',
+          '[&_[data-streamdown="code-block"]]:!w-full [&_[data-streamdown="code-block"]]:!max-w-full [&_[data-streamdown="table-wrapper"]]:!w-full [&_[data-streamdown="table-wrapper"]]:!max-w-full [&_[data-streamdown="code-block"]]:overflow-x-auto [&_[data-streamdown="table-wrapper"]]:overflow-x-auto',
         )}
       >
         {isInitialLoading ? (
