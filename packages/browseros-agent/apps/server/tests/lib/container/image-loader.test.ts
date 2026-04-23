@@ -3,11 +3,12 @@
  * Copyright 2025 BrowserOS
  */
 
-import { describe, expect, it } from 'bun:test'
+import { afterEach, describe, expect, it, mock, spyOn } from 'bun:test'
 import type { ContainerCli } from '../../../src/lib/container/container-cli'
 import { ImageLoader } from '../../../src/lib/container/image-loader'
 import { ContainerCliError, ImageLoadError } from '../../../src/lib/vm/errors'
 import type { VmManifest } from '../../../src/lib/vm/manifest'
+import * as paths from '../../../src/lib/vm/paths'
 
 const manifest: VmManifest = {
   schemaVersion: 2,
@@ -33,6 +34,10 @@ const manifest: VmManifest = {
 }
 
 describe('ImageLoader', () => {
+  afterEach(() => {
+    mock.restore()
+  })
+
   it('returns without loading when the image already exists', async () => {
     const cli = new FakeContainerCli([true])
     const loader = new ImageLoader(cli as never, manifest, 'arm64')
@@ -55,6 +60,27 @@ describe('ImageLoader', () => {
       'ghcr.io/openclaw/openclaw:2026.4.12',
       'ghcr.io/openclaw/openclaw:2026.4.12',
     ])
+  })
+
+  it('resolves image tarballs against the configured BrowserOS root', async () => {
+    const cli = new FakeContainerCli([false, true])
+    const browserosRoot = '/tmp/browseros-custom-root'
+    const loader = new ImageLoader(
+      cli as never,
+      manifest,
+      'arm64',
+      browserosRoot,
+    )
+    const getImageCacheDir = spyOn(paths, 'getImageCacheDir')
+    const hostPathToGuest = spyOn(paths, 'hostPathToGuest')
+
+    await loader.ensureImageLoaded('ghcr.io/openclaw/openclaw:2026.4.12')
+
+    expect(getImageCacheDir).toHaveBeenCalledWith(browserosRoot)
+    expect(hostPathToGuest).toHaveBeenCalledWith(
+      '/tmp/browseros-custom-root/cache/vm/images/openclaw-2026.4.12-arm64.tar.gz',
+      browserosRoot,
+    )
   })
 
   it('throws ImageLoadError when a loaded image is still absent', async () => {

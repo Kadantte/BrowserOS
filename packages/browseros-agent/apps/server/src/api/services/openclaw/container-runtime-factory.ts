@@ -104,7 +104,12 @@ class DeferredImageLoader {
 
   async ensureImageLoaded(ref: string, onLog?: (msg: string) => void) {
     const manifest = await readCachedManifest(this.browserosRoot)
-    const loader = new ImageLoader(this.shell, manifest, detectArch())
+    const loader = new ImageLoader(
+      this.shell,
+      manifest,
+      detectArch(),
+      this.browserosRoot,
+    )
     await loader.ensureImageLoaded(ref, onLog)
   }
 }

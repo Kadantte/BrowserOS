@@ -17,14 +17,18 @@ export class ImageLoader {
     private readonly cli: ContainerCli,
     private readonly manifest: VmManifest,
     private readonly arch: Arch,
+    private readonly browserosRoot?: string,
   ) {}
 
   async ensureImageLoaded(ref: string, onLog?: LogFn): Promise<void> {
     if (await this.cli.imageExists(ref)) return
 
     const tarball = this.resolveTarball(ref)
-    const hostPath = join(getImageCacheDir(), basename(tarball.key))
-    const guestPath = hostPathToGuest(hostPath)
+    const hostPath = join(
+      getImageCacheDir(this.browserosRoot),
+      basename(tarball.key),
+    )
+    const guestPath = hostPathToGuest(hostPath, this.browserosRoot)
 
     try {
       await this.cli.loadImage(guestPath, onLog)
