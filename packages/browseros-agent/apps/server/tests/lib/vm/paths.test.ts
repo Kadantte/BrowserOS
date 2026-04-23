@@ -106,6 +106,7 @@ describe('VM paths', () => {
   })
 
   it('resolves the bundled limactl executable', async () => {
+    process.env.NODE_ENV = 'production'
     const resourcesDir = await mkdtemp(join(tmpdir(), 'limactl-resources-'))
     const limactlPath = join(
       resourcesDir,
@@ -130,6 +131,12 @@ describe('VM paths', () => {
     expect(resolveBundledLimactl('/tmp/missing-dev-resources')).toBe('limactl')
   })
 
+  it('uses PATH limactl in test mode', () => {
+    process.env.NODE_ENV = 'test'
+
+    expect(resolveBundledLimactl('/tmp/missing-test-resources')).toBe('limactl')
+  })
+
   it('throws with a build-tools hint when bundled limactl is missing', () => {
     process.env.NODE_ENV = 'production'
 
@@ -149,6 +156,28 @@ describe('VM paths', () => {
       expect(resolveBundledLimaTemplate(resourcesDir)).toBe(templatePath)
     } finally {
       await rm(resourcesDir, { recursive: true, force: true })
+    }
+  })
+
+  it('resolves the source Lima template from a package workspace in test mode', async () => {
+    process.env.NODE_ENV = 'test'
+    const workspaceDir = await mkdtemp(join(tmpdir(), 'lima-source-template-'))
+    const resourcesDir = join(workspaceDir, 'packages', 'browseros-agent')
+    const templatePath = join(
+      workspaceDir,
+      'packages',
+      'build-tools',
+      'template',
+      'browseros-vm.yaml',
+    )
+    await mkdir(resourcesDir, { recursive: true })
+    await mkdir(dirname(templatePath), { recursive: true })
+    await writeFile(templatePath, 'mounts: []\n')
+
+    try {
+      expect(resolveBundledLimaTemplate(resourcesDir)).toBe(templatePath)
+    } finally {
+      await rm(workspaceDir, { recursive: true, force: true })
     }
   })
 })

@@ -6,7 +6,7 @@
 
 import { existsSync } from 'node:fs'
 import { homedir, arch as osArch } from 'node:os'
-import { isAbsolute, join, relative, sep } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { PATHS } from '@browseros/shared/constants/paths'
 
 export const VM_NAME = 'browseros-vm'
@@ -80,7 +80,7 @@ export function decompressedDiskPath(
 }
 
 export function resolveBundledLimactl(resourcesDir: string): string {
-  if (process.env.NODE_ENV === 'development') return 'limactl'
+  if (usesHostVmTools()) return 'limactl'
 
   const candidate = join(resourcesDir, 'bin', 'third_party', 'lima', 'limactl')
   if (!existsSync(candidate)) {
@@ -92,15 +92,9 @@ export function resolveBundledLimactl(resourcesDir: string): string {
 }
 
 export function resolveBundledLimaTemplate(resourcesDir: string): string {
-  if (process.env.NODE_ENV === 'development') {
-    const sourceTemplate = join(
-      resourcesDir,
-      'packages',
-      'build-tools',
-      'template',
-      'browseros-vm.yaml',
-    )
-    if (existsSync(sourceTemplate)) return sourceTemplate
+  if (usesHostVmTools()) {
+    const sourceTemplate = findSourceLimaTemplate(resourcesDir)
+    if (sourceTemplate) return sourceTemplate
   }
 
   const candidate = join(resourcesDir, 'vm', 'browseros-vm.yaml')
@@ -110,6 +104,38 @@ export function resolveBundledLimaTemplate(resourcesDir: string): string {
     )
   }
   return candidate
+}
+
+function usesHostVmTools(): boolean {
+  return (
+    process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+  )
+}
+
+function findSourceLimaTemplate(resourcesDir: string): string | null {
+  let current = resolve(resourcesDir)
+  while (true) {
+    const rootCandidate = join(
+      current,
+      'packages',
+      'build-tools',
+      'template',
+      'browseros-vm.yaml',
+    )
+    if (existsSync(rootCandidate)) return rootCandidate
+
+    const packageCandidate = join(
+      current,
+      'build-tools',
+      'template',
+      'browseros-vm.yaml',
+    )
+    if (existsSync(packageCandidate)) return packageCandidate
+
+    const parent = dirname(current)
+    if (parent === current) return null
+    current = parent
+  }
 }
 
 export function hostPathToGuest(
