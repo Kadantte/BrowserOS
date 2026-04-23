@@ -4,5 +4,6 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
+export * from './image-loader'
 export * from './podman-shell'
 export * from './types'
