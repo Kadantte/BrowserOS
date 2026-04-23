@@ -4,9 +4,9 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { OpenClawHttpChatClient } from '../../../../src/api/services/openclaw/openclaw-http-chat-client'
+import { OpenClawHttpClient } from '../../../../src/api/services/openclaw/openclaw-http-client'
 
-describe('OpenClawHttpChatClient', () => {
+describe('OpenClawHttpClient', () => {
   const originalFetch = globalThis.fetch
 
   afterEach(() => {
@@ -47,10 +47,7 @@ describe('OpenClawHttpChatClient', () => {
       ),
     )
     globalThis.fetch = fetchMock as typeof globalThis.fetch
-    const client = new OpenClawHttpChatClient(
-      18789,
-      async () => 'gateway-token',
-    )
+    const client = new OpenClawHttpClient(18789, async () => 'gateway-token')
 
     const stream = await client.streamChat({
       agentId: 'research',
@@ -103,10 +100,7 @@ describe('OpenClawHttpChatClient', () => {
       ),
     )
     globalThis.fetch = fetchMock as typeof globalThis.fetch
-    const client = new OpenClawHttpChatClient(
-      18789,
-      async () => 'gateway-token',
-    )
+    const client = new OpenClawHttpClient(18789, async () => 'gateway-token')
 
     await client.streamChat({
       agentId: 'main',
@@ -124,10 +118,7 @@ describe('OpenClawHttpChatClient', () => {
     globalThis.fetch = mock(() =>
       Promise.resolve(new Response('Unauthorized', { status: 401 })),
     ) as typeof globalThis.fetch
-    const client = new OpenClawHttpChatClient(
-      18789,
-      async () => 'gateway-token',
-    )
+    const client = new OpenClawHttpClient(18789, async () => 'gateway-token')
 
     await expect(
       client.streamChat({
@@ -161,10 +152,7 @@ describe('OpenClawHttpChatClient', () => {
         ),
       ),
     ) as typeof globalThis.fetch
-    const client = new OpenClawHttpChatClient(
-      18789,
-      async () => 'gateway-token',
-    )
+    const client = new OpenClawHttpClient(18789, async () => 'gateway-token')
 
     const stream = await client.streamChat({
       agentId: 'main',
@@ -207,10 +195,7 @@ describe('OpenClawHttpChatClient', () => {
       ),
     )
     globalThis.fetch = fetchMock as typeof globalThis.fetch
-    const client = new OpenClawHttpChatClient(
-      18789,
-      async () => 'gateway-token',
-    )
+    const client = new OpenClawHttpClient(18789, async () => 'gateway-token')
 
     const stream = await client.streamChat({
       agentId: 'research',

@@ -20,7 +20,7 @@ export interface OpenClawChatRequest {
   signal?: AbortSignal
 }
 
-export class OpenClawHttpChatClient {
+export class OpenClawHttpClient {
   constructor(
     private readonly hostPort: number,
     private readonly getToken: () => Promise<string>,

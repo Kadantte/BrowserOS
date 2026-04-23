@@ -40,7 +40,7 @@ import {
   getOpenClawStateEnvPath,
   mergeEnvContent,
 } from './openclaw-env'
-import { OpenClawHttpChatClient } from './openclaw-http-chat-client'
+import { OpenClawHttpClient } from './openclaw-http-client'
 import {
   type ResolvedOpenClawProviderConfig,
   resolveSupportedOpenClawProvider,
@@ -119,7 +119,7 @@ export class OpenClawService {
   private runtime: ContainerRuntime
   private cliClient: OpenClawCliClient
   private bootstrapCliClient: OpenClawCliClient
-  private chatClient: OpenClawHttpChatClient
+  private httpClient: OpenClawHttpClient
   private openclawDir: string
   private hostPort = OPENCLAW_GATEWAY_CONTAINER_PORT
   private token: string
@@ -139,7 +139,7 @@ export class OpenClawService {
     this.token = crypto.randomUUID()
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
-    this.chatClient = new OpenClawHttpChatClient(
+    this.httpClient = new OpenClawHttpClient(
       this.hostPort,
       async () => this.token,
     )
@@ -589,7 +589,7 @@ export class OpenClawService {
       historyLength: history.length,
     })
     return this.runControlPlaneCall(() =>
-      this.chatClient.streamChat({
+      this.httpClient.streamChat({
         agentId,
         sessionKey,
         message,
@@ -745,7 +745,7 @@ export class OpenClawService {
   private setPort(hostPort: number): void {
     if (hostPort === this.hostPort) return
     this.hostPort = hostPort
-    this.chatClient = new OpenClawHttpChatClient(
+    this.httpClient = new OpenClawHttpClient(
       this.hostPort,
       async () => this.token,
     )
