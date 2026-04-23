@@ -7,8 +7,8 @@
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { getBrowserosDir } from '../../../lib/browseros-dir'
+import { ContainerCli, ImageLoader } from '../../../lib/container'
 import { logger } from '../../../lib/logger'
-import { ImageLoader, PodmanShell } from '../../../lib/podman'
 import {
   detectArch,
   getLimaHomeDir,
@@ -31,8 +31,6 @@ export interface ContainerRuntimeFactoryInput {
   platform?: NodeJS.Platform
 }
 
-let legacyPodmanLogged = false
-
 export function buildContainerRuntime(
   input: ContainerRuntimeFactoryInput,
 ): ContainerRuntime {
@@ -47,7 +45,6 @@ export function buildContainerRuntime(
   const browserosRoot = input.browserosRoot ?? getBrowserosDir()
   if (input.resourcesDir) {
     migrateLegacyOpenClawDirSync(browserosRoot)
-    void logLegacyPodmanMachineIfPresent()
   }
 
   const limactlPath = input.resourcesDir
@@ -62,7 +59,7 @@ export function buildContainerRuntime(
       : undefined,
     browserosRoot,
   })
-  const shell = new PodmanShell({ limactlPath, limaHome, vmName: VM_NAME })
+  const shell = new ContainerCli({ limactlPath, limaHome, vmName: VM_NAME })
   const loader = new DeferredImageLoader(shell, browserosRoot)
 
   return new ContainerRuntime({
@@ -99,34 +96,9 @@ function migrateLegacyOpenClawDirSync(browserosRoot = getBrowserosDir()): void {
   })
 }
 
-export async function logLegacyPodmanMachineIfPresent(
-  spawn: typeof Bun.spawn = Bun.spawn,
-): Promise<void> {
-  if (legacyPodmanLogged) return
-  try {
-    const proc = spawn(['podman', 'machine', 'list', '--format', 'json'], {
-      stdout: 'pipe',
-      stderr: 'ignore',
-    })
-    const [stdout, exitCode] = await Promise.all([
-      new Response(proc.stdout).text(),
-      proc.exited,
-    ])
-    if (exitCode !== 0 || !stdout.trim()) return
-    const machines = JSON.parse(stdout) as unknown[]
-    if (!Array.isArray(machines) || machines.length === 0) return
-    legacyPodmanLogged = true
-    logger.warn(VM_TELEMETRY_EVENTS.migrationLegacyPodmanDetected, {
-      count: machines.length,
-    })
-  } catch {
-    return
-  }
-}
-
 class DeferredImageLoader {
   constructor(
-    private readonly shell: PodmanShell,
+    private readonly shell: ContainerCli,
     private readonly browserosRoot: string,
   ) {}
 
@@ -141,7 +113,7 @@ class UnsupportedPlatformTestRuntime extends ContainerRuntime {
   constructor(projectDir: string) {
     super({
       vm: {} as VmRuntime,
-      shell: {} as PodmanShell,
+      shell: {} as ContainerCli,
       loader: { ensureImageLoaded: rejectUnsupportedPlatform },
       projectDir,
     })

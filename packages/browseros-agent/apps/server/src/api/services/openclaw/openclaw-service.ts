@@ -4,7 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * Main orchestrator for OpenClaw integration.
- * Container lifecycle via Podman, agent CRUD via in-container CLI,
+ * Container lifecycle via the VM runtime, agent CRUD via in-container CLI,
  * chat via HTTP /v1/chat/completions proxy.
  */
 

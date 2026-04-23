@@ -36,7 +36,7 @@ export function buildTerminalExecCommand(
     'shell',
     vmName,
     '--',
-    'podman',
+    'nerdctl',
     'exec',
     '-it',
     '-w',

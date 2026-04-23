@@ -8,8 +8,8 @@ import {
   OPENCLAW_GATEWAY_CONTAINER_NAME,
   OPENCLAW_GATEWAY_CONTAINER_PORT,
 } from '@browseros/shared/constants/openclaw'
+import type { ContainerCli, ContainerSpec } from '../../../lib/container'
 import { logger } from '../../../lib/logger'
-import type { ContainerSpec, PodmanShell } from '../../../lib/podman'
 import {
   GUEST_VM_STATE,
   hostPathToGuest,
@@ -32,14 +32,14 @@ export type GatewayContainerSpec = {
 
 export interface ContainerRuntimeConfig {
   vm: VmRuntime
-  shell: PodmanShell
+  shell: ContainerCli
   loader: { ensureImageLoaded(ref: string, onLog?: LogFn): Promise<void> }
   projectDir: string
 }
 
 export class ContainerRuntime {
   private readonly vm: VmRuntime
-  private readonly shell: PodmanShell
+  private readonly shell: ContainerCli
   private readonly loader: {
     ensureImageLoaded(ref: string, onLog?: LogFn): Promise<void>
   }
@@ -55,6 +55,7 @@ export class ContainerRuntime {
   async ensureReady(onLog?: LogFn): Promise<void> {
     logger.info('Ensuring BrowserOS VM runtime readiness')
     await this.vm.ensureReady(onLog)
+    await this.vm.getDefaultGateway()
   }
 
   async isPodmanAvailable(): Promise<boolean> {
@@ -79,7 +80,7 @@ export class ContainerRuntime {
   ): Promise<void> {
     await this.removeGatewayContainer(onLog)
     await this.loader.ensureImageLoaded(input.image, onLog)
-    const container = this.buildGatewayContainerSpec(input)
+    const container = await this.buildGatewayContainerSpec(input)
     await this.shell.createContainer(container, onLog)
     await this.shell.startContainer(container.name)
   }
@@ -98,13 +99,7 @@ export class ContainerRuntime {
   async getGatewayLogs(tail = 50): Promise<string[]> {
     const lines: string[] = []
     await this.vm.runCommand(
-      [
-        'podman',
-        'logs',
-        '--tail',
-        String(tail),
-        OPENCLAW_GATEWAY_CONTAINER_NAME,
-      ],
+      ['nerdctl', 'logs', '-n', String(tail), OPENCLAW_GATEWAY_CONTAINER_NAME],
       { onOutput: (line) => lines.push(line) },
     )
     return lines
@@ -159,26 +154,41 @@ export class ContainerRuntime {
     onLog?: LogFn,
   ): Promise<number> {
     const setupContainerName = `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`
-    await this.vm.runCommand(
-      ['podman', 'rm', '-f', '--ignore', setupContainerName],
-      { onOutput: onLog },
-    )
+    await this.vm.runCommand(['nerdctl', 'rm', '-f', setupContainerName], {
+      onOutput: onLog,
+    })
     await this.loader.ensureImageLoaded(spec.image, onLog)
     const setupArgs = command[0] === 'node' ? command.slice(1) : command
-    return this.vm.runCommand(
+    const createExitCode = await this.vm.runCommand(
       [
-        'podman',
-        'run',
-        '--rm',
+        'nerdctl',
+        'create',
         '--name',
         setupContainerName,
-        ...this.buildGatewayRunArgs(spec),
+        ...(await this.buildGatewayRunArgs(spec)),
         spec.image,
         'node',
         ...setupArgs,
       ],
       { onOutput: onLog },
     )
+    if (createExitCode !== 0) {
+      await this.vm.runCommand(['nerdctl', 'rm', '-f', setupContainerName], {
+        onOutput: onLog,
+      })
+      return createExitCode
+    }
+
+    try {
+      return await this.vm.runCommand(
+        ['nerdctl', 'start', '-a', setupContainerName],
+        { onOutput: onLog },
+      )
+    } finally {
+      await this.vm.runCommand(['nerdctl', 'rm', '-f', setupContainerName], {
+        onOutput: onLog,
+      })
+    }
   }
 
   tailGatewayLogs(onLine: LogFn): () => void {
@@ -199,9 +209,9 @@ export class ContainerRuntime {
     })
   }
 
-  private buildGatewayContainerSpec(
+  private async buildGatewayContainerSpec(
     input: GatewayContainerSpec,
-  ): ContainerSpec {
+  ): Promise<ContainerSpec> {
     return {
       name: OPENCLAW_GATEWAY_CONTAINER_NAME,
       image: input.image,
@@ -216,7 +226,7 @@ export class ContainerRuntime {
       envFile: this.translateHostPath(input.envFilePath, input.hostHome),
       env: this.buildGatewayEnv(input),
       mounts: [{ source: GUEST_OPENCLAW_HOME, target: GATEWAY_CONTAINER_HOME }],
-      addHosts: ['host.containers.internal:host-gateway'],
+      addHosts: [await this.hostContainersInternalEntry()],
       health: {
         cmd: `curl -sf http://127.0.0.1:${OPENCLAW_GATEWAY_CONTAINER_PORT}/healthz`,
         interval: '30s',
@@ -236,7 +246,9 @@ export class ContainerRuntime {
     }
   }
 
-  private buildGatewayRunArgs(input: GatewayContainerSpec): string[] {
+  private async buildGatewayRunArgs(
+    input: GatewayContainerSpec,
+  ): Promise<string[]> {
     const args = [
       '--env-file',
       this.translateHostPath(input.envFilePath, input.hostHome),
@@ -246,8 +258,12 @@ export class ContainerRuntime {
     for (const [key, value] of Object.entries(this.buildGatewayEnv(input))) {
       args.push('-e', `${key}=${value}`)
     }
-    args.push('--add-host', 'host.containers.internal:host-gateway')
+    args.push('--add-host', await this.hostContainersInternalEntry())
     return args
+  }
+
+  private async hostContainersInternalEntry(): Promise<string> {
+    return `host.containers.internal:${await this.vm.getDefaultGateway()}`
   }
 
   private buildGatewayEnv(input: GatewayContainerSpec): Record<string, string> {

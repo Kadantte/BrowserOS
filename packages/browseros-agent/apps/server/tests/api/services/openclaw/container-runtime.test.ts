@@ -56,6 +56,7 @@ describe('ContainerRuntime', () => {
             target: '/home/node',
           },
         ],
+        addHosts: ['host.containers.internal:192.168.5.2'],
       }),
       undefined,
     )
@@ -77,6 +78,7 @@ describe('ContainerRuntime', () => {
     await runtime.stopVm()
 
     expect(deps.vm.ensureReady).toHaveBeenCalled()
+    expect(deps.vm.getDefaultGateway).toHaveBeenCalled()
     expect(deps.vm.stopVm).toHaveBeenCalled()
   })
 
@@ -96,16 +98,25 @@ describe('ContainerRuntime', () => {
 
     expect(deps.vm.runCommand).toHaveBeenCalledWith(
       expect.arrayContaining([
-        'podman',
-        'run',
-        '--rm',
+        'nerdctl',
+        'create',
         '--name',
         `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`,
         '--env-file',
         '/mnt/browseros/vm/openclaw/.openclaw/.env',
         '-v',
         '/mnt/browseros/vm/openclaw:/home/node',
+        '--add-host',
+        'host.containers.internal:192.168.5.2',
       ]),
+      expect.any(Object),
+    )
+    expect(deps.vm.runCommand).toHaveBeenCalledWith(
+      ['nerdctl', 'start', '-a', `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`],
+      expect.any(Object),
+    )
+    expect(deps.vm.runCommand).toHaveBeenCalledWith(
+      ['nerdctl', 'rm', '-f', `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`],
       expect.any(Object),
     )
   })
@@ -128,7 +139,7 @@ describe('ContainerRuntime', () => {
       expect.any(Function),
     )
     expect(deps.vm.runCommand).toHaveBeenCalledWith(
-      ['podman', 'logs', '--tail', '10', OPENCLAW_GATEWAY_CONTAINER_NAME],
+      ['nerdctl', 'logs', '-n', '10', OPENCLAW_GATEWAY_CONTAINER_NAME],
       expect.any(Object),
     )
     expect(logs).toEqual(['log line'])
@@ -139,6 +150,7 @@ function createDeps() {
   return {
     vm: {
       ensureReady: mock(async () => {}),
+      getDefaultGateway: mock(async () => '192.168.5.2'),
       stopVm: mock(async () => {}),
       isReady: mock(async () => true),
       runCommand: mock(
