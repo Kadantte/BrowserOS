@@ -14,7 +14,6 @@ interface UseAgentConversationOptions {
   sessionKey?: string | null
   history?: OpenClawChatHistoryMessage[]
   onSessionKeyChange?: (sessionKey: string) => void
-  onStreamComplete?: () => Promise<void> | void
 }
 
 export function useAgentConversation(
@@ -29,7 +28,6 @@ export function useAgentConversation(
   const thinkAccRef = useRef('')
   const streamAbortRef = useRef<AbortController | null>(null)
   const onSessionKeyChangeRef = useRef(options.onSessionKeyChange)
-  const onStreamCompleteRef = useRef(options.onStreamComplete)
 
   useEffect(() => {
     sessionKeyRef.current = options.sessionKey ?? ''
@@ -41,8 +39,7 @@ export function useAgentConversation(
 
   useEffect(() => {
     onSessionKeyChangeRef.current = options.onSessionKeyChange
-    onStreamCompleteRef.current = options.onStreamComplete
-  }, [options.onSessionKeyChange, options.onStreamComplete])
+  }, [options.onSessionKeyChange])
 
   useEffect(() => {
     return () => {
@@ -184,7 +181,6 @@ export function useAgentConversation(
     thinkAccRef.current = ''
     const abortController = new AbortController()
     streamAbortRef.current = abortController
-    let completedStream = false
 
     try {
       const response = await chatWithAgent(
@@ -212,7 +208,6 @@ export function useAgentConversation(
         processStreamEvent,
         abortController.signal,
       )
-      completedStream = true
     } catch (err) {
       if (abortController.signal.aborted) return
       const msg = err instanceof Error ? err.message : String(err)
@@ -223,10 +218,6 @@ export function useAgentConversation(
     } finally {
       if (streamAbortRef.current === abortController) {
         streamAbortRef.current = null
-      }
-      if (completedStream) {
-        await onStreamCompleteRef.current?.()
-        setTurns([])
       }
       setStreaming(false)
     }

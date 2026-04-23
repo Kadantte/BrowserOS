@@ -220,11 +220,6 @@ function AgentConversationController({
         queryKey: [CLAW_CHAT_QUERY_KEYS.session],
       })
     },
-    onStreamComplete: () => {
-      return queryClient.invalidateQueries({
-        queryKey: [CLAW_CHAT_QUERY_KEYS.history],
-      })
-    },
   })
   const sendRef = useRef(send)
   sendRef.current = send
