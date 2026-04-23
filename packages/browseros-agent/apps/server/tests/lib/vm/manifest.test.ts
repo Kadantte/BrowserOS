@@ -101,6 +101,20 @@ describe('VM manifest helpers', () => {
     expect(compareVersions(newer, manifest)).toBe('downgrade')
   })
 
+  it('compares ISO timestamp versions with time-of-day precision', () => {
+    const morning = {
+      ...manifest,
+      updatedAt: '2026-04-22T10:00:00.000Z',
+    }
+    const afternoon = {
+      ...manifest,
+      updatedAt: '2026-04-22T15:00:00.000Z',
+    }
+
+    expect(compareVersions(morning, afternoon)).toBe('upgrade')
+    expect(compareVersions(afternoon, morning)).toBe('downgrade')
+  })
+
   it('returns the requested agent tarball for an arch', () => {
     expect(agentForArch(manifest, 'openclaw', 'arm64')).toEqual({
       image: 'ghcr.io/openclaw/openclaw',

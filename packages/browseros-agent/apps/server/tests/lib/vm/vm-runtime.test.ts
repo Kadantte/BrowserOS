@@ -74,7 +74,6 @@ describe('VmRuntime', () => {
       limaHome,
       templatePath,
       browserosRoot: root,
-      arch: 'arm64',
     })
     socketServer = await createSocket(getLimaSocketPath(root))
 
@@ -109,7 +108,6 @@ describe('VmRuntime', () => {
       limactlPath,
       limaHome,
       browserosRoot: root,
-      arch: 'arm64',
     })
     socketServer = await createSocket(getLimaSocketPath(root))
 
@@ -138,7 +136,6 @@ describe('VmRuntime', () => {
       limactlPath,
       limaHome,
       browserosRoot: root,
-      arch: 'arm64',
     })
     socketServer = await createSocket(getLimaSocketPath(root))
 
@@ -169,7 +166,6 @@ describe('VmRuntime', () => {
       limactlPath,
       limaHome,
       browserosRoot: root,
-      arch: 'arm64',
     })
 
     await expect(runtime.ensureReady()).rejects.toThrow('Lima template path')
@@ -185,7 +181,6 @@ describe('VmRuntime', () => {
       limaHome,
       templatePath,
       browserosRoot: root,
-      arch: 'arm64',
       socketTimeoutMs: 10,
       socketPollMs: 1,
     })
@@ -206,7 +201,7 @@ describe('VmRuntime', () => {
     )
   })
 
-  it('logs version mismatch and keeps using the existing VM', async () => {
+  it('logs upgrade mismatch and preserves the installed manifest until upgrade happens', async () => {
     await writeInstalledManifest(root, '2026-04-21T00:00:00.000Z')
     const limactlPath = await fakeLimactl(
       {
@@ -223,7 +218,6 @@ describe('VmRuntime', () => {
       limaHome,
       templatePath,
       browserosRoot: root,
-      arch: 'arm64',
     })
     socketServer = await createSocket(getLimaSocketPath(root))
     const originalWarn = logger.warn
@@ -246,9 +240,32 @@ describe('VmRuntime', () => {
         to: '2026-04-22T00:00:00.000Z',
       },
     })
-    await expect(
-      readFile(getInstalledManifestPath(root), 'utf8'),
-    ).resolves.toContain('2026-04-22T00:00:00.000Z')
+    expect(await readInstalledUpdatedAt(root)).toBe('2026-04-21T00:00:00.000Z')
+  })
+
+  it('preserves a newer installed manifest when cached manifest is older', async () => {
+    await writeInstalledManifest(root, '2026-04-23T00:00:00.000Z')
+    const limactlPath = await fakeLimactl(
+      {
+        list: {
+          stdout: JSON.stringify([
+            { name: VM_NAME, status: 'Running', dir: limaHome },
+          ]),
+        },
+      },
+      logPath,
+    )
+    const runtime = new VmRuntime({
+      limactlPath,
+      limaHome,
+      templatePath,
+      browserosRoot: root,
+    })
+    socketServer = await createSocket(getLimaSocketPath(root))
+
+    await runtime.ensureReady()
+
+    expect(await readInstalledUpdatedAt(root)).toBe('2026-04-23T00:00:00.000Z')
   })
 
   it('does not auto-reset when socket readiness fails', async () => {
@@ -261,7 +278,6 @@ describe('VmRuntime', () => {
       limaHome,
       templatePath,
       browserosRoot: root,
-      arch: 'arm64',
       socketTimeoutMs: 10,
       socketPollMs: 1,
     })
@@ -340,6 +356,11 @@ async function writeInstalledManifest(
     manifestPath,
     `${JSON.stringify({ ...manifest, updatedAt })}\n`,
   )
+}
+
+async function readInstalledUpdatedAt(root: string): Promise<string> {
+  const raw = await readFile(getInstalledManifestPath(root), 'utf8')
+  return (JSON.parse(raw) as VmManifest).updatedAt
 }
 
 async function createSocket(

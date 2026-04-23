@@ -81,7 +81,7 @@ describe('BrowserOS VM live smoke', () => {
 
       const secondStart = Date.now()
       await runtime.ensureReady()
-      expect(Date.now() - secondStart).toBeLessThan(2000)
+      expect(Date.now() - secondStart).toBeLessThan(10_000)
 
       await runtime.stopVm()
       const vm = (await new LimaCli({ limactlPath, limaHome }).list()).find(

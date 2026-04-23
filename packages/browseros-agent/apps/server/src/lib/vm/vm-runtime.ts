@@ -55,21 +55,28 @@ export class VmRuntime {
     const versionComparison = compareVersions(installed, cached)
     const vms = await this.cli.list()
     const existing = vms.find((vm) => vm.name === VM_NAME)
+    const shouldWriteInstalledManifest =
+      !existing || versionComparison === 'fresh' || versionComparison === 'same'
 
     if (!existing) {
       await this.provisionFresh(onLog)
-    } else if (existing.status !== 'Running') {
-      onLog?.('Starting BrowserOS VM...')
-      await this.cli.start(VM_NAME)
-    } else if (versionComparison === 'upgrade') {
-      logger.warn(VM_TELEMETRY_EVENTS.upgradeDetected, {
-        from: installed?.updatedAt ?? null,
-        to: cached.updatedAt,
-      })
+    } else {
+      if (existing.status !== 'Running') {
+        onLog?.('Starting BrowserOS VM...')
+        await this.cli.start(VM_NAME)
+      }
+      if (versionComparison === 'upgrade') {
+        logger.warn(VM_TELEMETRY_EVENTS.upgradeDetected, {
+          from: installed?.updatedAt ?? null,
+          to: cached.updatedAt,
+        })
+      }
     }
 
     await this.waitForSocket(this.socketTimeoutMs)
-    await writeInstalledManifest(cached, this.deps.browserosRoot)
+    if (shouldWriteInstalledManifest) {
+      await writeInstalledManifest(cached, this.deps.browserosRoot)
+    }
   }
 
   async stopVm(): Promise<void> {

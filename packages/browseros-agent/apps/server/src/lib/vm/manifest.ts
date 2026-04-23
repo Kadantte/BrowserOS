@@ -96,17 +96,7 @@ async function readManifest(path: string): Promise<VmManifest> {
 }
 
 function compareVersionStrings(left: string, right: string): number {
-  const leftParts = versionParts(left)
-  const rightParts = versionParts(right)
-  const maxLength = Math.max(leftParts.length, rightParts.length)
-  for (let i = 0; i < maxLength; i++) {
-    const leftPart = leftParts[i] ?? 0
-    const rightPart = rightParts[i] ?? 0
-    if (leftPart !== rightPart) return leftPart - rightPart
-  }
+  if (left < right) return -1
+  if (left > right) return 1
   return 0
-}
-
-function versionParts(version: string): number[] {
-  return version.split(/[.-]/).map((part) => Number.parseInt(part, 10) || 0)
 }
