@@ -82,16 +82,31 @@ export function decompressedDiskPath(
 export function resolveBundledLimactl(resourcesDir: string): string {
   if (process.env.NODE_ENV === 'development') return 'limactl'
 
-  const candidate = join(
-    resourcesDir,
-    'bin',
-    'third_party',
-    'podman',
-    'limactl',
-  )
+  const candidate = join(resourcesDir, 'bin', 'third_party', 'lima', 'limactl')
   if (!existsSync(candidate)) {
     throw new Error(
       `bundled limactl not found at ${candidate}; see the build-tools README and run bun run cache:sync`,
+    )
+  }
+  return candidate
+}
+
+export function resolveBundledLimaTemplate(resourcesDir: string): string {
+  if (process.env.NODE_ENV === 'development') {
+    const sourceTemplate = join(
+      resourcesDir,
+      'packages',
+      'build-tools',
+      'template',
+      'browseros-vm.yaml',
+    )
+    if (existsSync(sourceTemplate)) return sourceTemplate
+  }
+
+  const candidate = join(resourcesDir, 'vm', 'browseros-vm.yaml')
+  if (!existsSync(candidate)) {
+    throw new Error(
+      `bundled Lima template not found at ${candidate}; see the build-tools README and run bun run cache:sync`,
     )
   }
   return candidate

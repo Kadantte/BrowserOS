@@ -19,7 +19,7 @@ export async function fakeLimactl(
 ): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), 'fake-limactl-'))
   const path = join(dir, 'limactl')
-  const limaHomeExpansion = '${LIMA_HOME-}'
+  const limaHomeExpansion = '$' + '{LIMA_HOME-}'
   const cases = Object.entries(canned)
     .map(([command, response]) =>
       [

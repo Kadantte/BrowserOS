@@ -4,7 +4,10 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { generateLimaYaml } from '../../../src/lib/vm/lima-config'
+import {
+  generateLimaYaml,
+  renderLimaTemplate,
+} from '../../../src/lib/vm/lima-config'
 
 describe('generateLimaYaml', () => {
   it('generates the BrowserOS Lima VM config for arm64', () => {
@@ -50,5 +53,32 @@ describe('generateLimaYaml', () => {
     expect(yaml).toContain('cpus: 4')
     expect(yaml).toContain('memory: "4GiB"')
     expect(yaml).toContain('disk: "20GiB"')
+  })
+})
+
+describe('renderLimaTemplate', () => {
+  it('injects BrowserOS host mounts into the bundled Lima template', () => {
+    const yaml = renderLimaTemplate(
+      'minimumLimaVersion: 2.0.0\nmounts: []\nprobes: []\n',
+      {
+        vmStateDir: '/Users/me/.browseros/vm',
+        imageCacheDir: '/Users/me/.browseros/cache/vm/images',
+      },
+    )
+
+    expect(yaml).toContain('mountPoint: "/mnt/browseros/vm"')
+    expect(yaml).toContain('location: "/Users/me/.browseros/vm"')
+    expect(yaml).toContain('mountPoint: "/mnt/browseros/cache/images"')
+    expect(yaml).toContain('location: "/Users/me/.browseros/cache/vm/images"')
+    expect(yaml).toContain('probes: []')
+  })
+
+  it('fails loudly if the template no longer has the expected mount marker', () => {
+    expect(() =>
+      renderLimaTemplate('minimumLimaVersion: 2.0.0\n', {
+        vmStateDir: '/state',
+        imageCacheDir: '/images',
+      }),
+    ).toThrow('mounts: [] marker')
   })
 })

@@ -6,11 +6,10 @@
 import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import type { VmManifest } from '@browseros/build-tools/scripts/common/manifest'
 import { logger } from '../../../src/lib/logger'
 import { VmNotReadyError } from '../../../src/lib/vm/errors'
+import type { VmManifest } from '../../../src/lib/vm/manifest'
 import {
-  compressedDiskPath,
   getCachedManifestPath,
   getInstalledManifestPath,
   getLimaSocketPath,
@@ -21,21 +20,8 @@ import { VmRuntime } from '../../../src/lib/vm/vm-runtime'
 import { fakeLimactl } from '../../__helpers__/fake-limactl'
 
 const manifest: VmManifest = {
-  schemaVersion: 1,
-  vmVersion: '2026.04.22',
+  schemaVersion: 2,
   updatedAt: '2026-04-22T00:00:00.000Z',
-  vmDisk: {
-    arm64: {
-      key: 'vm/browseros-vm-2026.04.22-arm64.qcow2.zst',
-      sha256: 'disk-arm',
-      sizeBytes: 1,
-    },
-    x64: {
-      key: 'vm/browseros-vm-2026.04.22-x64.qcow2.zst',
-      sha256: 'disk-x64',
-      sizeBytes: 1,
-    },
-  },
   agents: {
     openclaw: {
       image: 'ghcr.io/openclaw/openclaw',
@@ -60,18 +46,17 @@ describe('VmRuntime', () => {
   let root: string
   let limaHome: string
   let logPath: string
+  let templatePath: string
   let socketServer: ReturnType<typeof Bun.listen> | null
 
   beforeEach(async () => {
     root = await mkdtemp('/tmp/vmrt-')
     limaHome = join(root, 'lima')
     logPath = join(root, 'limactl.log')
+    templatePath = join(root, 'browseros-vm.yaml')
     socketServer = null
     await writeCachedManifest(root)
-    await writeFile(
-      compressedDiskPath(manifest.vmVersion, 'arm64', root),
-      'zst',
-    )
+    await writeFile(templatePath, 'minimumLimaVersion: 2.0.0\nmounts: []\n')
   })
 
   afterEach(async () => {
@@ -84,31 +69,26 @@ describe('VmRuntime', () => {
       { list: { stdout: '' }, create: {}, start: {} },
       logPath,
     )
-    const decompressions: Array<{ from: string; to: string }> = []
     const runtime = new VmRuntime({
       limactlPath,
       limaHome,
+      templatePath,
       browserosRoot: root,
       arch: 'arm64',
-      decompressDisk: async (from, to) => {
-        decompressions.push({ from, to })
-        await writeFile(to, 'qcow2')
-      },
     })
     socketServer = await createSocket(getLimaSocketPath(root))
 
     await runtime.ensureReady()
 
-    expect(decompressions).toHaveLength(1)
     const log = await readFile(logPath, 'utf8')
     expect(log).toContain(`ARGS:create --tty=false --name=${VM_NAME}`)
     expect(log).toContain(`ARGS:start --tty=false ${VM_NAME}`)
     await expect(
       readFile(getInstalledManifestPath(root), 'utf8'),
-    ).resolves.toContain(manifest.vmVersion)
+    ).resolves.toContain(manifest.updatedAt)
     await expect(
       readFile(join(limaHome, `${VM_NAME}.yaml`), 'utf8'),
-    ).resolves.toContain('vmType: "vz"')
+    ).resolves.toContain('mountPoint: "/mnt/browseros/vm"')
   })
 
   it('returns fast when the VM is already running and manifests match', async () => {
@@ -183,8 +163,7 @@ describe('VmRuntime', () => {
     await expect(runtime.stopVm()).resolves.toBeUndefined()
   })
 
-  it('points at cache sync when the compressed disk is missing', async () => {
-    await rm(compressedDiskPath(manifest.vmVersion, 'arm64', root))
+  it('requires a bundled Lima template for fresh VM provisioning', async () => {
     const limactlPath = await fakeLimactl({ list: { stdout: '' } }, logPath)
     const runtime = new VmRuntime({
       limactlPath,
@@ -193,7 +172,7 @@ describe('VmRuntime', () => {
       arch: 'arm64',
     })
 
-    await expect(runtime.ensureReady()).rejects.toThrow('bun run cache:sync')
+    await expect(runtime.ensureReady()).rejects.toThrow('Lima template path')
   })
 
   it('throws VmNotReadyError when the socket never appears', async () => {
@@ -204,13 +183,11 @@ describe('VmRuntime', () => {
     const runtime = new VmRuntime({
       limactlPath,
       limaHome,
+      templatePath,
       browserosRoot: root,
       arch: 'arm64',
       socketTimeoutMs: 10,
       socketPollMs: 1,
-      decompressDisk: async (_from, to) => {
-        await writeFile(to, 'qcow2')
-      },
     })
 
     await expect(runtime.ensureReady()).rejects.toThrow(VmNotReadyError)
@@ -230,7 +207,7 @@ describe('VmRuntime', () => {
   })
 
   it('logs version mismatch and keeps using the existing VM', async () => {
-    await writeInstalledManifest(root, '2026.04.21')
+    await writeInstalledManifest(root, '2026-04-21T00:00:00.000Z')
     const limactlPath = await fakeLimactl(
       {
         list: {
@@ -244,6 +221,7 @@ describe('VmRuntime', () => {
     const runtime = new VmRuntime({
       limactlPath,
       limaHome,
+      templatePath,
       browserosRoot: root,
       arch: 'arm64',
     })
@@ -263,11 +241,14 @@ describe('VmRuntime', () => {
 
     expect(warnings).toContainEqual({
       message: VM_TELEMETRY_EVENTS.upgradeDetected,
-      meta: { from: '2026.04.21', to: '2026.04.22' },
+      meta: {
+        from: '2026-04-21T00:00:00.000Z',
+        to: '2026-04-22T00:00:00.000Z',
+      },
     })
     await expect(
       readFile(getInstalledManifestPath(root), 'utf8'),
-    ).resolves.toContain('2026.04.22')
+    ).resolves.toContain('2026-04-22T00:00:00.000Z')
   })
 
   it('does not auto-reset when socket readiness fails', async () => {
@@ -278,13 +259,11 @@ describe('VmRuntime', () => {
     const runtime = new VmRuntime({
       limactlPath,
       limaHome,
+      templatePath,
       browserosRoot: root,
       arch: 'arm64',
       socketTimeoutMs: 10,
       socketPollMs: 1,
-      decompressDisk: async (_from, to) => {
-        await writeFile(to, 'qcow2')
-      },
     })
     let resetCalled = false
     runtime.reset = async () => {
@@ -353,13 +332,13 @@ async function writeCachedManifest(root: string): Promise<void> {
 
 async function writeInstalledManifest(
   root: string,
-  vmVersion = manifest.vmVersion,
+  updatedAt = manifest.updatedAt,
 ): Promise<void> {
   const manifestPath = getInstalledManifestPath(root)
   await mkdir(dirname(manifestPath), { recursive: true })
   await writeFile(
     manifestPath,
-    `${JSON.stringify({ ...manifest, vmVersion })}\n`,
+    `${JSON.stringify({ ...manifest, updatedAt })}\n`,
   )
 }
 

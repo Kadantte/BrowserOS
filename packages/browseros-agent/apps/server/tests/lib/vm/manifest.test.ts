@@ -7,32 +7,19 @@ import { afterEach, beforeEach, describe, expect, it } from 'bun:test'
 import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import type { VmManifest } from '@browseros/build-tools/scripts/common/manifest'
 import { ManifestMissingError } from '../../../src/lib/vm/errors'
 import {
   agentForArch,
   compareVersions,
   readCachedManifest,
   readInstalledManifest,
+  type VmManifest,
   writeInstalledManifest,
 } from '../../../src/lib/vm/manifest'
 
 const manifest: VmManifest = {
-  schemaVersion: 1,
-  vmVersion: '2026.04.22',
+  schemaVersion: 2,
   updatedAt: '2026-04-22T00:00:00.000Z',
-  vmDisk: {
-    arm64: {
-      key: 'vm/browseros-vm-2026.04.22-arm64.qcow2.zst',
-      sha256: 'a',
-      sizeBytes: 1,
-    },
-    x64: {
-      key: 'vm/browseros-vm-2026.04.22-x64.qcow2.zst',
-      sha256: 'b',
-      sizeBytes: 2,
-    },
-  },
   agents: {
     openclaw: {
       image: 'ghcr.io/openclaw/openclaw',
@@ -105,8 +92,8 @@ describe('VM manifest helpers', () => {
   })
 
   it('compares installed and cached versions', () => {
-    const older = { ...manifest, vmVersion: '2026.04.21' }
-    const newer = { ...manifest, vmVersion: '2026.04.23' }
+    const older = { ...manifest, updatedAt: '2026-04-21T00:00:00.000Z' }
+    const newer = { ...manifest, updatedAt: '2026-04-23T00:00:00.000Z' }
 
     expect(compareVersions(null, manifest)).toBe('fresh')
     expect(compareVersions(manifest, manifest)).toBe('same')

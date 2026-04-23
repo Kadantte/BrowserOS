@@ -11,7 +11,8 @@ const TERMINAL_NAME = 'xterm-256color'
 
 interface TerminalSessionDeps {
   containerName: string
-  podmanPath: string
+  limactlPath: string
+  vmName: string
   workingDir: string
   onExit: (exitCode: number) => void
   onOutput: (data: string) => void
@@ -24,12 +25,17 @@ export interface TerminalSession {
 }
 
 export function buildTerminalExecCommand(
-  podmanPath: string,
+  limactlPath: string,
+  vmName: string,
   containerName: string,
   workingDir: string,
 ): string[] {
   return [
-    podmanPath,
+    limactlPath,
+    'shell',
+    vmName,
+    '--',
+    'podman',
     'exec',
     '-it',
     '-w',
@@ -45,7 +51,8 @@ export function createTerminalSession(
   const decoder = new TextDecoder()
   const proc = Bun.spawn(
     buildTerminalExecCommand(
-      deps.podmanPath,
+      deps.limactlPath,
+      deps.vmName,
       deps.containerName,
       deps.workingDir,
     ),

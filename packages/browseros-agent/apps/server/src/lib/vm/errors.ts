@@ -39,7 +39,7 @@ export class ImageLoadError extends VmError {
   constructor(
     public readonly imageRef: string,
     message: string,
-    public readonly cause?: unknown,
+    public override readonly cause?: unknown,
   ) {
     super(`failed to load image ${imageRef}: ${message}`)
   }

@@ -50,14 +50,19 @@ describe('terminal protocol', () => {
     ).toBe('{"type":"output","data":"hello"}')
   })
 
-  it('builds a podman exec command rooted in the container home dir', () => {
+  it('builds a limactl shell command rooted in the container home dir', () => {
     expect(
       buildTerminalExecCommand(
-        'podman',
+        'limactl',
+        'browseros-vm',
         OPENCLAW_GATEWAY_CONTAINER_NAME,
         TERMINAL_HOME_DIR,
       ),
     ).toEqual([
+      'limactl',
+      'shell',
+      'browseros-vm',
+      '--',
       'podman',
       'exec',
       '-it',

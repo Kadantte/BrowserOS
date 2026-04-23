@@ -5,8 +5,8 @@
  */
 
 import { basename, join } from 'node:path'
-import type { VmManifest } from '@browseros/build-tools/scripts/common/manifest'
 import { ImageLoadError, PodmanCommandError } from '../vm/errors'
+import type { VmManifest } from '../vm/manifest'
 import type { Arch } from '../vm/paths'
 import { getImageCacheDir, hostPathToGuest } from '../vm/paths'
 import type { PodmanShell } from './podman-shell'

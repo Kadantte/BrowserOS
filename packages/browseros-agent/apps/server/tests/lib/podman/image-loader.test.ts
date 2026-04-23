@@ -4,27 +4,14 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import type { VmManifest } from '@browseros/build-tools/scripts/common/manifest'
 import { ImageLoader } from '../../../src/lib/podman/image-loader'
 import type { PodmanShell } from '../../../src/lib/podman/podman-shell'
 import { ImageLoadError, PodmanCommandError } from '../../../src/lib/vm/errors'
+import type { VmManifest } from '../../../src/lib/vm/manifest'
 
 const manifest: VmManifest = {
-  schemaVersion: 1,
-  vmVersion: '2026.04.22',
+  schemaVersion: 2,
   updatedAt: '2026-04-22T00:00:00.000Z',
-  vmDisk: {
-    arm64: {
-      key: 'vm/browseros-vm-2026.04.22-arm64.qcow2.zst',
-      sha256: 'disk-arm',
-      sizeBytes: 1,
-    },
-    x64: {
-      key: 'vm/browseros-vm-2026.04.22-x64.qcow2.zst',
-      sha256: 'disk-x64',
-      sizeBytes: 1,
-    },
-  },
   agents: {
     openclaw: {
       image: 'ghcr.io/openclaw/openclaw',

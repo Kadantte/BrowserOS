@@ -22,6 +22,7 @@ import {
   getVmStateDir,
   hostPathToGuest,
   resolveBundledLimactl,
+  resolveBundledLimaTemplate,
 } from '../../../src/lib/vm/paths'
 
 describe('VM paths', () => {
@@ -110,7 +111,7 @@ describe('VM paths', () => {
       resourcesDir,
       'bin',
       'third_party',
-      'podman',
+      'lima',
       'limactl',
     )
     await mkdir(dirname(limactlPath), { recursive: true })
@@ -135,5 +136,19 @@ describe('VM paths', () => {
     expect(() => resolveBundledLimactl('/tmp/missing-resources')).toThrow(
       'build-tools README',
     )
+  })
+
+  it('resolves the bundled Lima template', async () => {
+    process.env.NODE_ENV = 'production'
+    const resourcesDir = await mkdtemp(join(tmpdir(), 'lima-template-'))
+    const templatePath = join(resourcesDir, 'vm', 'browseros-vm.yaml')
+    await mkdir(dirname(templatePath), { recursive: true })
+    await writeFile(templatePath, 'mounts: []\n')
+
+    try {
+      expect(resolveBundledLimaTemplate(resourcesDir)).toBe(templatePath)
+    } finally {
+      await rm(resourcesDir, { recursive: true, force: true })
+    }
   })
 })

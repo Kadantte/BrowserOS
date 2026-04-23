@@ -4,16 +4,12 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { createReadStream, createWriteStream, existsSync } from 'node:fs'
-import { mkdir, stat, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
-import { pipeline } from 'node:stream/promises'
-import * as zlib from 'node:zlib'
-import type { VmManifest } from '@browseros/build-tools/scripts/common/manifest'
 import { logger } from '../logger'
 import { LimaCommandError, VmError, VmNotReadyError } from './errors'
 import { LimaCli } from './lima-cli'
-import { generateLimaYaml } from './lima-config'
+import { renderLimaTemplate } from './lima-config'
 import {
   compareVersions,
   readCachedManifest,
@@ -21,10 +17,6 @@ import {
   writeInstalledManifest,
 } from './manifest'
 import {
-  type Arch,
-  compressedDiskPath,
-  decompressedDiskPath,
-  detectArch,
   getImageCacheDir,
   getLimaSocketPath,
   getVmStateDir,
@@ -37,21 +29,16 @@ export type LogFn = (msg: string) => void
 export interface VmRuntimeDeps {
   limactlPath: string
   limaHome: string
+  templatePath?: string
   browserosRoot?: string
-  arch?: Arch
   socketTimeoutMs?: number
   socketPollMs?: number
-  decompressDisk?: (compressedPath: string, rawPath: string) => Promise<void>
 }
 
 export class VmRuntime {
   private readonly cli: LimaCli
   private readonly socketTimeoutMs: number
   private readonly socketPollMs: number
-  private readonly decompressDisk: (
-    compressedPath: string,
-    rawPath: string,
-  ) => Promise<void>
 
   constructor(private readonly deps: VmRuntimeDeps) {
     this.cli = new LimaCli({
@@ -60,7 +47,6 @@ export class VmRuntime {
     })
     this.socketTimeoutMs = deps.socketTimeoutMs ?? 60_000
     this.socketPollMs = deps.socketPollMs ?? 500
-    this.decompressDisk = deps.decompressDisk ?? decompressZstd
   }
 
   async ensureReady(onLog?: LogFn): Promise<void> {
@@ -71,14 +57,14 @@ export class VmRuntime {
     const existing = vms.find((vm) => vm.name === VM_NAME)
 
     if (!existing) {
-      await this.provisionFresh(cached, onLog)
+      await this.provisionFresh(onLog)
     } else if (existing.status !== 'Running') {
       onLog?.('Starting BrowserOS VM...')
       await this.cli.start(VM_NAME)
     } else if (versionComparison === 'upgrade') {
       logger.warn(VM_TELEMETRY_EVENTS.upgradeDetected, {
-        from: installed?.vmVersion ?? null,
-        to: cached.vmVersion,
+        from: installed?.updatedAt ?? null,
+        to: cached.updatedAt,
       })
     }
 
@@ -171,22 +157,8 @@ export class VmRuntime {
     return this.deps.limactlPath
   }
 
-  private async provisionFresh(
-    cached: VmManifest,
-    onLog?: LogFn,
-  ): Promise<void> {
-    const arch = this.arch()
-    const diskPath = await this.prepareDisk(cached.vmVersion, arch)
-    const yaml = generateLimaYaml({
-      arch,
-      diskPath,
-      cpus: 2,
-      memory: '2GiB',
-      disk: '10GiB',
-      vmStateDir: getVmStateDir(this.deps.browserosRoot),
-      imageCacheDir: getImageCacheDir(this.deps.browserosRoot),
-      socketHostPath: this.socketPath(),
-    })
+  private async provisionFresh(onLog?: LogFn): Promise<void> {
+    const yaml = await this.buildLimaYaml()
     const yamlPath = join(this.deps.limaHome, `${VM_NAME}.yaml`)
     await mkdir(dirname(yamlPath), { recursive: true })
     await writeFile(yamlPath, yaml)
@@ -197,24 +169,17 @@ export class VmRuntime {
     await this.cli.start(VM_NAME)
   }
 
-  private async prepareDisk(version: string, arch: Arch): Promise<string> {
-    const raw = decompressedDiskPath(version, arch, this.deps.browserosRoot)
-    if (await hasNonZeroFile(raw)) return raw
-
-    const compressed = compressedDiskPath(
-      version,
-      arch,
-      this.deps.browserosRoot,
-    )
-    if (!existsSync(compressed)) {
+  private async buildLimaYaml(): Promise<string> {
+    if (!this.deps.templatePath) {
       throw new Error(
-        `VM disk is missing at ${compressed}; run bun run cache:sync before starting the server`,
+        'BrowserOS VM Lima template path is missing; configure VmRuntime with resourcesDir',
       )
     }
 
-    await mkdir(dirname(raw), { recursive: true })
-    await this.decompressDisk(compressed, raw)
-    return raw
+    return renderLimaTemplate(await readFile(this.deps.templatePath, 'utf8'), {
+      vmStateDir: getVmStateDir(this.deps.browserosRoot),
+      imageCacheDir: getImageCacheDir(this.deps.browserosRoot),
+    })
   }
 
   private async waitForSocket(timeoutMs: number): Promise<void> {
@@ -228,10 +193,6 @@ export class VmRuntime {
     )
   }
 
-  private arch(): Arch {
-    return this.deps.arch ?? detectArch()
-  }
-
   private socketPath(): string {
     return getLimaSocketPath(this.deps.browserosRoot)
   }
@@ -240,61 +201,6 @@ export class VmRuntime {
 function notImplemented(feature: string): VmError {
   return new VmError(
     `${feature} is not implemented yet - see WS4 follow-up plan`,
-  )
-}
-
-async function hasNonZeroFile(path: string): Promise<boolean> {
-  try {
-    const info = await stat(path)
-    return info.isFile() && info.size > 0
-  } catch {
-    return false
-  }
-}
-
-async function decompressZstd(
-  compressedPath: string,
-  rawPath: string,
-): Promise<void> {
-  await mkdir(dirname(rawPath), { recursive: true })
-  try {
-    const proc = Bun.spawn(
-      ['zstd', '-d', '-f', '-o', rawPath, compressedPath],
-      {
-        stdout: 'ignore',
-        stderr: 'pipe',
-      },
-    )
-    const [stderr, code] = await Promise.all([
-      new Response(proc.stderr).text(),
-      proc.exited,
-    ])
-    if (code === 0) return
-    throw new Error(stderr)
-  } catch (error) {
-    await decompressZstdWithNode(compressedPath, rawPath, error)
-  }
-}
-
-async function decompressZstdWithNode(
-  compressedPath: string,
-  rawPath: string,
-  originalError: unknown,
-): Promise<void> {
-  const createZstdDecompress = (
-    zlib as typeof zlib & {
-      createZstdDecompress?: () => NodeJS.ReadWriteStream
-    }
-  ).createZstdDecompress
-  if (!createZstdDecompress) {
-    throw new Error(
-      `failed to decompress ${compressedPath}; install zstd or use a Node build with zstd support: ${String(originalError)}`,
-    )
-  }
-  await pipeline(
-    createReadStream(compressedPath),
-    createZstdDecompress(),
-    createWriteStream(rawPath),
   )
 }
 

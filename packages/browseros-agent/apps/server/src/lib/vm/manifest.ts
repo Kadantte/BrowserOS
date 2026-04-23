@@ -7,10 +7,27 @@
 import { existsSync } from 'node:fs'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import type { VmManifest } from '@browseros/build-tools/scripts/common/manifest'
 import { ManifestMissingError } from './errors'
 import type { Arch } from './paths'
 import { getCachedManifestPath, getInstalledManifestPath } from './paths'
+
+export interface VmArtifact {
+  key: string
+  sha256: string
+  sizeBytes: number
+}
+
+export interface VmAgentEntry {
+  image: string
+  version: string
+  tarballs: Record<Arch, VmArtifact>
+}
+
+export interface VmManifest {
+  schemaVersion: number
+  updatedAt: string
+  agents: Record<string, VmAgentEntry>
+}
 
 export type VersionComparison = 'same' | 'upgrade' | 'downgrade' | 'fresh'
 
@@ -47,8 +64,8 @@ export function compareVersions(
 ): VersionComparison {
   if (!installed) return 'fresh'
   const comparison = compareVersionStrings(
-    installed.vmVersion,
-    cached.vmVersion,
+    installed.updatedAt,
+    cached.updatedAt,
   )
   if (comparison === 0) return 'same'
   return comparison < 0 ? 'upgrade' : 'downgrade'
