@@ -174,13 +174,12 @@ export class OpenClawCliClient {
     args.push('--non-interactive', '--json')
     await this.runCommand(args)
 
-    const agents = await this.listAgents()
-    const agent = agents.find((entry) => entry.agentId === input.name)
-    if (!agent) {
-      throw new Error(`Created agent ${input.name} was not found in agent list`)
+    return {
+      agentId: input.name,
+      name: input.name,
+      workspace,
+      model: input.model,
     }
-
-    return agent
   }
 
   async deleteAgent(agentId: string): Promise<void> {
