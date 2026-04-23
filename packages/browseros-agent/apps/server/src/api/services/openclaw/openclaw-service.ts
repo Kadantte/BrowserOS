@@ -358,6 +358,7 @@ export class OpenClawService {
       })
 
       this.controlPlaneStatus = 'reconnecting'
+      await this.runtime.ensureReady(logProgress)
       this.stopGatewayLogTail()
       logProgress('Refreshing gateway auth token...')
       this.tokenLoaded = false

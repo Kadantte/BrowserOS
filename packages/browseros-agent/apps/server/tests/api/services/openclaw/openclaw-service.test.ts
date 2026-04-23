@@ -691,6 +691,7 @@ describe('OpenClawService', () => {
         },
       }),
     )
+    const ensureReady = mock(async () => {})
     const restartGateway = mock(async () => {})
     const waitForReady = mock(async () => true)
     const probe = mock(async () => {})
@@ -698,6 +699,7 @@ describe('OpenClawService', () => {
 
     service.openclawDir = tempDir
     service.runtime = {
+      ensureReady,
       isReady: async () => true,
       restartGateway,
       waitForReady,
@@ -708,6 +710,7 @@ describe('OpenClawService', () => {
 
     await service.restart()
 
+    expect(ensureReady).toHaveBeenCalledTimes(1)
     expect(restartGateway).toHaveBeenCalledWith(
       expect.objectContaining({
         image: 'ghcr.io/openclaw/openclaw:2026.4.12',
@@ -751,6 +754,7 @@ describe('OpenClawService', () => {
       join(tempDir, '.openclaw', 'runtime-state.json'),
       `${JSON.stringify({ gatewayPort: occupiedPort }, null, 2)}\n`,
     )
+    const ensureReady = mock(async () => {})
     const restartGateway = mock(async () => {})
     const waitForReady = mock(async () => true)
     const probe = mock(async () => {})
@@ -758,6 +762,7 @@ describe('OpenClawService', () => {
 
     service.openclawDir = tempDir
     service.runtime = {
+      ensureReady,
       isReady: async (hostPort?: number) => hostPort === occupiedPort,
       restartGateway,
       waitForReady,
@@ -786,6 +791,7 @@ describe('OpenClawService', () => {
       }),
       expect.any(Function),
     )
+    expect(ensureReady).toHaveBeenCalledTimes(1)
   })
 
   it('stop calls runtime.stopGateway', async () => {
