@@ -11,8 +11,8 @@ import { VmNotReadyError } from '../../../src/lib/vm/errors'
 import type { VmManifest } from '../../../src/lib/vm/manifest'
 import {
   getCachedManifestPath,
+  getContainerdSocketPath,
   getInstalledManifestPath,
-  getLimaSocketPath,
   VM_NAME,
 } from '../../../src/lib/vm/paths'
 import { VM_TELEMETRY_EVENTS } from '../../../src/lib/vm/telemetry'
@@ -76,7 +76,7 @@ describe('VmRuntime', () => {
       templatePath,
       browserosRoot: root,
     })
-    socketServer = await createSocket(getLimaSocketPath(root))
+    socketServer = await createSocket(getContainerdSocketPath(root))
 
     await runtime.ensureReady()
 
@@ -110,7 +110,7 @@ describe('VmRuntime', () => {
       limaHome,
       browserosRoot: root,
     })
-    socketServer = await createSocket(getLimaSocketPath(root))
+    socketServer = await createSocket(getContainerdSocketPath(root))
 
     await runtime.ensureReady()
 
@@ -138,7 +138,7 @@ describe('VmRuntime', () => {
       limaHome,
       browserosRoot: root,
     })
-    socketServer = await createSocket(getLimaSocketPath(root))
+    socketServer = await createSocket(getContainerdSocketPath(root))
 
     await runtime.ensureReady()
 
@@ -220,7 +220,7 @@ describe('VmRuntime', () => {
       templatePath,
       browserosRoot: root,
     })
-    socketServer = await createSocket(getLimaSocketPath(root))
+    socketServer = await createSocket(getContainerdSocketPath(root))
     const originalWarn = logger.warn
     const warnings: Array<{
       message: string
@@ -262,7 +262,7 @@ describe('VmRuntime', () => {
       templatePath,
       browserosRoot: root,
     })
-    socketServer = await createSocket(getLimaSocketPath(root))
+    socketServer = await createSocket(getContainerdSocketPath(root))
 
     await runtime.ensureReady()
 
@@ -304,7 +304,7 @@ describe('VmRuntime', () => {
       browserosRoot: root,
     })
 
-    await expect(runtime.runCommand(['podman', 'version'])).resolves.toBe(0)
+    await expect(runtime.runCommand(['nerdctl', 'version'])).resolves.toBe(0)
     await expect(runtime.listRunningContainers()).resolves.toEqual([
       'gateway',
       'worker',
@@ -312,11 +312,36 @@ describe('VmRuntime', () => {
 
     const log = await readFile(logPath, 'utf8')
     expect(log).toContain(
-      `ARGS:-F ${sshConfig} lima-${VM_NAME} 'podman' 'version'`,
+      `ARGS:-F ${sshConfig} lima-${VM_NAME} 'nerdctl' 'version'`,
     )
     expect(log).toContain(
-      `ARGS:-F ${sshConfig} lima-${VM_NAME} 'podman' 'ps' '--format' '{{.Names}}'`,
+      `ARGS:-F ${sshConfig} lima-${VM_NAME} 'nerdctl' 'ps' '--format' '{{.Names}}'`,
     )
+  })
+
+  it('resolves and caches the VM default gateway through ssh', async () => {
+    const sshPath = await fakeSsh(
+      {
+        stdout:
+          'default via 192.168.5.2 dev eth0 proto dhcp src 192.168.5.15 metric 100\n',
+      },
+      logPath,
+    )
+    const sshConfig = join(limaHome, VM_NAME, 'ssh.config')
+    await mkdir(join(limaHome, VM_NAME), { recursive: true })
+    await writeFile(sshConfig, '')
+    const runtime = new VmRuntime({
+      limactlPath: 'unused',
+      limaHome,
+      sshPath,
+      browserosRoot: root,
+    })
+
+    await expect(runtime.getDefaultGateway()).resolves.toBe('192.168.5.2')
+    await expect(runtime.getDefaultGateway()).resolves.toBe('192.168.5.2')
+
+    const log = await readFile(logPath, 'utf8')
+    expect(log.match(/'ip' '-4' 'route' 'show' 'default'/g)).toHaveLength(1)
   })
 
   it('returns a stop handle for tailing container logs', async () => {
@@ -340,7 +365,7 @@ describe('VmRuntime', () => {
 
     expect(lines).toEqual(['line'])
     await expect(readFile(logPath, 'utf8')).resolves.toContain(
-      `ARGS:-F ${sshConfig} lima-${VM_NAME} 'podman' 'logs' '-f' '--tail' '0' 'gateway'`,
+      `ARGS:-F ${sshConfig} lima-${VM_NAME} 'nerdctl' 'logs' '-f' '-n' '0' 'gateway'`,
     )
   })
 })

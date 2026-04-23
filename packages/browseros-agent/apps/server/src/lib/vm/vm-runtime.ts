@@ -17,8 +17,8 @@ import {
   writeInstalledManifest,
 } from './manifest'
 import {
+  getContainerdSocketPath,
   getImageCacheDir,
-  getLimaSocketPath,
   getVmStateDir,
   VM_NAME,
 } from './paths'
@@ -40,6 +40,7 @@ export class VmRuntime {
   private readonly cli: LimaCli
   private readonly socketTimeoutMs: number
   private readonly socketPollMs: number
+  private defaultGateway: string | null = null
 
   constructor(private readonly deps: VmRuntimeDeps) {
     this.cli = new LimaCli({
@@ -139,7 +140,7 @@ export class VmRuntime {
 
   async listRunningContainers(): Promise<string[]> {
     const lines: string[] = []
-    await this.runCommand(['podman', 'ps', '--format', '{{.Names}}'], {
+    await this.runCommand(['nerdctl', 'ps', '--format', '{{.Names}}'], {
       onOutput: (line) => lines.push(line),
     })
     return lines.map((line) => line.trim()).filter(Boolean)
@@ -148,7 +149,7 @@ export class VmRuntime {
   tailContainerLogs(containerName: string, onLine: LogFn): () => void {
     const proc = this.cli.spawnShell(
       VM_NAME,
-      ['podman', 'logs', '-f', '--tail', '0', containerName],
+      ['nerdctl', 'logs', '-f', '-n', '0', containerName],
       { onStdout: onLine, onStderr: onLine },
     )
 
@@ -166,6 +167,30 @@ export class VmRuntime {
 
   async performUpgrade(): Promise<never> {
     throw notImplemented('VmRuntime.performUpgrade')
+  }
+
+  async getDefaultGateway(): Promise<string> {
+    if (this.defaultGateway) return this.defaultGateway
+
+    const lines: string[] = []
+    const exitCode = await this.runCommand(
+      ['ip', '-4', 'route', 'show', 'default'],
+      {
+        onOutput: (line) => lines.push(line),
+      },
+    )
+    if (exitCode !== 0) {
+      throw new VmNotReadyError(
+        `failed to resolve VM default gateway; ip route exited ${exitCode}`,
+      )
+    }
+
+    const gateway = parseDefaultGateway(lines.join('\n'))
+    if (!gateway) {
+      throw new VmNotReadyError('failed to resolve VM default gateway')
+    }
+    this.defaultGateway = gateway
+    return gateway
   }
 
   async isReady(): Promise<boolean> {
@@ -256,11 +281,11 @@ export class VmRuntime {
       timeoutMs,
       pollCount,
     })
-    throw new VmNotReadyError(`podman.sock never appeared at ${sockPath}`)
+    throw new VmNotReadyError(`containerd.sock never appeared at ${sockPath}`)
   }
 
   private socketPath(): string {
-    return getLimaSocketPath(this.deps.browserosRoot)
+    return getContainerdSocketPath(this.deps.browserosRoot)
   }
 }
 
@@ -277,4 +302,8 @@ function isAlreadyStopped(stderr: string): boolean {
     lower.includes('already stopped') ||
     lower.includes('not found')
   )
+}
+
+function parseDefaultGateway(output: string): string | null {
+  return output.match(/\bdefault\s+via\s+(\d+\.\d+\.\d+\.\d+)\b/)?.[1] ?? null
 }

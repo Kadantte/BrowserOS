@@ -53,8 +53,12 @@ export function getInstalledManifestPath(browserosRoot = rootDir()): string {
   return join(getVmStateDir(browserosRoot), 'manifest.json')
 }
 
+export function getContainerdSocketPath(browserosRoot = rootDir()): string {
+  return join(getLimaHomeDir(browserosRoot), VM_NAME, 'sock', 'containerd.sock')
+}
+
 export function getLimaSocketPath(browserosRoot = rootDir()): string {
-  return join(getLimaHomeDir(browserosRoot), VM_NAME, 'sock', 'podman.sock')
+  return getContainerdSocketPath(browserosRoot)
 }
 
 export function getLimaSshConfigPath(limaHome: string, name: string): string {

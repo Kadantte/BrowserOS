@@ -15,6 +15,7 @@ import {
 import {
   detectArch,
   getCachedManifestPath,
+  getContainerdSocketPath,
   getImageCacheDir,
   getInstalledManifestPath,
   getLimaHomeDir,
@@ -74,6 +75,9 @@ describe('VM paths', () => {
     )
     expect(getInstalledManifestPath(root)).toBe(
       '/Users/foo/.browseros/vm/manifest.json',
+    )
+    expect(getContainerdSocketPath(root)).toBe(
+      '/Users/foo/.browseros/lima/browseros-vm/sock/containerd.sock',
     )
   })
 
