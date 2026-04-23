@@ -21,6 +21,9 @@ import { readCachedManifest } from '../../../lib/vm/manifest'
 import { VM_TELEMETRY_EVENTS } from '../../../lib/vm/telemetry'
 import { ContainerRuntime } from './container-runtime'
 
+const UNSUPPORTED_PLATFORM_MESSAGE =
+  'browseros-vm currently supports macOS only; see the Linux/Windows tracking issue'
+
 export interface ContainerRuntimeFactoryInput {
   resourcesDir?: string
   projectDir: string
@@ -35,9 +38,10 @@ export function buildContainerRuntime(
 ): ContainerRuntime {
   const platform = input.platform ?? process.platform
   if (platform !== 'darwin') {
-    throw new Error(
-      'browseros-vm currently supports macOS only; see the Linux/Windows tracking issue',
-    )
+    if (process.env.NODE_ENV === 'test') {
+      return new UnsupportedPlatformTestRuntime(input.projectDir)
+    }
+    throw unsupportedPlatformError()
   }
 
   const browserosRoot = input.browserosRoot ?? getBrowserosDir()
@@ -131,4 +135,82 @@ class DeferredImageLoader {
     const loader = new ImageLoader(this.shell, manifest, detectArch())
     await loader.ensureImageLoaded(ref, onLog)
   }
+}
+
+class UnsupportedPlatformTestRuntime extends ContainerRuntime {
+  constructor(projectDir: string) {
+    super({
+      vm: {} as VmRuntime,
+      shell: {} as PodmanShell,
+      loader: { ensureImageLoaded: rejectUnsupportedPlatform },
+      projectDir,
+    })
+  }
+
+  override async ensureReady(): Promise<void> {
+    throw unsupportedPlatformError()
+  }
+
+  override async isPodmanAvailable(): Promise<boolean> {
+    return false
+  }
+
+  override async getMachineStatus(): Promise<{
+    initialized: boolean
+    running: boolean
+  }> {
+    return { initialized: false, running: false }
+  }
+
+  override async pullImage(): Promise<void> {
+    throw unsupportedPlatformError()
+  }
+
+  override async startGateway(): Promise<void> {
+    throw unsupportedPlatformError()
+  }
+
+  override async stopGateway(): Promise<void> {}
+
+  override async restartGateway(): Promise<void> {
+    throw unsupportedPlatformError()
+  }
+
+  override async getGatewayLogs(): Promise<string[]> {
+    return []
+  }
+
+  override async isHealthy(): Promise<boolean> {
+    return false
+  }
+
+  override async isReady(): Promise<boolean> {
+    return false
+  }
+
+  override async waitForReady(): Promise<boolean> {
+    return false
+  }
+
+  override async stopVm(): Promise<void> {}
+
+  override async execInContainer(): Promise<number> {
+    throw unsupportedPlatformError()
+  }
+
+  override async runGatewaySetupCommand(): Promise<number> {
+    throw unsupportedPlatformError()
+  }
+
+  override tailGatewayLogs(): () => void {
+    return () => {}
+  }
+}
+
+async function rejectUnsupportedPlatform(): Promise<never> {
+  throw unsupportedPlatformError()
+}
+
+function unsupportedPlatformError(): Error {
+  return new Error(UNSUPPORTED_PLATFORM_MESSAGE)
 }

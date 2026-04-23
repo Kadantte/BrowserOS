@@ -56,6 +56,24 @@ describe('container-runtime factory', () => {
     ).toThrow('supports macOS only')
   })
 
+  it('returns a disabled runtime on non-macOS platforms in test mode', async () => {
+    process.env.NODE_ENV = 'test'
+
+    const runtime = buildContainerRuntime({
+      resourcesDir,
+      projectDir: join(root, 'project'),
+      browserosRoot: root,
+      platform: 'linux',
+    })
+
+    await expect(runtime.getMachineStatus()).resolves.toEqual({
+      initialized: false,
+      running: false,
+    })
+    await expect(runtime.ensureReady()).rejects.toThrow('supports macOS only')
+    await expect(runtime.stopVm()).resolves.toBeUndefined()
+  })
+
   it('migrates legacy OpenClaw state into the VM state directory', async () => {
     const legacyFile = join(root, 'openclaw', '.openclaw', 'openclaw.json')
     await mkdir(dirname(legacyFile), { recursive: true })
