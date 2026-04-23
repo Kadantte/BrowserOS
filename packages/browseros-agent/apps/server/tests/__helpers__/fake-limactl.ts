@@ -24,7 +24,7 @@ export async function fakeLimactl(
       [
         `  ${JSON.stringify(command)})`,
         `    echo "ARGS:$*" >> "${logPath ?? '/dev/null'}"`,
-        `    echo "LIMA_HOME:$LIMA_HOME" >> "${logPath ?? '/dev/null'}"`,
+        `    echo "LIMA_HOME:${'${LIMA_HOME-}'}" >> "${logPath ?? '/dev/null'}"`,
         `    printf %b ${JSON.stringify(response.stdout ?? '')}`,
         `    printf %b ${JSON.stringify(response.stderr ?? '')} >&2`,
         `    exit ${response.exit ?? 0}`,
