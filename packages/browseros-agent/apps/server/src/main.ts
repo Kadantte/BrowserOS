@@ -61,7 +61,7 @@ export class Application {
     })
 
     const resourcesDir = path.resolve(this.config.resourcesDir)
-    configureVmRuntime({ resourcesDir })
+    configureVmRuntime({ resourcesDir, vmCache: this.vmCacheConfig() })
     await this.initCoreServices()
 
     if (!this.config.cdpPort) {
@@ -129,6 +129,7 @@ export class Application {
     configureOpenClawService({
       browserosServerPort: this.config.serverPort,
       resourcesDir,
+      vmCache: this.vmCacheConfig(),
     })
       .tryAutoStart()
       .catch((err) =>
@@ -221,6 +222,19 @@ export class Application {
         error: error instanceof Error ? error.message : String(error),
       })
     })
+  }
+
+  private vmCacheConfig(): {
+    cdnBaseUrl: string
+    manifestUrl?: string
+  } {
+    if (!this.config.vmCacheManifestUrl) {
+      return { cdnBaseUrl: this.config.vmCacheCdnBaseUrl }
+    }
+    return {
+      cdnBaseUrl: this.config.vmCacheCdnBaseUrl,
+      manifestUrl: this.config.vmCacheManifestUrl,
+    }
   }
 
   private configureLogDirectory(): void {

@@ -22,7 +22,10 @@ import type {
   ContainerRuntime,
   GatewayContainerSpec,
 } from './container-runtime'
-import { buildContainerRuntime } from './container-runtime-factory'
+import {
+  buildContainerRuntime,
+  type VmCacheRuntimeConfig,
+} from './container-runtime-factory'
 import {
   OpenClawAgentAlreadyExistsError,
   OpenClawAgentNotFoundError,
@@ -112,6 +115,7 @@ export interface OpenClawServiceConfig {
   browserosServerPort?: number
   resourcesDir?: string
   browserosDir?: string
+  vmCache?: VmCacheRuntimeConfig
 }
 
 export class OpenClawService {
@@ -127,6 +131,7 @@ export class OpenClawService {
   private browserosServerPort: number
   private resourcesDir: string | null
   private browserosDir: string | undefined
+  private vmCache: VmCacheRuntimeConfig | undefined
   private controlPlaneStatus: OpenClawControlPlaneStatus = 'disconnected'
   private lastGatewayError: string | null = null
   private lastRecoveryReason: OpenClawGatewayRecoveryReason | null = null
@@ -139,6 +144,7 @@ export class OpenClawService {
       resourcesDir: config.resourcesDir,
       projectDir: this.openclawDir,
       browserosRoot: config.browserosDir,
+      vmCache: config.vmCache,
     })
     this.token = crypto.randomUUID()
     this.cliClient = new OpenClawCliClient(this.runtime)
@@ -151,6 +157,7 @@ export class OpenClawService {
       config.browserosServerPort ?? DEFAULT_PORTS.server
     this.resourcesDir = config.resourcesDir ?? null
     this.browserosDir = config.browserosDir
+    this.vmCache = config.vmCache
   }
 
   configure(config: OpenClawServiceConfig): void {
@@ -171,6 +178,13 @@ export class OpenClawService {
       config.browserosDir !== this.browserosDir
     ) {
       this.browserosDir = config.browserosDir
+      runtimeChanged = true
+    }
+    if (
+      config.vmCache !== undefined &&
+      !sameVmCacheRuntimeConfig(config.vmCache, this.vmCache)
+    ) {
+      this.vmCache = config.vmCache
       runtimeChanged = true
     }
     if (runtimeChanged) {
@@ -713,6 +727,7 @@ export class OpenClawService {
       resourcesDir: this.resourcesDir ?? undefined,
       projectDir: this.openclawDir,
       browserosRoot: this.browserosDir,
+      vmCache: this.vmCache,
     })
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
@@ -1237,6 +1252,7 @@ export function configureOpenClawService(
 export function configureVmRuntime(config: {
   resourcesDir?: string
   browserosDir?: string
+  vmCache?: VmCacheRuntimeConfig
 }): OpenClawService {
   return configureOpenClawService(config)
 }
@@ -1244,4 +1260,16 @@ export function configureVmRuntime(config: {
 export function getOpenClawService(): OpenClawService {
   if (!service) service = new OpenClawService()
   return service
+}
+
+function sameVmCacheRuntimeConfig(
+  left: VmCacheRuntimeConfig | undefined,
+  right: VmCacheRuntimeConfig | undefined,
+): boolean {
+  return (
+    left?.cdnBaseUrl === right?.cdnBaseUrl &&
+    left?.manifestUrl === right?.manifestUrl &&
+    left?.ensureAvailable === right?.ensureAvailable &&
+    left?.ensureSynced === right?.ensureSynced
+  )
 }
