@@ -215,7 +215,6 @@ export class Application {
   private startVmCachePrefetch(): void {
     if (!this.config.vmCachePrefetch) return
     void prefetchVmCache({
-      cdnBaseUrl: this.config.vmCacheCdnBaseUrl,
       manifestUrl: this.config.vmCacheManifestUrl,
     }).catch((error) => {
       logger.warn('BrowserOS VM cache prefetch failed', {
@@ -225,14 +224,9 @@ export class Application {
   }
 
   private vmCacheConfig(): {
-    cdnBaseUrl: string
-    manifestUrl?: string
+    manifestUrl: string
   } {
-    if (!this.config.vmCacheManifestUrl) {
-      return { cdnBaseUrl: this.config.vmCacheCdnBaseUrl }
-    }
     return {
-      cdnBaseUrl: this.config.vmCacheCdnBaseUrl,
       manifestUrl: this.config.vmCacheManifestUrl,
     }
   }

@@ -16,10 +16,10 @@ import { getCachedManifestPath } from './paths'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const ARCHES: Arch[] = ['arm64', 'x64']
+const CANONICAL_MANIFEST_SUFFIX = '/vm/manifest.json'
 
 export interface VmCacheSyncOptions {
   browserosRoot?: string
-  cdnBaseUrl?: string
   manifestUrl?: string
   allArches?: boolean
   fetchImpl?: typeof fetch
@@ -98,7 +98,7 @@ async function syncVmCache(cfg: SyncConfig): Promise<VmCacheSyncResult> {
   for (const item of plan) {
     await downloadArtifact(
       cfg.fetchImpl,
-      joinUrl(cfg.cdnBaseUrl, item.key),
+      artifactUrlForKey(cfg.manifestUrl, item.key),
       item.destPath,
       item.sha256,
       cfg.timeoutMs,
@@ -119,7 +119,6 @@ async function syncVmCache(cfg: SyncConfig): Promise<VmCacheSyncResult> {
 
 interface SyncConfig {
   browserosRoot?: string
-  cdnBaseUrl: string
   manifestUrl: string
   fetchImpl: typeof fetch
   arches: Arch[]
@@ -127,17 +126,12 @@ interface SyncConfig {
 }
 
 function resolveSyncConfig(options: VmCacheSyncOptions): SyncConfig {
-  const cdnBaseUrl =
-    trimNonEmpty(options.cdnBaseUrl) ??
-    trimNonEmpty(process.env.BROWSEROS_VM_CACHE_CDN_BASE_URL) ??
-    EXTERNAL_URLS.VM_CACHE_CDN_BASE
   return {
     browserosRoot: options.browserosRoot,
-    cdnBaseUrl,
     manifestUrl:
       trimNonEmpty(options.manifestUrl) ??
       trimNonEmpty(process.env.BROWSEROS_VM_CACHE_MANIFEST_URL) ??
-      joinUrl(cdnBaseUrl, 'vm/manifest.json'),
+      EXTERNAL_URLS.VM_CACHE_MANIFEST,
     fetchImpl: options.fetchImpl ?? fetch,
     arches: selectSyncArches(options),
     timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
@@ -302,15 +296,24 @@ function cacheRootForManifest(manifestPath: string): string {
 function syncKey(cfg: SyncConfig): string {
   return [
     getCachedManifestPath(cfg.browserosRoot),
-    cfg.cdnBaseUrl,
     cfg.manifestUrl,
     cfg.arches.join(','),
     String(cfg.timeoutMs),
   ].join('\0')
 }
 
-function joinUrl(base: string, path: string): string {
-  return `${base.replace(/\/+$/, '')}/${path.replace(/^\/+/, '')}`
+function artifactUrlForKey(manifestUrl: string, key: string): string {
+  const artifactKey = key.replace(/^\/+/, '')
+  const url = new URL(manifestUrl)
+  const normalizedPath = url.pathname.replace(/\/+$/, '')
+  const prefix = normalizedPath.endsWith(CANONICAL_MANIFEST_SUFFIX)
+    ? normalizedPath.slice(0, -CANONICAL_MANIFEST_SUFFIX.length)
+    : normalizedPath.slice(0, Math.max(0, normalizedPath.lastIndexOf('/')))
+
+  url.pathname = `${prefix.replace(/\/+$/, '')}/${artifactKey}`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
 }
 
 function trimNonEmpty(value: string | undefined): string | undefined {

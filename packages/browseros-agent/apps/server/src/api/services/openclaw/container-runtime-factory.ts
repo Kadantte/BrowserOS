@@ -38,7 +38,7 @@ export interface ContainerRuntimeFactoryInput {
 }
 
 export interface VmCacheRuntimeConfig
-  extends Pick<VmCacheSyncOptions, 'cdnBaseUrl' | 'manifestUrl'> {
+  extends Pick<VmCacheSyncOptions, 'manifestUrl'> {
   ensureAvailable?: () => Promise<void>
   ensureSynced?: () => Promise<unknown>
 }
@@ -75,7 +75,6 @@ export function buildContainerRuntime(
       (() =>
         ensureVmCacheAvailable({
           browserosRoot,
-          cdnBaseUrl: input.vmCache?.cdnBaseUrl,
           manifestUrl: input.vmCache?.manifestUrl,
         })),
   })
@@ -142,7 +141,6 @@ class DeferredImageLoader {
     }
     await ensureVmCacheSynced({
       browserosRoot: this.browserosRoot,
-      cdnBaseUrl: this.vmCache?.cdnBaseUrl,
       manifestUrl: this.vmCache?.manifestUrl,
     })
   }

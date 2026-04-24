@@ -15,8 +15,7 @@ const config = {
   mcpAllowRemote: false,
   aiSdkDevtoolsEnabled: false,
   vmCachePrefetch: true,
-  vmCacheCdnBaseUrl: 'https://cdn.browseros.com',
-  vmCacheManifestUrl: undefined,
+  vmCacheManifestUrl: 'https://cdn.browseros.com/vm/manifest.json',
 }
 
 describe('Application.start', () => {
@@ -85,8 +84,7 @@ describe('Application.start', () => {
     expect(completedBeforePrefetch).toBe(true)
     expect(createHttpServer).toHaveBeenCalledTimes(1)
     expect(prefetchVmCache).toHaveBeenCalledWith({
-      cdnBaseUrl: 'https://cdn.browseros.com',
-      manifestUrl: undefined,
+      manifestUrl: 'https://cdn.browseros.com/vm/manifest.json',
     })
   })
 

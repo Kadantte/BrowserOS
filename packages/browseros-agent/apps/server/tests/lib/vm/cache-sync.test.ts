@@ -46,19 +46,15 @@ const manifest: VmManifest = {
 
 describe('runtime VM cache sync', () => {
   let root: string
-  let originalCdnBase: string | undefined
   let originalManifestUrl: string | undefined
 
   beforeEach(async () => {
     root = await mkdtemp('/tmp/browseros-vm-cache-sync-')
-    originalCdnBase = process.env.BROWSEROS_VM_CACHE_CDN_BASE_URL
     originalManifestUrl = process.env.BROWSEROS_VM_CACHE_MANIFEST_URL
-    delete process.env.BROWSEROS_VM_CACHE_CDN_BASE_URL
     delete process.env.BROWSEROS_VM_CACHE_MANIFEST_URL
   })
 
   afterEach(async () => {
-    restoreEnv('BROWSEROS_VM_CACHE_CDN_BASE_URL', originalCdnBase)
     restoreEnv('BROWSEROS_VM_CACHE_MANIFEST_URL', originalManifestUrl)
     await rm(root, { recursive: true, force: true })
   })
@@ -69,7 +65,7 @@ describe('runtime VM cache sync', () => {
 
     const result = await ensureVmCacheSynced({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl,
       rawHostArch: 'arm64',
     })
@@ -91,14 +87,13 @@ describe('runtime VM cache sync', () => {
     ).rejects.toThrow()
   })
 
-  it('uses runtime env overrides for the manifest URL and CDN base', async () => {
-    process.env.BROWSEROS_VM_CACHE_CDN_BASE_URL = 'https://artifacts.test'
+  it('uses the runtime env manifest URL and resolves artifacts beside it', async () => {
     process.env.BROWSEROS_VM_CACHE_MANIFEST_URL =
-      'https://manifest.test/latest.json'
+      'https://artifacts.test/vm/manifest.json'
     const calls: string[] = []
     const fetchImpl = fakeVmCacheFetch(calls, {
-      manifestUrl: 'https://manifest.test/latest.json',
-      cdnBaseUrl: 'https://artifacts.test',
+      manifestUrl: 'https://artifacts.test/vm/manifest.json',
+      tarballUrl: `https://artifacts.test/${TARBALL_KEY}`,
     })
 
     await ensureVmCacheSynced({
@@ -108,7 +103,7 @@ describe('runtime VM cache sync', () => {
     })
 
     expect(calls).toEqual([
-      'https://manifest.test/latest.json',
+      'https://artifacts.test/vm/manifest.json',
       `https://artifacts.test/${TARBALL_KEY}`,
     ])
   })
@@ -120,7 +115,7 @@ describe('runtime VM cache sync', () => {
 
     const result = await ensureVmCacheSynced({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl: fakeVmCacheFetch(calls),
       rawHostArch: 'arm64',
     })
@@ -136,7 +131,7 @@ describe('runtime VM cache sync', () => {
 
     const result = await ensureVmCacheSynced({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl: fakeVmCacheFetch(calls),
       rawHostArch: 'arm64',
     })
@@ -154,7 +149,7 @@ describe('runtime VM cache sync', () => {
 
     const result = await ensureVmCacheSynced({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl: fakeVmCacheFetch(calls),
       rawHostArch: 'arm64',
     })
@@ -184,13 +179,13 @@ describe('runtime VM cache sync', () => {
 
     const first = prefetchVmCache({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl,
       rawHostArch: 'arm64',
     })
     const second = prefetchVmCache({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl,
       rawHostArch: 'arm64',
     })
@@ -233,13 +228,13 @@ describe('runtime VM cache sync', () => {
 
       const first = prefetchVmCache({
         browserosRoot: otherRoot,
-        cdnBaseUrl: CDN_BASE,
+        manifestUrl: MANIFEST_URL,
         fetchImpl,
         rawHostArch: 'arm64',
       })
       const second = ensureVmCacheSynced({
         browserosRoot: root,
-        cdnBaseUrl: CDN_BASE,
+        manifestUrl: MANIFEST_URL,
         fetchImpl,
         rawHostArch: 'arm64',
       })
@@ -285,13 +280,13 @@ describe('runtime VM cache sync', () => {
 
     const first = prefetchVmCache({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl,
       rawHostArch: 'arm64',
     }).catch((error) => error)
     const available = ensureVmCacheAvailable({
       browserosRoot: root,
-      cdnBaseUrl: CDN_BASE,
+      manifestUrl: MANIFEST_URL,
       fetchImpl,
       rawHostArch: 'arm64',
     })
@@ -325,7 +320,7 @@ describe('runtime VM cache sync', () => {
     await expect(
       ensureVmCacheSynced({
         browserosRoot: root,
-        cdnBaseUrl: CDN_BASE,
+        manifestUrl: MANIFEST_URL,
         fetchImpl,
         rawHostArch: 'arm64',
       }),
@@ -334,7 +329,7 @@ describe('runtime VM cache sync', () => {
     await expect(
       ensureVmCacheSynced({
         browserosRoot: root,
-        cdnBaseUrl: CDN_BASE,
+        manifestUrl: MANIFEST_URL,
         fetchImpl,
         rawHostArch: 'arm64',
       }),
@@ -362,7 +357,7 @@ describe('runtime VM cache sync', () => {
     await expect(
       ensureVmCacheSynced({
         browserosRoot: root,
-        cdnBaseUrl: CDN_BASE,
+        manifestUrl: MANIFEST_URL,
         fetchImpl,
         rawHostArch: 'arm64',
       }),
@@ -380,7 +375,7 @@ describe('runtime VM cache sync', () => {
     await expect(
       ensureVmCacheSynced({
         browserosRoot: root,
-        cdnBaseUrl: CDN_BASE,
+        manifestUrl: MANIFEST_URL,
         fetchImpl: fakeVmCacheFetch(calls),
         rawHostArch: 'arm',
       }),
@@ -392,10 +387,10 @@ describe('runtime VM cache sync', () => {
 
 function fakeVmCacheFetch(
   calls: string[],
-  opts?: { manifestUrl?: string; cdnBaseUrl?: string },
+  opts?: { manifestUrl?: string; tarballUrl?: string },
 ): typeof fetch {
   const manifestUrl = opts?.manifestUrl ?? MANIFEST_URL
-  const tarballUrl = `${opts?.cdnBaseUrl ?? CDN_BASE}/${TARBALL_KEY}`
+  const tarballUrl = opts?.tarballUrl ?? `${CDN_BASE}/${TARBALL_KEY}`
   return (async (input: RequestInfo | URL): Promise<Response> => {
     const url = String(input)
     calls.push(url)

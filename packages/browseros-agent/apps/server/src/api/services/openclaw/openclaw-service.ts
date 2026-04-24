@@ -1267,7 +1267,6 @@ function sameVmCacheRuntimeConfig(
   right: VmCacheRuntimeConfig | undefined,
 ): boolean {
   return (
-    left?.cdnBaseUrl === right?.cdnBaseUrl &&
     left?.manifestUrl === right?.manifestUrl &&
     left?.ensureAvailable === right?.ensureAvailable &&
     left?.ensureSynced === right?.ensureSynced

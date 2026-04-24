@@ -32,8 +32,7 @@ export const ServerConfigSchema = z.object({
   instanceChromiumVersion: z.string().optional(),
   aiSdkDevtoolsEnabled: z.boolean(),
   vmCachePrefetch: z.boolean(),
-  vmCacheCdnBaseUrl: z.string(),
-  vmCacheManifestUrl: z.string().optional(),
+  vmCacheManifestUrl: z.string().url(),
 })
 
 export type ServerConfig = z.infer<typeof ServerConfigSchema>
@@ -234,7 +233,6 @@ function parseConfigFile(filePath?: string): ConfigResult<PartialConfig> {
           typeof cfg.vm_cache?.prefetch === 'boolean'
             ? cfg.vm_cache.prefetch
             : undefined,
-        vmCacheCdnBaseUrl: parseTrimmedString(cfg.vm_cache?.cdn_base_url),
         vmCacheManifestUrl: parseTrimmedString(cfg.vm_cache?.manifest_url),
         instanceClientId:
           typeof cfg.instance?.client_id === 'string'
@@ -283,9 +281,6 @@ function parseRuntimeEnv(): PartialConfig {
     aiSdkDevtoolsEnabled:
       process.env.BROWSEROS_AI_SDK_DEVTOOLS === 'true' ? true : undefined,
     vmCachePrefetch: parseBooleanEnv(process.env.BROWSEROS_VM_CACHE_PREFETCH),
-    vmCacheCdnBaseUrl: parseTrimmedString(
-      process.env.BROWSEROS_VM_CACHE_CDN_BASE_URL,
-    ),
     vmCacheManifestUrl: parseTrimmedString(
       process.env.BROWSEROS_VM_CACHE_MANIFEST_URL,
     ),
@@ -323,7 +318,7 @@ function getDefaults(cwd: string): PartialConfig {
     mcpAllowRemote: false,
     aiSdkDevtoolsEnabled: false,
     vmCachePrefetch: true,
-    vmCacheCdnBaseUrl: EXTERNAL_URLS.VM_CACHE_CDN_BASE,
+    vmCacheManifestUrl: EXTERNAL_URLS.VM_CACHE_MANIFEST,
   }
 }
 
