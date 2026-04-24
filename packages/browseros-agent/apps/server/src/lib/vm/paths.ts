@@ -109,7 +109,8 @@ export function resolveBundledLimactl(resourcesDir: string): string {
 }
 
 function resolveHostLimactl(): string {
-  if (findExecutableOnPath(HOST_LIMACTL_BINARY)) return HOST_LIMACTL_BINARY
+  const resolved = findExecutableOnPath(HOST_LIMACTL_BINARY)
+  if (resolved) return resolved
   throw new Error(
     'Lima is not installed or limactl is not on PATH. Install with brew install lima.',
   )

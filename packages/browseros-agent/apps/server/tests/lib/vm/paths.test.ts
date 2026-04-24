@@ -141,7 +141,7 @@ describe('VM paths', () => {
 
     try {
       expect(resolveBundledLimactl('/tmp/missing-dev-resources')).toBe(
-        'limactl',
+        join(binDir, 'limactl'),
       )
     } finally {
       await rm(binDir, { recursive: true, force: true })
@@ -154,7 +154,7 @@ describe('VM paths', () => {
 
     try {
       expect(resolveBundledLimactl('/tmp/missing-test-resources')).toBe(
-        'limactl',
+        join(binDir, 'limactl'),
       )
     } finally {
       await rm(binDir, { recursive: true, force: true })
