@@ -13,10 +13,6 @@ on:
         required: false
         default: false
         type: boolean
-  pull_request:
-    paths:
-      - "packages/browseros-agent/packages/build-tools/**"
-      - ".github/workflows/build-agent.yml"
 
 env:
   BUN_VERSION: "1.3.6"
