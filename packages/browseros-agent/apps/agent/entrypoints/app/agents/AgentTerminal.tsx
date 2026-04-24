@@ -132,23 +132,13 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
 
   const [copied, setCopied] = useState(false)
 
-  // Copy whatever the user has selected in xterm; fall back to the full
-  // visible viewport when nothing is selected. This works even when the
-  // running TUI (e.g. claude /login) has enabled mouse tracking and
-  // intercepts click-drag selection.
+  // Copy the current xterm selection to the browser clipboard. No-op
+  // if nothing is selected — users who want the whole buffer can
+  // Cmd+A first. Uses the browser clipboard, not the container's, so
+  // it works even when the running TUI has mouse tracking enabled
+  // (Opt+drag forces a selection regardless, see terminal config).
   const handleCopy = async (): Promise<void> => {
-    const term = terminalRef.current
-    if (!term) return
-    let text = term.getSelection()
-    if (!text) {
-      const buf = term.buffer.active
-      const lines: string[] = []
-      for (let y = 0; y < buf.length; y++) {
-        const line = buf.getLine(y)
-        if (line) lines.push(line.translateToString(true))
-      }
-      text = lines.join('\n').replace(/\n+$/, '')
-    }
+    const text = terminalRef.current?.getSelection()
     if (!text) return
     try {
       await navigator.clipboard.writeText(text)
@@ -205,12 +195,14 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
     terminal.loadAddon(new WebLinksAddon())
     terminal.open(containerRef.current)
 
+    // React 18 StrictMode double-invokes effects in dev. Everything
+    // async inside this effect is scoped to an AbortController; the
+    // cleanup aborts it and any pending awaits bail out, so we never
+    // leak a second live WebSocket or duplicate xterm listeners.
+    const ac = new AbortController()
+    const cleanups: Array<() => void> = []
     let ws: WebSocket | null = null
     let sawExit = false
-    // React 18 StrictMode double-invokes effects in dev. The cleanup for the
-    // first mount fires before `connect()` resolves, so without this guard
-    // the pending WS is born orphaned and we end up with two live sessions.
-    let cancelled = false
 
     const applyTheme = (): void => {
       terminal.options.theme = createTerminalTheme()
@@ -229,27 +221,28 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
       sendMessage({ type: 'resize', cols, rows })
     }
 
-    const connect = async () => {
+    const connect = async (): Promise<void> => {
       const baseUrl = await getAgentServerUrl()
-      if (cancelled) return
+      if (ac.signal.aborted) return
       const wsUrl = new URL('/terminal/ws', baseUrl)
       wsUrl.protocol = wsUrl.protocol === 'https:' ? 'wss:' : 'ws:'
 
       ws = new WebSocket(wsUrl)
-      if (cancelled) {
+      // If the effect was cleaned up between the await above and now,
+      // close the socket we just opened and bail.
+      if (ac.signal.aborted) {
         ws.close()
         ws = null
         return
       }
+      cleanups.push(() => ws?.close())
 
       ws.onopen = () => {
         fitAddon.fit()
         terminal.focus()
         sendResize()
         const cmd = initialCommandRef.current
-        if (cmd) {
-          sendMessage({ type: 'input', data: `${cmd}\n` })
-        }
+        if (cmd) sendMessage({ type: 'input', data: `${cmd}\n` })
       }
 
       ws.onmessage = (event) => {
@@ -281,42 +274,32 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
       const inputDisposable = terminal.onData((data) => {
         sendMessage({ type: 'input', data })
       })
-
       const resizeDisposable = terminal.onResize(({ cols, rows }) => {
         sendResize(cols, rows)
       })
-
-      return () => {
-        inputDisposable.dispose()
-        resizeDisposable.dispose()
-      }
+      cleanups.push(() => inputDisposable.dispose())
+      cleanups.push(() => resizeDisposable.dispose())
     }
 
-    let disposeSocketBindings: (() => void) | undefined
-    void connect().then((disposeBindings) => {
-      disposeSocketBindings = disposeBindings
-    })
+    void connect()
 
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit()
       sendResize()
     })
     resizeObserver.observe(containerRef.current)
+    cleanups.push(() => resizeObserver.disconnect())
 
-    const themeObserver = new MutationObserver(() => {
-      applyTheme()
-    })
+    const themeObserver = new MutationObserver(() => applyTheme())
     themeObserver.observe(document.documentElement, {
       attributes: true,
       attributeFilter: ['class'],
     })
+    cleanups.push(() => themeObserver.disconnect())
 
     return () => {
-      cancelled = true
-      resizeObserver.disconnect()
-      themeObserver.disconnect()
-      disposeSocketBindings?.()
-      ws?.close()
+      ac.abort()
+      for (const dispose of cleanups) dispose()
       terminal.dispose()
       terminalRef.current = null
     }

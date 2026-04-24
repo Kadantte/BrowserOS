@@ -8,7 +8,12 @@ import {
   OPENCLAW_GATEWAY_CONTAINER_NAME,
   OPENCLAW_GATEWAY_CONTAINER_PORT,
 } from '@browseros/shared/constants/openclaw'
-import type { ContainerCli, ContainerSpec, LogFn } from '../../../lib/container'
+import type {
+  ContainerCli,
+  ContainerCommandResult,
+  ContainerSpec,
+  LogFn,
+} from '../../../lib/container'
 import { logger } from '../../../lib/logger'
 import {
   GUEST_VM_STATE,
@@ -158,6 +163,17 @@ export class ContainerRuntime {
 
   async execInContainer(command: string[], onLog?: LogFn): Promise<number> {
     return this.shell.exec(OPENCLAW_GATEWAY_CONTAINER_NAME, command, onLog)
+  }
+
+  // Unlike execInContainer, this returns stdout and stderr separately
+  // so callers that need to parse program output (e.g. JSON status
+  // commands) aren't forced to untangle it from nerdctl's stderr.
+  async runInContainer(command: string[]): Promise<ContainerCommandResult> {
+    return this.shell.runCommand([
+      'exec',
+      OPENCLAW_GATEWAY_CONTAINER_NAME,
+      ...command,
+    ])
   }
 
   async runGatewaySetupCommand(

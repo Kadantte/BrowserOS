@@ -660,13 +660,10 @@ export class OpenClawService {
   async getCliProviderAuthStatus(
     provider: OpenClawCliProvider,
   ): Promise<OpenClawCliProviderAuthStatus> {
-    const lines: string[] = []
-    const exitCode = await this.runtime.execInContainer(
+    const { stdout, exitCode } = await this.runtime.runInContainer(
       provider.authStatusCommand,
-      (line) => lines.push(line),
     )
-    const output = lines.join('\n').trim()
-    return provider.parseAuthStatus(output, exitCode)
+    return provider.parseAuthStatus(stdout, exitCode)
   }
 
   // ── Logs ─────────────────────────────────────────────────────────────
@@ -759,24 +756,26 @@ export class OpenClawService {
     provider: OpenClawCliProvider,
     onLog?: (msg: string) => void,
   ): Promise<void> {
-    // Probe first so the log tells us whether install actually ran.
-    const alreadyInstalled =
-      (await this.runtime.execInContainer([
-        'sh',
-        '-lc',
-        `command -v ${provider.binary} >/dev/null 2>&1`,
-      ])) === 0
-
-    if (alreadyInstalled) {
+    // argv probe — no shell, no interpolation: `which` returns 0 if the
+    // binary is on PATH in the container, non-zero otherwise.
+    const probe = await this.runtime.execInContainer(['which', provider.binary])
+    if (probe === 0) {
       logger.info('CLI-backed provider already present', {
         providerId: provider.id,
       })
       return
     }
 
+    // argv install — registry values flow straight through nerdctl exec,
+    // never through a shell. Version is pinned in the provider registry.
     const lines: string[] = []
     const exitCode = await this.runtime.execInContainer(
-      ['sh', '-lc', `npm install -g ${provider.npmPackage}@latest`],
+      [
+        'npm',
+        'install',
+        '-g',
+        `${provider.npmPackage}@${provider.npmPackageVersion}`,
+      ],
       (line) => {
         lines.push(line)
         onLog?.(line)

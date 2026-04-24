@@ -25,6 +25,9 @@ export interface OpenClawCliProvider {
   displayName: string
   description: string
   npmPackage: string
+  // Pinned package version. npm installs go through argv directly
+  // (no shell), so `@latest` drift can't silently ship through.
+  npmPackageVersion: string
   binary: string
   authStatusCommand: string[]
   authLoginCommand: string
