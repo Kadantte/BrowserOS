@@ -213,10 +213,6 @@ def _process_arch(
     return actual_sha, object_shas, r2_keys
 
 
-def _extract_limactl(tarball_path: Path, dest: Path) -> None:
-    _extract_lima_file(tarball_path, "bin/limactl", dest)
-
-
 def _extract_lima_file(tarball_path: Path, logical_path: str, dest: Path) -> None:
     with tarfile.open(tarball_path, "r:gz") as tar:
         for member in tar.getmembers():

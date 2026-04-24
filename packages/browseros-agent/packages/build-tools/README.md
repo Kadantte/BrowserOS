@@ -54,6 +54,8 @@ artifacts/vendor/third_party/lima/limactl-darwin-x64
 artifacts/vendor/third_party/lima/lima-guestagent.Linux-x86_64.gz
 ```
 
+Server resource staging uses relative manifest keys such as `third_party/lima/limactl-darwin-arm64`; set `R2_DOWNLOAD_PREFIX=artifacts/vendor` in `apps/server/.env.production` so those keys resolve to the uploaded objects.
+
 The final server resource zip must contain real files, not a nested Lima runtime archive. Lima finds its runtime data by walking from `bin/limactl` to the sibling `share/lima` directory:
 
 ```text
