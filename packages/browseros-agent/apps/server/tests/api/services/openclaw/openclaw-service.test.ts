@@ -55,8 +55,9 @@ type MutableOpenClawService = OpenClawService & {
     listSessions?: ReturnType<typeof mock>
     setDefaultModel?: ReturnType<typeof mock>
   }
-  chatClient: {
+  httpClient: {
     streamChat?: ReturnType<typeof mock>
+    getSessionHistory?: ReturnType<typeof mock>
   }
   bootstrapCliClient: {
     runOnboard?: ReturnType<typeof mock>
@@ -276,18 +277,25 @@ describe('OpenClawService', () => {
 
   it('uses the canonical OpenClaw key when history is requested with a recursive session key', async () => {
     const service = new OpenClawService() as MutableOpenClawService
-    const getChatHistory = mock(async () => [
-      {
-        role: 'user',
-        content: [{ type: 'text', text: 'Old question' }],
-        timestamp: 1,
-      },
-      {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'Old answer' }],
-        timestamp: 2,
-      },
-    ])
+    const getSessionHistory = mock(async () => ({
+      sessionKey:
+        'agent:main:openai-user:browseros:main:e1ee8e17-4fdb-4072-99ce-8f680853ec00',
+      messages: [
+        {
+          role: 'user',
+          content: 'Old question',
+          messageSeq: 0,
+          timestamp: 1,
+        },
+        {
+          role: 'assistant',
+          content: 'Old answer',
+          messageSeq: 1,
+          timestamp: 2,
+        },
+      ],
+      hasMore: false,
+    }))
 
     service.runtime = {
       isReady: async () => true,
@@ -302,7 +310,9 @@ describe('OpenClawService', () => {
           kind: 'chat',
         },
       ]),
-      getChatHistory,
+    }
+    service.httpClient = {
+      getSessionHistory,
     }
 
     const page = await service.getAgentHistoryPage('main', {
@@ -310,8 +320,9 @@ describe('OpenClawService', () => {
         'agent:main:openai-user:browseros:main:agent:main:openai-user:browseros:main:e1ee8e17-4fdb-4072-99ce-8f680853ec00',
     })
 
-    expect(getChatHistory).toHaveBeenCalledWith(
+    expect(getSessionHistory).toHaveBeenCalledWith(
       'agent:main:openai-user:browseros:main:e1ee8e17-4fdb-4072-99ce-8f680853ec00',
+      {},
     )
     expect(page.sessionKey).toBe('e1ee8e17-4fdb-4072-99ce-8f680853ec00')
     expect(page.items).toEqual([
@@ -352,35 +363,40 @@ describe('OpenClawService', () => {
           kind: 'chat',
         },
       ]),
-      getChatHistory: mock(async () => [
-        {
-          role: 'assistant',
-          content: [{ type: 'text', text: 'HEARTBEAT_OK' }],
-        },
-        {
-          role: 'user',
-          content: [{ type: 'text', text: 'First question' }],
-          timestamp: 1,
-        },
-        {
-          role: 'assistant',
-          content: [{ type: 'text', text: 'First answer' }],
-          timestamp: 2,
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text:
-                '[Chat messages since your last reply]\n' +
-                '[Current message - respond to this]\n' +
-                'User: Second question',
-            },
-          ],
-          timestamp: 3,
-        },
-      ]),
+    }
+    service.httpClient = {
+      getSessionHistory: mock(async () => ({
+        sessionKey: 'openai-user:browseros:main:chat-session',
+        messages: [
+          {
+            role: 'assistant',
+            content: 'HEARTBEAT_OK',
+            messageSeq: 0,
+          },
+          {
+            role: 'user',
+            content: 'First question',
+            messageSeq: 1,
+            timestamp: 1,
+          },
+          {
+            role: 'assistant',
+            content: 'First answer',
+            messageSeq: 2,
+            timestamp: 2,
+          },
+          {
+            role: 'user',
+            content:
+              '[Chat messages since your last reply]\n' +
+              '[Current message - respond to this]\n' +
+              'User: Second question',
+            messageSeq: 3,
+            timestamp: 3,
+          },
+        ],
+        hasMore: false,
+      })),
     }
 
     const page = await service.getAgentHistoryPage('main', { limit: 2 })
@@ -389,20 +405,20 @@ describe('OpenClawService', () => {
     expect(page.sessionKey).toBe('openai-user:browseros:main:chat-session')
     expect(page.items).toEqual([
       {
-        id: 'openai-user:browseros:main:chat-session:1',
+        id: 'openai-user:browseros:main:chat-session:2',
         role: 'assistant',
         text: 'First answer',
         timestamp: 2,
-        messageSeq: 1,
+        messageSeq: 2,
         sessionKey: 'openai-user:browseros:main:chat-session',
         source: 'user-chat',
       },
       {
-        id: 'openai-user:browseros:main:chat-session:2',
+        id: 'openai-user:browseros:main:chat-session:3',
         role: 'user',
         text: 'Second question',
         timestamp: 3,
-        messageSeq: 2,
+        messageSeq: 3,
         sessionKey: 'openai-user:browseros:main:chat-session',
         source: 'user-chat',
       },
@@ -419,7 +435,7 @@ describe('OpenClawService', () => {
     service.runtime = {
       isReady: async () => true,
     }
-    service.chatClient = {
+    service.httpClient = {
       streamChat,
     }
 

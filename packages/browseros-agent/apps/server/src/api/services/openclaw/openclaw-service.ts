@@ -30,7 +30,6 @@ import {
 } from './errors'
 import {
   type OpenClawAgentRecord,
-  type OpenClawChatMessage,
   OpenClawCliClient,
   type OpenClawConfigBatchEntry,
   type OpenClawSessionEntry,
@@ -46,6 +45,7 @@ import {
   OpenClawHttpClient,
   type OpenClawSessionHistory,
   type OpenClawSessionHistoryEvent,
+  type OpenClawSessionHistoryMessage,
 } from './openclaw-http-client'
 import {
   type ResolvedOpenClawProviderConfig,
@@ -237,13 +237,13 @@ function classifySessionSource(key: string): OpenClawSessionSource {
   return 'other'
 }
 
-function filterOpenClawSystemMessages(
-  messages: OpenClawChatMessage[],
-): OpenClawChatMessage[] {
-  const result: OpenClawChatMessage[] = []
+function filterHttpSessionHistoryMessages(
+  messages: OpenClawSessionHistoryMessage[],
+): OpenClawSessionHistoryMessage[] {
+  const result: OpenClawSessionHistoryMessage[] = []
 
   for (const message of messages) {
-    const text = getTextContent(message).trim()
+    const text = (message.content ?? '').trim()
 
     if (message.role === 'assistant' && text.startsWith('HEARTBEAT')) continue
     if (
@@ -265,10 +265,7 @@ function filterOpenClawSystemMessages(
           .trim()
           .replace(/^User:\s*/i, '')
         if (actual) {
-          result.push({
-            ...message,
-            content: [{ type: 'text', text: actual }],
-          })
+          result.push({ ...message, content: actual })
         }
       }
       continue
@@ -280,35 +277,28 @@ function filterOpenClawSystemMessages(
   return result
 }
 
-function normalizeChatHistoryMessages(input: {
+function normalizeHttpHistoryMessages(input: {
   sessionKey: string
   source: OpenClawSessionSource
-  messages: OpenClawChatMessage[]
+  messages: OpenClawSessionHistoryMessage[]
 }): BrowserOSChatHistoryItem[] {
   return input.messages
     .map((message, index): BrowserOSChatHistoryItem | null => {
       if (message.role !== 'user' && message.role !== 'assistant') return null
-      const text = getTextContent(message).trim()
+      const text = (message.content ?? '').trim()
       if (!text) return null
 
       return {
-        id: `${input.sessionKey}:${index}`,
+        id: `${input.sessionKey}:${message.messageSeq ?? index}`,
         role: message.role,
         text,
         timestamp: message.timestamp,
-        messageSeq: index,
+        messageSeq: message.messageSeq ?? index,
         sessionKey: input.sessionKey,
         source: input.source,
       }
     })
     .filter((item): item is BrowserOSChatHistoryItem => item !== null)
-}
-
-function getTextContent(message: OpenClawChatMessage): string {
-  return message.content
-    .filter((block) => block.type === 'text')
-    .map((block) => block.text ?? '')
-    .join('')
 }
 
 function encodeHistoryCursor(input: {
@@ -830,14 +820,6 @@ export class OpenClawService {
     }
   }
 
-  async getChatHistory(sessionKey: string): Promise<OpenClawChatMessage[]> {
-    await this.assertGatewayReady()
-    logger.debug('Fetching OpenClaw chat history', { sessionKey })
-    return this.runControlPlaneCall(() =>
-      this.cliClient.getChatHistory(sessionKey),
-    )
-  }
-
   async getAgentHistoryPage(
     agentId: string,
     input: HistoryPageInput = {},
@@ -864,11 +846,11 @@ export class OpenClawService {
     const sessionKey =
       resolved.sessionKey ??
       normalizeBrowserOSChatSessionKey(agentId, session.key)
-    const rawMessages = await this.getChatHistory(session.key)
-    const items = normalizeChatHistoryMessages({
+    const history = await this.getSessionHistory(session.key)
+    const items = normalizeHttpHistoryMessages({
       sessionKey,
       source: session.source,
-      messages: filterOpenClawSystemMessages(rawMessages),
+      messages: filterHttpSessionHistoryMessages(history.messages),
     })
     const end = Math.min(cursor?.end ?? items.length, items.length)
     const start = Math.max(0, end - limit)
