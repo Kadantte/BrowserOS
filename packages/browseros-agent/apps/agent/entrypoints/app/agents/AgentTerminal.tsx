@@ -5,8 +5,8 @@ import {
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
 import { Terminal } from '@xterm/xterm'
-import { ArrowLeft } from 'lucide-react'
-import { type FC, useEffect, useRef } from 'react'
+import { ArrowLeft, Check, Copy } from 'lucide-react'
+import { type FC, useEffect, useRef, useState } from 'react'
 import '@xterm/xterm/css/xterm.css'
 import { Button } from '@/components/ui/button'
 import { getAgentServerUrl } from '@/lib/browseros/helpers'
@@ -126,12 +126,42 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
   onSessionExit,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null)
+  const terminalRef = useRef<Terminal | null>(null)
   // Refs keep the mount-once effect from tearing down the PTY when the
   // parent re-renders with new inline callbacks.
   const initialCommandRef = useRef(initialCommand)
   const onSessionExitRef = useRef(onSessionExit)
   initialCommandRef.current = initialCommand
   onSessionExitRef.current = onSessionExit
+
+  const [copied, setCopied] = useState(false)
+
+  // Copy whatever the user has selected in xterm; fall back to the full
+  // visible viewport when nothing is selected. This works even when the
+  // running TUI (e.g. claude /login) has enabled mouse tracking and
+  // intercepts click-drag selection.
+  const handleCopy = async (): Promise<void> => {
+    const term = terminalRef.current
+    if (!term) return
+    let text = term.getSelection()
+    if (!text) {
+      const buf = term.buffer.active
+      const lines: string[] = []
+      for (let y = 0; y < buf.length; y++) {
+        const line = buf.getLine(y)
+        if (line) lines.push(line.translateToString(true))
+      }
+      text = lines.join('\n').replace(/\n+$/, '')
+    }
+    if (!text) return
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      window.setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // clipboard permission denied or unavailable — swallow, user will retry
+    }
+  }
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -144,6 +174,34 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
       lineHeight: 1.25,
       scrollback: 8000,
       theme: createTerminalTheme(),
+      // Opt+click+drag forces a native text selection even when the
+      // running TUI has mouse-tracking enabled (xterm would otherwise
+      // forward every click to the app and selection wouldn't work).
+      macOptionClickForcesSelection: true,
+    })
+    terminalRef.current = terminal
+
+    // Cmd+A → select all, Cmd+C → copy selection via the browser
+    // clipboard. Return false so xterm doesn't also forward the keys
+    // to the running program.
+    terminal.attachCustomKeyEventHandler((event) => {
+      if (event.type !== 'keydown') return true
+      const isMac = navigator.platform.toUpperCase().includes('MAC')
+      const mod = isMac ? event.metaKey : event.ctrlKey
+      if (!mod) return true
+      const key = event.key.toLowerCase()
+      if (key === 'a') {
+        terminal.selectAll()
+        return false
+      }
+      if (key === 'c') {
+        const sel = terminal.getSelection()
+        if (sel) {
+          void navigator.clipboard.writeText(sel)
+          return false
+        }
+      }
+      return true
     })
 
     const fitAddon = new FitAddon()
@@ -264,13 +322,14 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
       disposeSocketBindings?.()
       ws?.close()
       terminal.dispose()
+      terminalRef.current = null
     }
   }, [])
 
   return (
     <div className="flex h-[calc(100dvh-10rem)] min-h-[32rem] w-full flex-col py-2 sm:min-h-[42rem] sm:py-4">
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-card shadow-sm">
-        <div className="flex items-center gap-3 border-border border-b px-4 py-3 sm:px-6">
+        <div className="flex items-center justify-between gap-3 border-border border-b px-4 py-3 sm:px-6">
           <div className="flex min-w-0 items-center gap-3">
             <Button variant="ghost" size="icon" onClick={onBack}>
               <ArrowLeft className="size-4" />
@@ -284,6 +343,14 @@ export const AgentTerminal: FC<AgentTerminalProps> = ({
               </div>
             </div>
           </div>
+          <Button variant="outline" size="sm" onClick={handleCopy}>
+            {copied ? (
+              <Check className="mr-1 size-3.5" />
+            ) : (
+              <Copy className="mr-1 size-3.5" />
+            )}
+            {copied ? 'Copied' : 'Copy'}
+          </Button>
         </div>
 
         <div className="min-h-0 flex-1 p-4 sm:p-6">
