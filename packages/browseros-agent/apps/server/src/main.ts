@@ -35,6 +35,7 @@ import { metrics } from './lib/metrics'
 import { isPortInUseError } from './lib/port-binding'
 import { Sentry } from './lib/sentry'
 import { seedSoulTemplate } from './lib/soul'
+import { prefetchVmCache } from './lib/vm/cache-sync'
 import { migrateBuiltinSkills } from './skills/migrate'
 import {
   startSkillSync,
@@ -161,6 +162,7 @@ export class Application {
   private async initCoreServices(): Promise<void> {
     this.configureLogDirectory()
     await ensureBrowserosDir()
+    this.startVmCachePrefetch()
     await cleanOldSessions()
     await seedSoulTemplate()
     await migrateBuiltinSkills()
@@ -206,6 +208,18 @@ export class Application {
       browseros_version: this.config.instanceBrowserosVersion,
       chromium_version: this.config.instanceChromiumVersion,
       server_version: VERSION,
+    })
+  }
+
+  private startVmCachePrefetch(): void {
+    if (!this.config.vmCachePrefetch) return
+    void prefetchVmCache({
+      cdnBaseUrl: this.config.vmCacheCdnBaseUrl,
+      manifestUrl: this.config.vmCacheManifestUrl,
+    }).catch((error) => {
+      logger.warn('BrowserOS VM cache prefetch failed', {
+        error: error instanceof Error ? error.message : String(error),
+      })
     })
   }
 
