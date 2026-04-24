@@ -193,6 +193,9 @@ interface ProviderSelectorProps {
   defaultProviderId: string
   selectedId: string
   onSelect: (id: string) => void
+  // When the selection is a CLI-backed provider, the "uses your API key"
+  // hint is misleading — hide it and let the status panel speak instead.
+  hideApiKeyHint?: boolean
 }
 
 const ProviderSelector: FC<ProviderSelectorProps> = ({
@@ -200,6 +203,7 @@ const ProviderSelector: FC<ProviderSelectorProps> = ({
   defaultProviderId,
   selectedId,
   onSelect,
+  hideApiKeyHint,
 }) => {
   if (providers.length === 0) {
     return (
@@ -234,10 +238,12 @@ const ProviderSelector: FC<ProviderSelectorProps> = ({
           ))}
         </SelectContent>
       </Select>
-      <p className="text-muted-foreground text-xs">
-        Uses your existing API key from BrowserOS settings. The key is passed to
-        the container and never leaves your machine.
-      </p>
+      {!hideApiKeyHint && (
+        <p className="text-muted-foreground text-xs">
+          Uses your existing API key from BrowserOS settings. The key is passed
+          to the container and never leaves your machine.
+        </p>
+      )}
     </div>
   )
 }
@@ -658,16 +664,26 @@ export const AgentsPage: FC = () => {
     ? findOpenClawCliProviderById(selectedCreateOption.type)
     : undefined
 
-  // Only poll while a CLI provider is the active selection AND the Create
-  // Agent dialog is open. Also used by the modal's auto-close effect.
-  const cliAuthEnabled = createOpen && !!selectedCliProvider
+  const selectedSetupOption = selectableCreateProviders.find(
+    (provider) => provider.id === setupProviderId,
+  )
+  const selectedSetupCliProvider = selectedSetupOption
+    ? findOpenClawCliProviderById(selectedSetupOption.type)
+    : undefined
+
+  // Whichever dialog is currently open drives the auth status poll and the
+  // auth-terminal handoff. Only one dialog is open at a time.
+  const activeCliProvider =
+    (setupOpen && selectedSetupCliProvider) ||
+    (createOpen && selectedCliProvider) ||
+    undefined
   const {
     data: cliAuthStatus,
     isLoading: cliAuthLoading,
     error: cliAuthError,
   } = useOpenClawCliProviderAuthStatus(
-    selectedCliProvider?.id ?? '',
-    cliAuthEnabled,
+    activeCliProvider?.id ?? '',
+    !!activeCliProvider,
   )
 
   useEffect(() => {
@@ -765,9 +781,9 @@ export const AgentsPage: FC = () => {
       (item) => item.id === setupProviderId,
     )
     const isCli = !!option && !!findOpenClawCliProviderById(option.type)
-    // CLI-backed providers have no apiKey/baseUrl — bootstrap the gateway
-    // bare-bones, then hop straight into the auth terminal so the user can
-    // finish login without a second click.
+    // CLI-backed providers have no apiKey/baseUrl — the gateway boots
+    // bare-bones and we hop straight into the auth terminal. The Create
+    // Agent flow uses the post-setup status panel instead.
     const llmOption =
       !isCli && option ? (option as LlmProviderConfig) : undefined
 
@@ -844,11 +860,16 @@ export const AgentsPage: FC = () => {
     return <AgentTerminal onBack={() => setShowTerminal(false)} />
   }
 
-  if (cliAuthModalOpen && selectedCliProvider) {
+  // Auth terminal is driven by whichever dialog triggered it — Setup or
+  // Create. Prefer the setup selection when the setup dialog is open, so
+  // clicking "Connect" from Setup doesn't accidentally launch for a
+  // different provider picked earlier in Create.
+  const authTerminalProvider = selectedSetupCliProvider ?? selectedCliProvider
+  if (cliAuthModalOpen && authTerminalProvider) {
     return (
       <AgentTerminal
         onBack={() => setCliAuthModalOpen(false)}
-        initialCommand={selectedCliProvider.authLoginCommand}
+        initialCommand={authTerminalProvider.authLoginCommand}
         onSessionExit={() => setCliAuthModalOpen(false)}
       />
     )
@@ -931,7 +952,17 @@ export const AgentsPage: FC = () => {
               defaultProviderId={defaultProviderId}
               selectedId={setupProviderId}
               onSelect={setSetupProviderId}
+              hideApiKeyHint={!!selectedSetupCliProvider}
             />
+
+            {selectedSetupCliProvider && (
+              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-muted-foreground text-xs">
+                {selectedSetupCliProvider.description}. Clicking{' '}
+                <span className="font-medium">Set Up &amp; Start</span> starts
+                the gateway and opens a terminal to sign in.
+              </p>
+            )}
+
             <Button
               onClick={handleSetup}
               disabled={settingUp || selectableCreateProviders.length === 0}
@@ -982,6 +1013,7 @@ export const AgentsPage: FC = () => {
               defaultProviderId={defaultProviderId}
               selectedId={createProviderId}
               onSelect={setCreateProviderId}
+              hideApiKeyHint={!!selectedCliProvider}
             />
 
             {selectedCliProvider && (

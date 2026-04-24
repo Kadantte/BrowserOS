@@ -15,6 +15,35 @@ const CLAUDE_CLI_MODELS = [
   'claude-haiku-4-5',
 ] as const
 
+interface ClaudeAuthStatusPayload {
+  loggedIn?: boolean
+  email?: string
+  subscriptionType?: string
+}
+
+function extractClaudeAuthStatusPayload(
+  stdout: string,
+): ClaudeAuthStatusPayload | null {
+  // `claude auth status` emits one JSON object on stdout on both success
+  // (exit 0) and the "not logged in" path (exit 1). Lima/nerdctl may add
+  // a stderr line like `time="…" level=fatal msg="exec failed with exit
+  // code 1"` when the inner command exits non-zero. Scan line by line
+  // and return the first line that parses as a plain object.
+  for (const line of stdout.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) continue
+    try {
+      const parsed: unknown = JSON.parse(trimmed)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as ClaudeAuthStatusPayload
+      }
+    } catch {
+      // try next line
+    }
+  }
+  return null
+}
+
 function parseClaudeAuthStatus(
   stdout: string,
   exitCode: number,
@@ -24,27 +53,20 @@ function parseClaudeAuthStatus(
     return { installed: false, loggedIn: false }
   }
 
-  // `claude auth status` emits JSON on both success (exit 0) and the
-  // "not logged in" path (exit 1). Try JSON first; fall back to a
-  // generic error only if the output isn't parseable.
-  try {
-    const parsed = JSON.parse(stdout) as {
-      loggedIn?: boolean
-      email?: string
-      subscriptionType?: string
-    }
+  const payload = extractClaudeAuthStatusPayload(stdout)
+  if (payload) {
     return {
       installed: true,
-      loggedIn: !!parsed.loggedIn,
-      accountLabel: parsed.email,
-      subscriptionLabel: parsed.subscriptionType,
+      loggedIn: !!payload.loggedIn,
+      accountLabel: payload.email,
+      subscriptionLabel: payload.subscriptionType,
     }
-  } catch {
-    return {
-      installed: true,
-      loggedIn: false,
-      error: stdout.slice(0, 500) || 'claude auth status failed',
-    }
+  }
+
+  return {
+    installed: true,
+    loggedIn: false,
+    error: stdout.slice(0, 500) || 'claude auth status failed',
   }
 }
 
