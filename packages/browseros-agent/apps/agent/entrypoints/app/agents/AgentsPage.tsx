@@ -686,13 +686,14 @@ export const AgentsPage: FC = () => {
   ])
 
   useEffect(() => {
-    if (compatibleProviders.length === 0) return
+    if (selectableCreateProviders.length === 0) return
     const fallbackId =
-      compatibleProviders.find((provider) => provider.id === defaultProviderId)
-        ?.id ?? compatibleProviders[0].id
+      selectableCreateProviders.find(
+        (provider) => provider.id === defaultProviderId,
+      )?.id ?? selectableCreateProviders[0].id
 
     if (setupOpen && !setupProviderId) setSetupProviderId(fallbackId)
-  }, [setupOpen, setupProviderId, compatibleProviders, defaultProviderId])
+  }, [setupOpen, setupProviderId, selectableCreateProviders, defaultProviderId])
 
   // Auto-close the auth modal once login succeeds.
   useEffect(() => {
@@ -760,19 +761,26 @@ export const AgentsPage: FC = () => {
   }
 
   const handleSetup = async () => {
-    const provider = compatibleProviders.find(
+    const option = selectableCreateProviders.find(
       (item) => item.id === setupProviderId,
     )
+    const isCli = !!option && !!findOpenClawCliProviderById(option.type)
+    // CLI-backed providers have no apiKey/baseUrl — bootstrap the gateway
+    // bare-bones, then hop straight into the auth terminal so the user can
+    // finish login without a second click.
+    const llmOption =
+      !isCli && option ? (option as LlmProviderConfig) : undefined
 
     await runWithErrorHandling(async () => {
       await setupOpenClaw({
-        providerType: provider?.type,
-        providerName: provider?.name,
-        baseUrl: provider?.baseUrl,
-        apiKey: provider?.apiKey,
-        modelId: provider?.modelId,
+        providerType: option?.type,
+        providerName: isCli ? undefined : option?.name,
+        baseUrl: llmOption?.baseUrl,
+        apiKey: llmOption?.apiKey,
+        modelId: option?.modelId,
       })
       setSetupOpen(false)
+      if (isCli) setCliAuthModalOpen(true)
     })
   }
 
@@ -919,14 +927,14 @@ export const AgentsPage: FC = () => {
           </DialogHeader>
           <div className="space-y-4 py-2">
             <ProviderSelector
-              providers={compatibleProviders}
+              providers={selectableCreateProviders}
               defaultProviderId={defaultProviderId}
               selectedId={setupProviderId}
               onSelect={setSetupProviderId}
             />
             <Button
               onClick={handleSetup}
-              disabled={settingUp || compatibleProviders.length === 0}
+              disabled={settingUp || selectableCreateProviders.length === 0}
               className="w-full"
             >
               {settingUp ? (
