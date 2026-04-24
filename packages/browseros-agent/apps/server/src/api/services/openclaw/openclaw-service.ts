@@ -846,11 +846,11 @@ export class OpenClawService {
     const sessionKey =
       resolved.sessionKey ??
       normalizeBrowserOSChatSessionKey(agentId, session.key)
-    const history = await this.getSessionHistory(session.key)
+    const allMessages = await this.fetchAllSessionMessages(session.key)
     const items = normalizeHttpHistoryMessages({
       sessionKey,
       source: session.source,
-      messages: filterHttpSessionHistoryMessages(history.messages),
+      messages: filterHttpSessionHistoryMessages(allMessages),
     })
     const end = Math.min(cursor?.end ?? items.length, items.length)
     const start = Math.max(0, end - limit)
@@ -869,6 +869,32 @@ export class OpenClawService {
         limit,
       },
     }
+  }
+
+  /**
+   * Fetch all messages for a session by iterating through OpenClaw's
+   * paginated HTTP history endpoint. OpenClaw returns a limited page by
+   * default, so we follow the cursor until hasMore is false.
+   */
+  private async fetchAllSessionMessages(
+    sessionKey: string,
+  ): Promise<OpenClawSessionHistoryMessage[]> {
+    const allMessages: OpenClawSessionHistoryMessage[] = []
+    let cursor: string | undefined
+    const pageSize = 200
+
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const page = await this.getSessionHistory(sessionKey, {
+        limit: pageSize,
+        cursor,
+      })
+      allMessages.push(...page.messages)
+      if (!page.hasMore || !page.cursor) break
+      cursor = page.cursor
+    }
+
+    return allMessages
   }
 
   // ── Chat Stream (HTTP) ───────────────────────────────────────────────

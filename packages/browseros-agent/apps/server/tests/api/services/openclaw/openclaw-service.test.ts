@@ -322,7 +322,7 @@ describe('OpenClawService', () => {
 
     expect(getSessionHistory).toHaveBeenCalledWith(
       'agent:main:openai-user:browseros:main:e1ee8e17-4fdb-4072-99ce-8f680853ec00',
-      {},
+      { limit: 200, cursor: undefined },
     )
     expect(page.sessionKey).toBe('e1ee8e17-4fdb-4072-99ce-8f680853ec00')
     expect(page.items).toEqual([
