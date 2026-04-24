@@ -38,26 +38,22 @@ function resolveCssColor(variableName: string): string {
   return color
 }
 
-function withAlpha(color: string, alpha: number): string {
-  const channels = color.match(/[\d.]+/g)
-  if (!channels || channels.length < 3) return color
-  const [red, green, blue] = channels
-  return `rgb(${red} ${green} ${blue} / ${alpha})`
-}
-
 function createTerminalTheme() {
   const isDark = document.documentElement.classList.contains('dark')
   const background = resolveCssColor('--background')
   const foreground = resolveCssColor('--foreground')
   const muted = resolveCssColor('--muted-foreground')
-  const accent = resolveCssColor('--accent-orange')
 
   return {
     background,
     foreground,
     cursor: foreground,
     cursorAccent: background,
-    selectionBackground: withAlpha(accent, isDark ? 0.3 : 0.2),
+    // Solid terminal-standard selection colors. Deriving from a CSS var
+    // with alpha composed against the background produced near-white
+    // rectangles on light mode, making selection invisible.
+    selectionBackground: isDark ? '#3a4463' : '#b4d4f4',
+    selectionInactiveBackground: isDark ? '#2b3348' : '#d9e5f3',
     selectionForeground: foreground,
     black: isDark ? '#16131a' : '#1f1b22',
     red: isDark ? '#ef8c7c' : '#c25544',
