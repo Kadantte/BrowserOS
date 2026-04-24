@@ -148,6 +148,25 @@ describe('runtime VM cache sync', () => {
     )
   })
 
+  it('uses an existing tarball when the local manifest is missing but the hash matches', async () => {
+    await writeLocalTarball(root)
+    const calls: string[] = []
+
+    const result = await ensureVmCacheSynced({
+      browserosRoot: root,
+      cdnBaseUrl: CDN_BASE,
+      fetchImpl: fakeVmCacheFetch(calls),
+      rawHostArch: 'arm64',
+    })
+
+    expect(calls).toEqual([MANIFEST_URL])
+    expect(result.downloaded).toEqual([])
+    expect(result.skipped).toBe(true)
+    await expect(readFile(getCachedManifestPath(root), 'utf8')).resolves.toBe(
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    )
+  })
+
   it('shares concurrent prefetch calls through one in-flight sync', async () => {
     const calls: string[] = []
     let resolveManifest: (response: Response) => void = () => {}
@@ -194,7 +213,7 @@ describe('runtime VM cache sync', () => {
     expect(calls).toEqual([MANIFEST_URL, `${CDN_BASE}/${TARBALL_KEY}`])
   })
 
-  it('rechecks its target cache after awaiting an unrelated in-flight sync', async () => {
+  it('syncs different roots independently while another sync is in flight', async () => {
     const otherRoot = await mkdtemp('/tmp/browseros-vm-cache-sync-other-')
     try {
       const calls: string[] = []
@@ -218,30 +237,77 @@ describe('runtime VM cache sync', () => {
         fetchImpl,
         rawHostArch: 'arm64',
       })
-      const available = ensureVmCacheAvailable({
+      const second = ensureVmCacheSynced({
         browserosRoot: root,
         cdnBaseUrl: CDN_BASE,
         fetchImpl,
         rawHostArch: 'arm64',
       })
 
-      resolveManifest(jsonResponse(manifest))
+      expect(second).not.toBe(first)
+      await second
 
+      resolveManifest(jsonResponse(manifest))
       await first
-      await available
 
       await expect(readFile(getCachedManifestPath(root), 'utf8')).resolves.toBe(
         `${JSON.stringify(manifest, null, 2)}\n`,
       )
+      await expect(
+        readFile(getCachedManifestPath(otherRoot), 'utf8'),
+      ).resolves.toBe(`${JSON.stringify(manifest, null, 2)}\n`)
       expect(calls).toEqual([
         MANIFEST_URL,
-        `${CDN_BASE}/${TARBALL_KEY}`,
         MANIFEST_URL,
+        `${CDN_BASE}/${TARBALL_KEY}`,
         `${CDN_BASE}/${TARBALL_KEY}`,
       ])
     } finally {
       await rm(otherRoot, { recursive: true, force: true })
     }
+  })
+
+  it('retries on-demand availability after an in-flight prefetch fails', async () => {
+    const calls: string[] = []
+    let resolveManifest: (response: Response) => void = () => {}
+    const manifestResponse = new Promise<Response>((resolve) => {
+      resolveManifest = resolve
+    })
+    const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input)
+      calls.push(url)
+      if (calls.length === 1 && url === MANIFEST_URL) return manifestResponse
+      if (url === MANIFEST_URL) return jsonResponse(manifest)
+      if (url === `${CDN_BASE}/${TARBALL_KEY}`)
+        return new Response(TARBALL_BYTES)
+      return new Response('', { status: 404 })
+    }
+
+    const first = prefetchVmCache({
+      browserosRoot: root,
+      cdnBaseUrl: CDN_BASE,
+      fetchImpl,
+      rawHostArch: 'arm64',
+    }).catch((error) => error)
+    const available = ensureVmCacheAvailable({
+      browserosRoot: root,
+      cdnBaseUrl: CDN_BASE,
+      fetchImpl,
+      rawHostArch: 'arm64',
+    })
+
+    resolveManifest(new Response('', { status: 503 }))
+
+    await expect(first).resolves.toBeInstanceOf(Error)
+    await available
+    await expect(readFile(getCachedManifestPath(root), 'utf8')).resolves.toBe(
+      `${JSON.stringify(manifest, null, 2)}\n`,
+    )
+    expect(calls).toEqual([
+      MANIFEST_URL,
+      MANIFEST_URL,
+      `${CDN_BASE}/${TARBALL_KEY}`,
+    ])
   })
 
   it('clears failed in-flight syncs so a later call can retry', async () => {
@@ -282,6 +348,45 @@ describe('runtime VM cache sync', () => {
       MANIFEST_URL,
       `${CDN_BASE}/${TARBALL_KEY}`,
     ])
+  })
+
+  it('removes the partial file when sha256 verification fails', async () => {
+    const badBytes = new TextEncoder().encode('bad-tarball')
+    const fetchImpl = (async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input)
+      if (url === MANIFEST_URL) return jsonResponse(manifest)
+      if (url === `${CDN_BASE}/${TARBALL_KEY}`) return new Response(badBytes)
+      return new Response('', { status: 404 })
+    }) as typeof fetch
+
+    await expect(
+      ensureVmCacheSynced({
+        browserosRoot: root,
+        cdnBaseUrl: CDN_BASE,
+        fetchImpl,
+        rawHostArch: 'arm64',
+      }),
+    ).rejects.toThrow('sha256 mismatch')
+
+    await expect(stat(join(root, 'cache', TARBALL_KEY))).rejects.toThrow()
+    await expect(
+      stat(join(root, 'cache', `${TARBALL_KEY}.partial`)),
+    ).rejects.toThrow()
+  })
+
+  it('rejects unsupported host architectures before fetching', async () => {
+    const calls: string[] = []
+
+    await expect(
+      ensureVmCacheSynced({
+        browserosRoot: root,
+        cdnBaseUrl: CDN_BASE,
+        fetchImpl: fakeVmCacheFetch(calls),
+        rawHostArch: 'arm',
+      }),
+    ).rejects.toThrow('unsupported host arch: arm')
+
+    expect(calls).toEqual([])
   })
 })
 

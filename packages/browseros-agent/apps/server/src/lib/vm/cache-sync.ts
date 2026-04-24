@@ -9,11 +9,11 @@ import { createReadStream, existsSync } from 'node:fs'
 import { mkdir, readFile, rename, rm } from 'node:fs/promises'
 import { arch as hostArch } from 'node:os'
 import { dirname, join } from 'node:path'
+import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
 import type { VmArtifact, VmManifest } from './manifest'
 import type { Arch } from './paths'
 import { getCachedManifestPath } from './paths'
 
-const DEFAULT_CDN_BASE_URL = 'https://cdn.browseros.com'
 const DEFAULT_TIMEOUT_MS = 30_000
 const ARCHES: Arch[] = ['arm64', 'x64']
 
@@ -33,7 +33,7 @@ export interface VmCacheSyncResult {
   skipped: boolean
 }
 
-let inFlight: Promise<VmCacheSyncResult> | null = null
+const inFlight = new Map<string, Promise<VmCacheSyncResult>>()
 
 export function prefetchVmCache(
   options: VmCacheSyncOptions = {},
@@ -50,33 +50,45 @@ export function ensureVmCacheSynced(
 export async function ensureVmCacheAvailable(
   options: VmCacheSyncOptions = {},
 ): Promise<void> {
-  if (inFlight) {
-    await inFlight
+  const cfg = resolveSyncConfig(options)
+  const pending = inFlight.get(syncKey(cfg))
+  if (pending) {
+    await pending.catch(() => {})
   }
 
-  if (existsSync(getCachedManifestPath(options.browserosRoot))) return
+  if (existsSync(getCachedManifestPath(cfg.browserosRoot))) return
 
-  await ensureVmCacheSynced(options)
+  await startOrReuseSyncWithConfig(cfg)
 }
 
 function startOrReuseSync(
   options: VmCacheSyncOptions,
 ): Promise<VmCacheSyncResult> {
-  if (inFlight) return inFlight
-  inFlight = syncVmCache(options).finally(() => {
-    inFlight = null
-  })
-  return inFlight
+  try {
+    return startOrReuseSyncWithConfig(resolveSyncConfig(options))
+  } catch (error) {
+    return Promise.reject(error)
+  }
 }
 
-async function syncVmCache(
-  options: VmCacheSyncOptions,
+function startOrReuseSyncWithConfig(
+  cfg: SyncConfig,
 ): Promise<VmCacheSyncResult> {
-  const cfg = resolveSyncConfig(options)
+  const key = syncKey(cfg)
+  const existing = inFlight.get(key)
+  if (existing) return existing
+  const current = syncVmCache(cfg).finally(() => {
+    if (inFlight.get(key) === current) inFlight.delete(key)
+  })
+  inFlight.set(key, current)
+  return current
+}
+
+async function syncVmCache(cfg: SyncConfig): Promise<VmCacheSyncResult> {
   const remote = await fetchManifest(cfg)
   const manifestPath = getCachedManifestPath(cfg.browserosRoot)
   const local = await readLocalManifest(manifestPath)
-  const plan = planDownloads({
+  const plan = await planDownloads({
     remote,
     local,
     cacheRoot: cacheRootForManifest(manifestPath),
@@ -118,7 +130,7 @@ function resolveSyncConfig(options: VmCacheSyncOptions): SyncConfig {
   const cdnBaseUrl =
     trimNonEmpty(options.cdnBaseUrl) ??
     trimNonEmpty(process.env.BROWSEROS_VM_CACHE_CDN_BASE_URL) ??
-    DEFAULT_CDN_BASE_URL
+    EXTERNAL_URLS.VM_CACHE_CDN_BASE
   return {
     browserosRoot: options.browserosRoot,
     cdnBaseUrl,
@@ -152,12 +164,12 @@ interface DownloadPlanItem {
   sha256: string
 }
 
-function planDownloads(opts: {
+async function planDownloads(opts: {
   remote: VmManifest
   local: VmManifest | null
   cacheRoot: string
   arches: Arch[]
-}): DownloadPlanItem[] {
+}): Promise<DownloadPlanItem[]> {
   const out: DownloadPlanItem[] = []
   for (const arch of opts.arches) {
     for (const [name, agent] of Object.entries(opts.remote.agents)) {
@@ -165,11 +177,11 @@ function planDownloads(opts: {
       if (!remote) continue
       const destPath = join(opts.cacheRoot, remote.key)
       if (
-        !needsDownload(
+        !(await needsDownload(
           remote,
           opts.local?.agents[name]?.tarballs[arch],
           destPath,
-        )
+        ))
       ) {
         continue
       }
@@ -179,13 +191,18 @@ function planDownloads(opts: {
   return out
 }
 
-function needsDownload(
+async function needsDownload(
   remote: VmArtifact,
   local: VmArtifact | undefined,
   destPath: string,
-): boolean {
+): Promise<boolean> {
   if (!existsSync(destPath)) return true
-  return local?.sha256 !== remote.sha256
+  if (local?.sha256 === remote.sha256) return false
+  try {
+    return (await sha256File(destPath)) !== remote.sha256
+  } catch {
+    return true
+  }
 }
 
 async function downloadArtifact(
@@ -199,25 +216,30 @@ async function downloadArtifact(
   await mkdir(dirname(destPath), { recursive: true })
   await rm(partialPath, { force: true })
 
-  const response = await fetchWithTimeout(fetchImpl, url, timeoutMs)
-  if (!response.ok || !response.body) {
-    throw new Error(`download failed: ${url} (${response.status})`)
-  }
-
-  const sink = Bun.file(partialPath).writer()
-  const reader = response.body.getReader()
   try {
-    for (;;) {
-      const { done, value } = await reader.read()
-      if (done) break
-      sink.write(value)
+    const response = await fetchWithTimeout(fetchImpl, url, timeoutMs)
+    if (!response.ok || !response.body) {
+      throw new Error(`download failed: ${url} (${response.status})`)
     }
-  } finally {
-    await sink.end()
-  }
 
-  await verifySha256(partialPath, sha256)
-  await rename(partialPath, destPath)
+    const sink = Bun.file(partialPath).writer()
+    const reader = response.body.getReader()
+    try {
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        sink.write(value)
+      }
+    } finally {
+      await sink.end()
+    }
+
+    await verifySha256(partialPath, sha256)
+    await rename(partialPath, destPath)
+  } catch (error) {
+    await rm(partialPath, { force: true })
+    throw error
+  }
 }
 
 async function fetchWithTimeout(
@@ -275,6 +297,16 @@ function selectSyncArches(options: VmCacheSyncOptions): Arch[] {
 
 function cacheRootForManifest(manifestPath: string): string {
   return dirname(dirname(manifestPath))
+}
+
+function syncKey(cfg: SyncConfig): string {
+  return [
+    getCachedManifestPath(cfg.browserosRoot),
+    cfg.cdnBaseUrl,
+    cfg.manifestUrl,
+    cfg.arches.join(','),
+    String(cfg.timeoutMs),
+  ].join('\0')
 }
 
 function joinUrl(base: string, path: string): string {

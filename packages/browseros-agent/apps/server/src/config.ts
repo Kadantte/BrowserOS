@@ -8,6 +8,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 
+import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
 import { Command, InvalidArgumentError } from 'commander'
 import { z } from 'zod'
 
@@ -15,7 +16,6 @@ import { INLINED_ENV, REQUIRED_FOR_PRODUCTION } from './env'
 import { VERSION } from './version'
 
 const portSchema = z.number().int()
-const DEFAULT_VM_CACHE_CDN_BASE_URL = 'https://cdn.browseros.com'
 
 export const ServerConfigSchema = z.object({
   cdpPort: portSchema.nullable(),
@@ -323,7 +323,7 @@ function getDefaults(cwd: string): PartialConfig {
     mcpAllowRemote: false,
     aiSdkDevtoolsEnabled: false,
     vmCachePrefetch: true,
-    vmCacheCdnBaseUrl: DEFAULT_VM_CACHE_CDN_BASE_URL,
+    vmCacheCdnBaseUrl: EXTERNAL_URLS.VM_CACHE_CDN_BASE,
   }
 }
 
