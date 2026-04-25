@@ -106,12 +106,16 @@ and `requests`. Some Qwen/Qwen-derived processors require `torchvision` even for
 image-only prompts, and several remote-code VLM repos expect `einops` or
 `requests`.
 
-The local provider is intentionally conservative: it only runs when it detects a
-CUDA/NVIDIA GPU, skips models whose estimated VRAM exceeds the detected GPU
-memory, and otherwise uses a generic Transformers VLM path. Some GUI-specialized
-models may need model-specific parsing or serving tweaks after the first local
-smoke run. For gated/private downloads, set `HF_TOKEN`. For Azure/Foundry-hosted
-variants, expect an endpoint URL plus API key and a dedicated provider adapter.
+The local provider is intentionally conservative: it only runs when PyTorch can
+use CUDA, skips models whose estimated VRAM exceeds the detected GPU memory, and
+loads weights directly onto `cuda:0` instead of allowing CPU/disk offload. This
+means a misconfigured container where `nvidia-smi` works but `torch.cuda` does
+not will be skipped instead of silently running an 8B model on CPU. Local
+generation uses the CLI `--timeout` value as the Transformers `max_time` budget.
+Some GUI-specialized models may need model-specific parsing or serving tweaks
+after the first local smoke run. For gated/private downloads, set `HF_TOKEN`.
+For Azure/Foundry-hosted variants, expect an endpoint URL plus API key and a
+dedicated provider adapter.
 
 Moondream candidates use a provider-qualified
 entry:

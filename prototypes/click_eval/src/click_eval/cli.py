@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -39,14 +40,22 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--fail-fast", action="store_true", help="stop on first GT error")
     run_parser.add_argument("--no-progress", action="store_true", help="hide progress/log output")
     run_parser.add_argument("--limit", type=int, help="only run the first N tasks")
-    run_parser.add_argument("--timeout", type=int, default=90, help="API timeout seconds")
+    run_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=90,
+        help="API timeout seconds; also used as local HF generation max_time",
+    )
 
     args = parser.parse_args(argv)
     if args.command == "run":
         load_dotenv(PROJECT_ROOT / ".env")
         load_dotenv(Path.cwd() / ".env")
         out_dir = args.out or _default_out_dir()
-        client = ProviderClient(timeout_seconds=args.timeout)
+        client = ProviderClient(
+            timeout_seconds=args.timeout,
+            log_callback=None if args.no_progress else _stderr_log,
+        )
         summary = run_eval(
             RunOptions(
                 tasks_path=args.tasks,
@@ -72,6 +81,10 @@ def main(argv: list[str] | None = None) -> int:
 def _default_out_dir() -> Path:
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return PROJECT_ROOT / "runs" / timestamp
+
+
+def _stderr_log(message: str) -> None:
+    print(message, file=sys.stderr)
 
 
 def _format_result_table(rows: list[dict[str, object]]) -> str:

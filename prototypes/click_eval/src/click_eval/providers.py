@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Callable
 
 from .contracts import ModelReply, ModelSpec
 from .local_hf import LocalHFClient
@@ -9,8 +10,13 @@ from .openrouter import OpenRouterClient
 
 
 class ProviderClient:
-    def __init__(self, timeout_seconds: int = 90) -> None:
+    def __init__(
+        self,
+        timeout_seconds: int = 90,
+        log_callback: Callable[[str], None] | None = None,
+    ) -> None:
         self.timeout_seconds = timeout_seconds
+        self._log_callback = log_callback
         self._openrouter: OpenRouterClient | None = None
         self._moondream: MoondreamClient | None = None
         self._local_hf: LocalHFClient | None = None
@@ -50,5 +56,8 @@ class ProviderClient:
 
     def _local_hf_client(self) -> LocalHFClient:
         if self._local_hf is None:
-            self._local_hf = LocalHFClient()
+            self._local_hf = LocalHFClient(
+                timeout_seconds=self.timeout_seconds,
+                log_callback=self._log_callback,
+            )
         return self._local_hf
