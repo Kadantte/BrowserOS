@@ -1,0 +1,133 @@
+from __future__ import annotations
+
+import json
+import os
+import urllib.error
+import urllib.request
+from pathlib import Path
+from typing import Any
+
+from .contracts import ModelReply
+from .image_utils import image_data_url, image_size
+
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+class OpenRouterClient:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        base_url: str = OPENROUTER_URL,
+        timeout_seconds: int = 90,
+        temperature: float = 0.0,
+        max_tokens: int = 512,
+    ) -> None:
+        self.api_key = api_key or os.environ.get("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise RuntimeError("OPENROUTER_API_KEY is required")
+        self.base_url = base_url
+        self.timeout_seconds = timeout_seconds
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+
+    def predict_point(
+        self,
+        model_id: str,
+        image_path: Path,
+        instruction: str,
+        purpose: str,
+    ) -> ModelReply:
+        width, height = image_size(image_path)
+        prompt = _point_prompt(instruction, width, height, purpose)
+        payload = {
+            "model": model_id,
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": (
+                        "You identify a single click coordinate in screenshots. "
+                        "Return only valid JSON."
+                    ),
+                },
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_data_url(image_path)},
+                        },
+                    ],
+                },
+            ],
+        }
+        raw = self._post(payload)
+        return ModelReply(text=_message_text(raw), raw=raw)
+
+    def _post(self, payload: dict[str, Any]) -> dict[str, Any]:
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        referer = os.environ.get("OPENROUTER_HTTP_REFERER")
+        title = os.environ.get("OPENROUTER_TITLE", "BrowserOS click eval")
+        if referer:
+            headers["HTTP-Referer"] = referer
+        if title:
+            headers["X-Title"] = title
+
+        request = urllib.request.Request(
+            self.base_url,
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
+        try:
+            with urllib.request.urlopen(
+                request, timeout=self.timeout_seconds
+            ) as response:
+                body = response.read().decode("utf-8")
+        except urllib.error.HTTPError as exc:
+            detail = exc.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"OpenRouter HTTP {exc.code}: {detail}") from exc
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"OpenRouter request failed: {exc}") from exc
+
+        return json.loads(body)
+
+
+def _point_prompt(instruction: str, width: int, height: int, purpose: str) -> str:
+    role_line = (
+        "Choose the ground-truth click point for this instruction."
+        if purpose == "ground_truth"
+        else "Predict where this model should click for this instruction."
+    )
+    return (
+        f"{role_line}\n\n"
+        f"Screenshot size: {width}x{height} pixels.\n"
+        "Coordinate system: x increases left to right, y increases top to bottom, "
+        "origin is the top-left pixel of the screenshot.\n\n"
+        f"Instruction: {instruction}\n\n"
+        "Return only this JSON shape, with no markdown:\n"
+        '{"x": 123, "y": 456, "reason": "short reason"}'
+    )
+
+
+def _message_text(raw: dict[str, Any]) -> str:
+    try:
+        content = raw["choices"][0]["message"]["content"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise RuntimeError(f"Unexpected OpenRouter response shape: {raw}") from exc
+
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, dict) and item.get("type") == "text":
+                parts.append(str(item.get("text", "")))
+        return "\n".join(parts)
+
+    return str(content)

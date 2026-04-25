@@ -1,0 +1,178 @@
+# Click Eval Prototype
+
+Tiny VLM click-point evaluation harness.
+
+## Layout
+
+- `src/click_eval/`: runtime package and CLI
+- `tests/`: fixture-based tests with no network calls
+- `examples/`: default task/model config files and sample screenshot
+- `runs/`: suggested output location
+
+## Input
+
+Create a JSONL task file:
+
+```jsonl
+{"task_id":"chat_1","image_path":"screenshots/page.png","instruction":"click the chat button"}
+{"task_id":"send_1","image_path":"screenshots/page.png","instruction":"click send","gt_point":[510,742]}
+```
+
+`image_path` is resolved relative to the task file. If `gt_point` is absent,
+the judge model is called once and the resolved coordinate is cached in the run
+output.
+
+The default model config is `examples/models.json`. The abbreviated cloud/API
+portion is:
+
+```json
+{
+  "judge_model": "anthropic/claude-opus-4.7",
+  "candidate_models": [
+    {
+      "name": "qwen3-vl-8b-instruct",
+      "provider": "openrouter",
+      "model": "qwen/qwen3-vl-8b-instruct"
+    },
+    {
+      "name": "qwen3-vl-8b-thinking",
+      "provider": "openrouter",
+      "model": "qwen/qwen3-vl-8b-thinking"
+    },
+    {
+      "name": "ui-tars-1.5-7b",
+      "provider": "openrouter",
+      "model": "bytedance/ui-tars-1.5-7b"
+    },
+    {
+      "name": "qwen3-vl-30b-a3b-instruct",
+      "provider": "openrouter",
+      "model": "qwen/qwen3-vl-30b-a3b-instruct"
+    },
+    {
+      "name": "qwen3-vl-30b-a3b-thinking",
+      "provider": "openrouter",
+      "model": "qwen/qwen3-vl-30b-a3b-thinking"
+    },
+    {
+      "name": "ernie-4.5-vl-28b-a3b",
+      "provider": "openrouter",
+      "model": "baidu/ernie-4.5-vl-28b-a3b"
+    },
+    {"name": "moondream", "provider": "moondream", "model": "moondream-cloud"}
+  ]
+}
+```
+
+The `name` is only the short label shown in plots and summary files. OpenRouter
+is the default provider, but the examples keep it explicit for routability
+audits. The active OpenRouter click-model shortlist was checked against
+`https://openrouter.ai/api/v1/models` on 2026-04-25 and includes:
+
+- `qwen/qwen3-vl-8b-instruct`
+- `qwen/qwen3-vl-8b-thinking`
+- `bytedance/ui-tars-1.5-7b`
+- `qwen/qwen3-vl-30b-a3b-instruct`
+- `qwen/qwen3-vl-30b-a3b-thinking`
+- `baidu/ernie-4.5-vl-28b-a3b`
+
+Shortlist models not found in the current OpenRouter catalog are documented
+below as `local_hf` candidates. They are included in `examples/models.json`, but
+the provider checks for a CUDA/NVIDIA GPU before importing local inference
+dependencies or downloading weights. If no GPU is present, they are recorded as
+`skipped - no GPU present`.
+
+| Model | Hosting | Setup needed |
+| --- | --- | --- |
+| `Tongyi-MAI/MAI-UI-8B` | Hugging Face | Included as `local_hf`; may need `HF_TOKEN` depending on access. |
+| `allenai/MolmoPoint-GUI-8B` | Hugging Face | Included as `local_hf`; outputs pointing tokens, so model-specific parser tuning may improve results. |
+| `microsoft/Fara-7B` | Hugging Face and Microsoft Foundry | Included as `local_hf`; Foundry use would need endpoint credentials and a separate adapter. |
+| `ServiceNow/GroundNext-7B-V0` | Hugging Face and Azure AI Foundry | Included as `local_hf`; Azure use would need endpoint credentials and a separate adapter. |
+| `osunlp/UGround-V1-7B` | Hugging Face | Included as `local_hf`; the model card also documents vLLM OpenAI-compatible serving. |
+| `OS-Copilot/OS-Atlas-Base-4B` | Hugging Face | Included as `local_hf`; outputs normalized coordinates/boxes, so parser tuning may improve results. |
+| `OS-Copilot/OS-Atlas-Base-7B` | Hugging Face | Included as `local_hf`; outputs normalized coordinates/boxes, so parser tuning may improve results. |
+| `showlab/ShowUI-2B` | Hugging Face | Included as `local_hf`; parser tuning may be needed for action-dictionary outputs. |
+| `Qwen/Qwen3-VL-4B-Instruct` | Hugging Face | Included as `local_hf`; not currently routable through OpenRouter. |
+| `Qwen/Qwen3-VL-4B-Thinking` | Hugging Face | Included as `local_hf`; not currently routable through OpenRouter. |
+
+For HF-local models, install optional local dependencies with:
+
+```bash
+uv sync --extra local
+```
+
+The local provider is intentionally conservative: it only runs when it detects a
+CUDA/NVIDIA GPU, skips models whose estimated VRAM exceeds the detected GPU
+memory, and otherwise uses a generic Transformers VLM path. Some GUI-specialized
+models may need model-specific parsing or serving tweaks after the first local
+smoke run. For gated/private downloads, set `HF_TOKEN`. For Azure/Foundry-hosted
+variants, expect an endpoint URL plus API key and a dedicated provider adapter.
+
+Moondream candidates use a provider-qualified
+entry:
+
+```json
+{
+  "candidate_models": [
+    {
+      "name": "moondream",
+      "provider": "moondream",
+      "model": "moondream-cloud"
+    }
+  ]
+}
+```
+
+## Run
+
+```bash
+cd prototypes/click_eval
+uv sync
+export OPENROUTER_API_KEY=...
+# Optional, for Moondream candidates:
+export MOONDREAM_API_KEY=...
+uv run click-eval run
+```
+
+On an interactive terminal, `run` shows tqdm progress bars for tasks and model
+calls. In non-interactive output, it prints plain status lines instead. Use
+`--no-progress` to suppress both.
+
+The CLI also loads `MOONDREAM_API_KEY` and `OPENROUTER_API_KEY` from a local
+`.env` file in `prototypes/click_eval/` or the current working directory.
+Moondream calls use `POST https://api.moondream.ai/v1/point` with the screenshot
+as a base64 data URL and the click instruction converted to an object query.
+
+During a run, the CLI shows progress bars for tasks and per-task candidate model
+calls. It also prints compact status lines for GT resolution, provider/model
+calls, prediction failures, and the output directory.
+
+OpenRouter candidate calls are sent concurrently in bounded batches of 4. Local
+HF/GPU candidates stay synchronous and serial to avoid GPU memory contention;
+Moondream and GT resolution also remain synchronous.
+
+Outputs:
+
+- `resolved_tasks.jsonl`: task manifest with cached `gt_point`
+- `predictions.jsonl`: raw candidate responses and parsed points
+- `scores.csv`: per-task L2 distances and threshold hits
+- `summary.json`: aggregate metrics per model
+- `annotated/*.png`: screenshot overlays with GT and predictions
+
+`predictions.jsonl`, `scores.csv`, and `summary.json` include per-model
+`duration_seconds` timing fields. Skipped local models are marked with
+`skipped=true` and an error message explaining the skip reason.
+
+By default, `click-eval run` uses:
+
+- `examples/tasks.jsonl`
+- `examples/models.json`
+- `runs/<timestamp>`
+
+## Development
+
+```bash
+cd prototypes/click_eval
+uv run pytest
+uv run ruff check .
+```
