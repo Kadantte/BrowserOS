@@ -290,6 +290,19 @@ class LocalHFClient:
         original_width, original_height = image.size
         image, (width, height) = _smart_resize_image(image, model)
         messages = _qwen25_absolute_messages(instruction, image, width, height, mode)
+        if mode == "infigui":
+            inputs = _infigui_messages_to_inputs(processor, messages)
+            text = self._generate_text(torch, processor, hf_model, inputs, model)
+            return self._resized_absolute_reply(
+                model,
+                text,
+                original_width,
+                original_height,
+                width,
+                height,
+                adapter=mode,
+            )
+
         input_text = _qwen25_absolute_prompt_text(tokenizer, messages, mode)
         inputs = processor(
             text=[input_text],
@@ -571,6 +584,8 @@ class LocalHFClient:
             model,
             trust_remote_code=True,
         )
+        if _adapter_for(model) == "infigui":
+            setattr(processor, "padding_side", "left")
         tokenizer = _call_hf_loader(
             transformers.AutoTokenizer.from_pretrained,
             model,
@@ -986,7 +1001,7 @@ def _model_load_kwargs(torch, model: ModelSpec) -> dict[str, Any]:
         return kwargs
 
     kwargs["device_map"] = "auto" if model.allow_cpu_offload else {"": "cuda:0"}
-    kwargs["torch_dtype"] = _model_load_dtype(torch, model)
+    kwargs["dtype"] = _model_load_dtype(torch, model)
     return kwargs
 
 
@@ -1068,6 +1083,28 @@ def _qwen_messages_to_inputs(processor, messages):
     image_inputs, video_inputs = process_vision_info(messages)
     return processor(
         text=[text],
+        images=image_inputs,
+        videos=video_inputs,
+        padding=True,
+        return_tensors="pt",
+    )
+
+
+def _infigui_messages_to_inputs(processor, messages: list[dict[str, Any]]):
+    try:
+        from qwen_vl_utils import process_vision_info
+    except ImportError as exc:
+        raise ModelSkipped(
+            "skipped - qwen-vl-utils missing; run `uv sync --extra local`"
+        ) from exc
+
+    batched_messages = [messages]
+    text = processor.apply_chat_template(
+        batched_messages, tokenize=False, add_generation_prompt=True
+    )
+    image_inputs, video_inputs = process_vision_info(batched_messages)
+    return processor(
+        text=text,
         images=image_inputs,
         videos=video_inputs,
         padding=True,
