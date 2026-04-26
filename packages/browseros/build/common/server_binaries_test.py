@@ -35,12 +35,11 @@ class MacosServerBinariesTest(unittest.TestCase):
         self.assertIsNone(macos_sign_spec_for(Path("/x/not_a_known_binary")))
 
     def test_limactl_uses_vz_entitlement(self):
+        entitlements_name = "lima-vz-entitlements.plist"
         spec = macos_sign_spec_for(Path("/x/limactl"))
         assert spec is not None
-        self.assertEqual(spec.entitlements, "lima-vz-entitlements.plist")
+        self.assertEqual(spec.entitlements, entitlements_name)
 
-        entitlements_name = spec.entitlements
-        assert entitlements_name is not None
         entitlements = plistlib.loads((ENTITLEMENTS_DIR / entitlements_name).read_bytes())
         self.assertIs(entitlements.get("com.apple.security.virtualization"), True)
 
