@@ -7,6 +7,7 @@ import subprocess
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
+from types import MethodType
 from typing import Any, Callable
 
 from .contracts import ModelReply, ModelSkipped, ModelSpec, Point
@@ -286,12 +287,13 @@ class LocalHFClient:
         torch, processor, tokenizer, hf_model = self._load_processor_tokenizer_model(
             model, class_names=("Qwen2_5_VLForConditionalGeneration",)
         )
+        _patch_qwen25_mrope_section(hf_model)
         image = _open_rgb_image(image_path)
         original_width, original_height = image.size
         image, (width, height) = _smart_resize_image(image, model)
         messages = _qwen25_absolute_messages(instruction, image, width, height, mode)
         if mode == "infigui":
-            inputs = _infigui_messages_to_inputs(processor, messages)
+            inputs = _infigui_messages_to_inputs(processor, messages, image)
             text = self._generate_text(torch, processor, hf_model, inputs, model)
             return self._resized_absolute_reply(
                 model,
@@ -409,7 +411,7 @@ class LocalHFClient:
             generated = hf_model.generate(
                 input_ids,
                 pixel_values=pixel_values,
-                grid_thws=grid_thws,
+                image_grid_thw=grid_thws,
                 max_new_tokens=max_new_tokens,
                 max_time=self.timeout_seconds,
                 do_sample=False,
@@ -676,6 +678,7 @@ class LocalHFClient:
                 low_cpu_mem_usage=True,
             )
         _patch_generation_mixin(hf_model)
+        _patch_os_atlas_generate_without_cache(hf_model)
         self._loaded[key] = (torch, tokenizer, hf_model)
         return self._loaded[key]  # type: ignore[return-value]
 
@@ -1090,23 +1093,12 @@ def _qwen_messages_to_inputs(processor, messages):
     )
 
 
-def _infigui_messages_to_inputs(processor, messages: list[dict[str, Any]]):
-    try:
-        from qwen_vl_utils import process_vision_info
-    except ImportError as exc:
-        raise ModelSkipped(
-            "skipped - qwen-vl-utils missing; run `uv sync --extra local`"
-        ) from exc
-
-    batched_messages = [messages]
-    text = processor.apply_chat_template(
-        batched_messages, tokenize=False, add_generation_prompt=True
-    )
-    image_inputs, video_inputs = process_vision_info(batched_messages)
+def _infigui_messages_to_inputs(processor, messages: list[dict[str, Any]], image):
+    text = _qwen25_manual_prompt_text(messages)
     return processor(
-        text=text,
-        images=image_inputs,
-        videos=video_inputs,
+        text=[text],
+        images=[image],
+        videos=None,
         padding=True,
         return_tensors="pt",
     )
@@ -1329,6 +1321,25 @@ def _qwen25_absolute_prompt_text(
     raise RuntimeError("GTA1 chat template did not contain an image placeholder")
 
 
+def _qwen25_manual_prompt_text(messages: list[dict[str, Any]]) -> str:
+    parts: list[str] = []
+    for message in messages:
+        role = str(message["role"])
+        content = message["content"]
+        parts.append(f"<|im_start|>{role}\n")
+        if isinstance(content, str):
+            parts.append(content)
+        else:
+            for item in content:
+                if item.get("type") == "image":
+                    parts.append("<|vision_start|><|image_pad|><|vision_end|>")
+                elif item.get("type") == "text":
+                    parts.append(str(item.get("text", "")))
+        parts.append("<|im_end|>\n")
+    parts.append("<|im_start|>assistant\n")
+    return "".join(parts)
+
+
 def _holo2_localization_prompt(instruction: str) -> str:
     schema = (
         '{"properties":{"x":{"description":"The x coordinate, normalized between '
@@ -1523,6 +1534,78 @@ def _patch_generation_mixin(hf_model) -> None:
             config = getattr(candidate, "config", None)
             if GenerationConfig is not None and config is not None:
                 candidate.generation_config = GenerationConfig.from_model_config(config)
+
+
+def _patch_qwen25_mrope_section(hf_model) -> None:
+    configs = [
+        getattr(hf_model, "config", None),
+        getattr(getattr(hf_model, "config", None), "text_config", None),
+        getattr(getattr(hf_model, "model", None), "config", None),
+        getattr(getattr(hf_model, "language_model", None), "config", None),
+    ]
+    for config in configs:
+        if config is None:
+            continue
+        rope_scaling = getattr(config, "rope_scaling", None)
+        if isinstance(rope_scaling, dict) and "mrope_section" not in rope_scaling:
+            rope_scaling["mrope_section"] = [16, 24, 24]
+
+
+def _patch_os_atlas_generate_without_cache(hf_model) -> None:
+    if getattr(hf_model, "_click_eval_no_cache_generate", False):
+        return
+
+    def generate_without_cache(
+        self,
+        pixel_values=None,
+        input_ids=None,
+        attention_mask=None,
+        visual_features=None,
+        generation_config=None,
+        output_hidden_states=None,
+        return_dict=None,
+        **generate_kwargs,
+    ):
+        if self.img_context_token_id is None:
+            raise RuntimeError("OS-Atlas image context token was not initialized")
+        if pixel_values is not None:
+            vit_embeds = (
+                visual_features
+                if visual_features is not None
+                else self.extract_feature(pixel_values)
+            )
+            input_embeds = self.language_model.get_input_embeddings()(input_ids)
+            batch_size, seq_len, hidden_size = input_embeds.shape
+            input_embeds = input_embeds.reshape(batch_size * seq_len, hidden_size)
+            flat_input_ids = input_ids.reshape(batch_size * seq_len)
+            selected = flat_input_ids == self.img_context_token_id
+            if selected.sum() == 0:
+                raise RuntimeError("OS-Atlas prompt did not contain image tokens")
+            input_embeds[selected] = vit_embeds.reshape(-1, hidden_size).to(
+                input_embeds.device
+            )
+            input_embeds = input_embeds.reshape(batch_size, seq_len, hidden_size)
+        else:
+            input_embeds = self.language_model.get_input_embeddings()(input_ids)
+
+        generate_kwargs.pop("use_cache", None)
+        if generation_config is not None:
+            try:
+                generation_config.use_cache = False
+            except AttributeError:
+                pass
+        return self.language_model.generate(
+            inputs_embeds=input_embeds,
+            attention_mask=attention_mask,
+            generation_config=generation_config,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+            use_cache=False,
+            **generate_kwargs,
+        )
+
+    hf_model.generate = MethodType(generate_without_cache, hf_model)
+    hf_model._click_eval_no_cache_generate = True
 
 
 def _patch_dynamic_cache_compat() -> None:
