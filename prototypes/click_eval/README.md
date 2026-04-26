@@ -44,7 +44,12 @@ portion is:
       "provider": "openrouter",
       "model": "bytedance/ui-tars-1.5-7b"
     },
-    {"name": "moondream", "provider": "moondream", "model": "moondream-cloud"}
+    {"name": "moondream", "provider": "moondream", "model": "moondream-cloud"},
+    {
+      "name": "gemini-computer-use",
+      "provider": "gemini",
+      "model": "gemini-2.5-computer-use-preview-10-2025"
+    }
   ]
 }
 ```
@@ -125,7 +130,8 @@ gated/private downloads, set `HF_TOKEN`. For Azure/Foundry-hosted variants,
 expect an endpoint URL plus API key and a dedicated provider adapter.
 
 Moondream candidates use a provider-qualified
-entry:
+entry. Gemini Computer Use candidates use `provider: "gemini"` and require
+`GEMINI_API_KEY` or `GOOGLE_API_KEY`.
 
 ```json
 {
@@ -134,6 +140,11 @@ entry:
       "name": "moondream",
       "provider": "moondream",
       "model": "moondream-cloud"
+    },
+    {
+      "name": "gemini-computer-use",
+      "provider": "gemini",
+      "model": "gemini-2.5-computer-use-preview-10-2025"
     }
   ]
 }
@@ -147,6 +158,8 @@ uv sync
 export OPENROUTER_API_KEY=...
 # Optional, for Moondream candidates:
 export MOONDREAM_API_KEY=...
+# Optional, for Gemini Computer Use candidates:
+export GEMINI_API_KEY=...
 uv run click-eval run
 ```
 
@@ -162,10 +175,14 @@ On an interactive terminal, `run` shows tqdm progress bars for tasks and model
 calls. In non-interactive output, it prints plain status lines instead. Use
 `--no-progress` to suppress both.
 
-The CLI also loads `MOONDREAM_API_KEY` and `OPENROUTER_API_KEY` from a local
-`.env` file in `prototypes/click_eval/` or the current working directory.
+The CLI also loads `MOONDREAM_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, and
+`OPENROUTER_API_KEY` from a local `.env` file in `prototypes/click_eval/` or
+the current working directory.
 Moondream calls use `POST https://api.moondream.ai/v1/point` with the screenshot
 as a base64 data URL and the click instruction converted to an object query.
+Gemini Computer Use calls use the Google GenAI SDK with the Computer Use tool,
+request a single `click_at` action, and scale Gemini's normalized `0..1000`
+coordinates back to screenshot pixels.
 
 During a run, the CLI shows progress bars for tasks and per-task candidate model
 calls. It also prints compact status lines for GT resolution, provider/model
@@ -173,7 +190,7 @@ calls, prediction failures, and the output directory.
 
 OpenRouter candidate calls are sent concurrently in bounded batches of 4. Local
 HF/GPU candidates stay synchronous and serial to avoid GPU memory contention;
-Moondream and GT resolution also remain synchronous.
+Moondream, Gemini, and GT resolution also remain synchronous.
 
 Outputs:
 

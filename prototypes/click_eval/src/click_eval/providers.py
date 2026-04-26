@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Callable
 
 from .contracts import ModelReply, ModelSpec
+from .gemini import GeminiComputerUseClient
 from .local_hf import LocalHFClient
 from .moondream import MoondreamClient
 from .openrouter import OpenRouterClient
@@ -19,6 +20,7 @@ class ProviderClient:
         self._log_callback = log_callback
         self._openrouter: OpenRouterClient | None = None
         self._moondream: MoondreamClient | None = None
+        self._gemini: GeminiComputerUseClient | None = None
         self._local_hf: LocalHFClient | None = None
 
     def predict_point(
@@ -37,6 +39,10 @@ class ProviderClient:
             return self._moondream_client().predict_point(
                 model.model_id, image_path, instruction, purpose
             )
+        if provider == "gemini":
+            return self._gemini_client().predict_point(
+                model.model_id, image_path, instruction, purpose
+            )
         if provider == "local_hf":
             return self._local_hf_client().predict_point(
                 model, image_path, instruction, purpose
@@ -53,6 +59,11 @@ class ProviderClient:
         if self._moondream is None:
             self._moondream = MoondreamClient(timeout_seconds=self.timeout_seconds)
         return self._moondream
+
+    def _gemini_client(self) -> GeminiComputerUseClient:
+        if self._gemini is None:
+            self._gemini = GeminiComputerUseClient(timeout_seconds=self.timeout_seconds)
+        return self._gemini
 
     def _local_hf_client(self) -> LocalHFClient:
         if self._local_hf is None:
