@@ -74,7 +74,13 @@ class LocalHFClient:
                 return self._predict_groundnext(model, image_path, instruction)
             if adapter == "opencua":
                 return self._predict_opencua(model, image_path, instruction)
-            if adapter in {"gta1", "infigui"}:
+            if adapter in {
+                "gta1",
+                "infigui",
+                "qwen25_point_1000",
+                "qwen25_tool_absolute",
+                "zonui",
+            }:
                 return self._predict_qwen25_absolute(
                     model, image_path, instruction, mode=adapter
                 )
@@ -314,6 +320,15 @@ class LocalHFClient:
             return_tensors="pt",
         )
         text = self._generate_text(torch, processor, hf_model, inputs, model)
+        if mode == "qwen25_point_1000":
+            return self._scaled_reply(
+                model,
+                text,
+                original_width,
+                original_height,
+                coordinate_max=1000,
+                adapter=mode,
+            )
         return self._resized_absolute_reply(
             model,
             text,
@@ -1259,6 +1274,66 @@ def _qwen25_absolute_messages(
     height: int,
     mode: str,
 ) -> list[dict[str, Any]]:
+    if mode == "zonui":
+        return [
+            {
+                "role": "system",
+                "content": (
+                    "Based on the screenshot of the page, I give a text "
+                    "description and you give its corresponding location. The "
+                    "coordinate represents a clickable location [x, y] for an "
+                    "element."
+                ),
+            },
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {"type": "text", "text": instruction},
+                ],
+            },
+        ]
+
+    if mode == "qwen25_point_1000":
+        return [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Grounding instruction is: {instruction}\n"
+                            "Locate the target UI element and return only this "
+                            "JSON shape:\n"
+                            '[{"point_2d": [x, y], "label": "target"}]\n'
+                            "Use relative image coordinates where x and y are "
+                            "integers from 0 to 1000."
+                        ),
+                    },
+                ],
+            }
+        ]
+
+    if mode == "qwen25_tool_absolute":
+        return [
+            {"role": "system", "content": _computer_use_tool_system_prompt(width, height)},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Instruction: {instruction}\n"
+                            "Return only one <tool_call> JSON object for a "
+                            "left click at the target pixel coordinate."
+                        ),
+                    },
+                ],
+            },
+        ]
+
     if mode == "infigui":
         return [
             {
@@ -1305,7 +1380,7 @@ def _qwen25_absolute_prompt_text(
     input_text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
-    if mode != "gta1":
+    if mode not in {"gta1"}:
         return input_text
 
     converted_text, replacements = re.subn(
@@ -1362,6 +1437,17 @@ def _pyautogui_system_prompt() -> str:
         "You are a GUI agent. You are given a task and a screenshot of the "
         "screen. You need to perform a series of pyautogui actions to complete "
         "the task."
+    )
+
+
+def _computer_use_tool_system_prompt(width: int, height: int) -> str:
+    return (
+        "You are a GUI agent. You are given a task and a screenshot of the "
+        "screen. The screen resolution is "
+        f"{width}x{height}. Return exactly one tool call in this form:\n"
+        '<tool_call>{"name":"computer_use","arguments":{"action":"left_click",'
+        '"coordinate":[x,y]}}</tool_call>\n'
+        "Use pixel coordinates in the current screen resolution."
     )
 
 

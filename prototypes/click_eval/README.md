@@ -44,6 +44,13 @@ portion is:
       "provider": "openrouter",
       "model": "bytedance/ui-tars-1.5-7b"
     },
+    {"name": "glm-4.5v", "provider": "openrouter", "model": "z-ai/glm-4.5v"},
+    {"name": "glm-4.6v", "provider": "openrouter", "model": "z-ai/glm-4.6v"},
+    {
+      "name": "glm-5v-turbo",
+      "provider": "openrouter",
+      "model": "z-ai/glm-5v-turbo"
+    },
     {"name": "moondream", "provider": "moondream", "model": "moondream-cloud"},
     {
       "name": "gemini-computer-use",
@@ -62,6 +69,9 @@ audits. The active OpenRouter click-model shortlist was checked against
 - `qwen/qwen3-vl-8b-instruct`
 - `qwen/qwen3-vl-8b-thinking`
 - `bytedance/ui-tars-1.5-7b`
+- `z-ai/glm-4.5v`
+- `z-ai/glm-4.6v`
+- `z-ai/glm-5v-turbo`
 
 Shortlist models not found in the current OpenRouter catalog are documented
 below as `local_hf` candidates. They are included in `examples/models.json`, but
@@ -71,6 +81,9 @@ recorded as skipped with the CUDA detection reason.
 
 | Model | Hosting | Setup needed |
 | --- | --- | --- |
+| `Qwen/Qwen3-VL-2B-Instruct` | Hugging Face | Included as `local_hf`; small generic Qwen3-VL baseline. |
+| `Qwen/Qwen3-VL-2B-Thinking` | Hugging Face | Included as `local_hf`; small generic Qwen3-VL thinking baseline. |
+| `Qwen/Qwen2.5-VL-3B-Instruct` | Hugging Face | Included as `local_hf`; generic Qwen2.5-VL baseline using a relative point prompt. |
 | `mPLUG/GUI-Owl-1.5-2B-Instruct` | Hugging Face | Included as `local_hf`; Qwen3-VL GUI-agent adapter. |
 | `mPLUG/GUI-Owl-1.5-4B-Instruct` | Hugging Face | Included as `local_hf`; Qwen3-VL GUI-agent adapter. |
 | `mPLUG/GUI-Owl-1.5-8B-Instruct` | Hugging Face | Included as `local_hf`; Qwen3-VL GUI-agent adapter. |
@@ -88,12 +101,26 @@ recorded as skipped with the CUDA detection reason.
 | `allenai/MolmoPoint-GUI-8B` | Hugging Face | Included as `local_hf`; outputs pointing tokens, so model-specific parser tuning may improve results. |
 | `microsoft/Fara-7B` | Hugging Face and Microsoft Foundry | Included as `local_hf`; Foundry use would need endpoint credentials and a separate adapter. |
 | `ServiceNow/GroundNext-7B-V0` | Hugging Face and Azure AI Foundry | Included as `local_hf`; Azure use would need endpoint credentials and a separate adapter. |
+| `osunlp/UGround-V1-2B` | Hugging Face | Included as `local_hf`; smaller UGround model using normalized coordinates. |
 | `osunlp/UGround-V1-7B` | Hugging Face | Included as `local_hf`; the model card also documents vLLM OpenAI-compatible serving. |
+| `ByteDance-Seed/UI-TARS-2B-SFT` | Hugging Face | Included as `local_hf`; small UI-TARS model using the normalized point adapter. |
+| `zonghanHZH/ZonUI-3B` | Hugging Face | Included as `local_hf`; lightweight Qwen2.5-VL GUI grounding model. |
+| `Yuqi-Zhou/GUI-G1-3B-v1` | Hugging Face | Included as `local_hf`; 3B GUI grounding model using JSON `point_2d` output. |
+| `xlangai/Jedi-3B-1080p` | Hugging Face | Included as `local_hf`; OSWorld-G Qwen2.5-VL click/tool-call model. |
+| `xlangai/Jedi-7B-1080p` | Hugging Face | Included as `local_hf`; larger Jedi click/tool-call model. |
+| `Tongyi-MiA/UI-Ins-7B` | Hugging Face | Included as `local_hf`; GUI grounding model using tool-call coordinates. |
+| `osunlp/GUI-Drag-7B` | Hugging Face | Included as `local_hf`; drag-focused GUI model with preserved click behavior. |
 | `OS-Copilot/OS-Atlas-Base-4B` | Hugging Face | Included as `local_hf`; outputs normalized coordinates/boxes, so parser tuning may improve results. |
 | `OS-Copilot/OS-Atlas-Base-7B` | Hugging Face | Included as `local_hf`; outputs normalized coordinates/boxes, so parser tuning may improve results. |
 | `showlab/ShowUI-2B` | Hugging Face | Included as `local_hf`; parser tuning may be needed for action-dictionary outputs. |
 | `Qwen/Qwen3-VL-4B-Instruct` | Hugging Face | Included as `local_hf`; not currently routable through OpenRouter. |
 | `Qwen/Qwen3-VL-4B-Thinking` | Hugging Face | Included as `local_hf`; not currently routable through OpenRouter. |
+
+The 2026-04-26 pass also found promising custom-head local models such as
+`microsoft/GUI-Actor-3B-Qwen2.5-VL`, `inclusionAI/V2P-7B`, and
+`TESS-Computer/qwen-click-dit`. Those are not in the default list yet because
+their model cards require custom Python model classes or action heads beyond
+plain `transformers` loading.
 
 For HF-local models, install optional local dependencies with:
 
