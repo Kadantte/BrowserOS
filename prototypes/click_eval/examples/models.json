@@ -27,11 +27,6 @@
       "model": "qwen/qwen3-vl-30b-a3b-thinking"
     },
     {
-      "name": "ernie-4.5-vl-28b-a3b",
-      "provider": "openrouter",
-      "model": "baidu/ernie-4.5-vl-28b-a3b"
-    },
-    {
       "name": "moondream",
       "provider": "moondream",
       "model": "moondream-cloud"
@@ -48,7 +43,7 @@
       "provider": "local_hf",
       "model": "allenai/MolmoPoint-GUI-8B",
       "adapter": "molmopoint",
-      "dtype": "fp16",
+      "dtype": "bf16",
       "allow_cpu_offload": true,
       "estimated_vram_gb": 24,
       "max_new_tokens": 200

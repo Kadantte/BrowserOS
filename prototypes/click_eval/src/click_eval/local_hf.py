@@ -160,7 +160,7 @@ class LocalHFClient:
         inputs = _move_inputs(inputs, _first_model_device(hf_model))
         self._log(f"{model.name}: generating MolmoPoint grounding tokens")
         with torch.inference_mode(), torch.autocast(
-            "cuda", dtype=_dtype_from_model(torch, model)
+            "cuda", dtype=_model_load_dtype(torch, model)
         ):
             output = hf_model.generate(
                 **inputs,
@@ -420,6 +420,7 @@ class LocalHFClient:
                 config=config,
                 low_cpu_mem_usage=True,
             )
+        _patch_generation_mixin(hf_model)
         self._loaded[key] = (torch, tokenizer, hf_model)
         return self._loaded[key]  # type: ignore[return-value]
 
@@ -665,8 +666,17 @@ def _model_load_kwargs(torch, model: ModelSpec) -> dict[str, Any]:
         return kwargs
 
     kwargs["device_map"] = "auto" if model.allow_cpu_offload else {"": "cuda:0"}
-    kwargs["torch_dtype"] = _dtype_from_model(torch, model)
+    kwargs["torch_dtype"] = _model_load_dtype(torch, model)
     return kwargs
+
+
+def _model_load_dtype(torch, model: ModelSpec):
+    dtype = (model.dtype or "").lower()
+    if _adapter_for(model) == "molmopoint" and dtype in {"fp16", "float16"}:
+        if torch.cuda.is_bf16_supported():
+            return torch.bfloat16
+        return torch.float32
+    return _dtype_from_model(torch, model)
 
 
 def _dtype_from_model(torch, model: ModelSpec):
@@ -806,7 +816,7 @@ def _smart_resize_image(image, model: ModelSpec):
     min_pixels = model.min_pixels or 78_400
     max_pixels = model.max_pixels or 6_000_000
     resized_height, resized_width = smart_resize(
-        height, width, min_pixels=min_pixels, max_pixels=max_pixels
+        height, width, factor=28, min_pixels=min_pixels, max_pixels=max_pixels
     )
     return image.resize((resized_width, resized_height)), (resized_width, resized_height)
 
@@ -979,6 +989,33 @@ def _load_os_atlas_4b_config(transformers, model: ModelSpec):
         trust_remote_code=True,
         revision=model.revision,
     )
+
+
+def _patch_generation_mixin(hf_model) -> None:
+    try:
+        from transformers.generation import GenerationMixin
+    except ImportError:
+        try:
+            from transformers.generation.utils import GenerationMixin
+        except ImportError:
+            return
+
+    candidates = [
+        getattr(hf_model, "language_model", None),
+        getattr(hf_model, "llm", None),
+    ]
+    for candidate in candidates:
+        if candidate is None or hasattr(candidate, "generate"):
+            continue
+        cls = candidate.__class__
+        if issubclass(cls, GenerationMixin):
+            continue
+        patched_cls = type(
+            f"{cls.__name__}WithGenerationMixin",
+            (cls, GenerationMixin),
+            {},
+        )
+        candidate.__class__ = patched_cls
 
 
 @contextmanager

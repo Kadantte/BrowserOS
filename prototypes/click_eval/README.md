@@ -54,11 +54,6 @@ portion is:
       "provider": "openrouter",
       "model": "qwen/qwen3-vl-30b-a3b-thinking"
     },
-    {
-      "name": "ernie-4.5-vl-28b-a3b",
-      "provider": "openrouter",
-      "model": "baidu/ernie-4.5-vl-28b-a3b"
-    },
     {"name": "moondream", "provider": "moondream", "model": "moondream-cloud"}
   ]
 }
@@ -74,7 +69,6 @@ audits. The active OpenRouter click-model shortlist was checked against
 - `bytedance/ui-tars-1.5-7b`
 - `qwen/qwen3-vl-30b-a3b-instruct`
 - `qwen/qwen3-vl-30b-a3b-thinking`
-- `baidu/ernie-4.5-vl-28b-a3b`
 
 Shortlist models not found in the current OpenRouter catalog are documented
 below as `local_hf` candidates. They are included in `examples/models.json`, but
@@ -115,13 +109,14 @@ means a misconfigured container where `nvidia-smi` works but `torch.cuda` does
 not will be skipped instead of silently running an 8B model on CPU. Local
 generation uses the CLI `--timeout` value as the Transformers `max_time` budget.
 Several model-specific adapters are included for MolmoPoint, GroundNext,
-UGround, OS-Atlas, ShowUI, and Qwen3-VL. Local model configs set `dtype` to
-`fp16` and use CPU offload for the larger checkpoints instead of quantization.
-This keeps quality closer to full precision, but timing for offloaded models
-will include CPU-GPU transfer overhead. The local runner unloads each HF model
-after its inference and clears the CUDA cache before the next local model. For gated/private
-downloads, set `HF_TOKEN`. For Azure/Foundry-hosted variants, expect an endpoint
-URL plus API key and a dedicated provider adapter.
+UGround, OS-Atlas, ShowUI, and Qwen3-VL. Local model configs use `fp16` and CPU
+offload for the larger checkpoints instead of quantization. MolmoPoint is the
+exception: its official inference path uses BF16 autocast, and FP16 overflows in
+its pointing-token generation path. Timing for offloaded models will include
+CPU-GPU transfer overhead. The local runner unloads each HF model after its
+inference and clears the CUDA cache before the next local model. For
+gated/private downloads, set `HF_TOKEN`. For Azure/Foundry-hosted variants,
+expect an endpoint URL plus API key and a dedicated provider adapter.
 
 Moondream candidates use a provider-qualified
 entry:
