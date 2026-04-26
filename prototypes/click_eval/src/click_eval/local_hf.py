@@ -389,10 +389,8 @@ class LocalHFClient:
     def _predict_opencua(
         self, model: ModelSpec, image_path: Path, instruction: str
     ) -> ModelReply:
-        torch, tokenizer, image_processor, hf_model = (
-            self._load_tokenizer_image_processor_model(
-                model, class_names=("AutoModel", "AutoModelForCausalLM")
-            )
+        torch, processor, hf_model = self._load_processor_model(
+            model, class_names=("AutoModel", "AutoModelForCausalLM")
         )
         image = _open_rgb_image(image_path)
         original_width, original_height = image.size
@@ -407,16 +405,19 @@ class LocalHFClient:
                 ],
             },
         ]
-        input_ids = tokenizer.apply_chat_template(
-            messages, tokenize=True, add_generation_prompt=True
+        input_text = _opencua_prompt_text(processor, messages)
+        inputs = processor(
+            text=[input_text],
+            images=[image],
+            padding=True,
+            return_tensors="pt",
         )
-        info = image_processor.preprocess(images=[image])
+        if "pixel_values" in inputs:
+            inputs["pixel_values"] = inputs["pixel_values"].to(
+                dtype=_dtype_from_model(torch, model)
+            )
         device = _first_model_device(hf_model)
-        pixel_values = torch.tensor(info["pixel_values"]).to(
-            dtype=_dtype_from_model(torch, model), device=device
-        )
-        grid_thws = torch.tensor(info["image_grid_thw"], device=device)
-        input_ids = torch.tensor([input_ids], device=device)
+        inputs = _move_inputs(inputs, device)
         max_new_tokens = model.max_new_tokens or self.max_new_tokens
         self._log(
             f"{model.name}: generating OpenCUA action with "
@@ -424,19 +425,12 @@ class LocalHFClient:
         )
         with torch.inference_mode():
             generated = hf_model.generate(
-                input_ids,
-                pixel_values=pixel_values,
-                image_grid_thw=grid_thws,
+                **inputs,
                 max_new_tokens=max_new_tokens,
                 max_time=self.timeout_seconds,
                 do_sample=False,
-                temperature=0,
             )
-        text = tokenizer.batch_decode(
-            generated[:, input_ids.shape[1] :],
-            skip_special_tokens=True,
-            clean_up_tokenization_spaces=False,
-        )[0]
+        text = _decode_output(processor, inputs, generated)
         return self._resized_absolute_reply(
             model,
             text,
@@ -1377,6 +1371,9 @@ def _qwen25_absolute_messages(
 def _qwen25_absolute_prompt_text(
     tokenizer, messages: list[dict[str, Any]], mode: str
 ) -> str:
+    if mode in {"qwen25_point_1000", "qwen25_tool_absolute", "zonui"}:
+        return _qwen25_manual_prompt_text(messages)
+
     input_text = tokenizer.apply_chat_template(
         messages, tokenize=False, add_generation_prompt=True
     )
@@ -1394,6 +1391,16 @@ def _qwen25_absolute_prompt_text(
     if "<|vision_start|><|image_pad|><|vision_end|>" in input_text:
         return input_text
     raise RuntimeError("GTA1 chat template did not contain an image placeholder")
+
+
+def _opencua_prompt_text(processor, messages: list[dict[str, Any]]) -> str:
+    apply_chat_template = getattr(processor, "apply_chat_template", None)
+    if apply_chat_template is None:
+        tokenizer = getattr(processor, "tokenizer", None)
+        apply_chat_template = getattr(tokenizer, "apply_chat_template", None)
+    if apply_chat_template is None:
+        raise RuntimeError("OpenCUA processor does not expose apply_chat_template")
+    return apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
 
 
 def _qwen25_manual_prompt_text(messages: list[dict[str, Any]]) -> str:
@@ -1681,6 +1688,7 @@ def _patch_os_atlas_generate_without_cache(hf_model) -> None:
             except AttributeError:
                 pass
         return self.language_model.generate(
+            input_ids=input_ids,
             inputs_embeds=input_embeds,
             attention_mask=attention_mask,
             generation_config=generation_config,
