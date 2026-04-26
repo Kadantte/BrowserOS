@@ -118,7 +118,8 @@ Several model-specific adapters are included for MolmoPoint, GroundNext,
 UGround, OS-Atlas, ShowUI, and Qwen3-VL. Local model configs set `dtype` to
 `fp16` and use CPU offload for the larger checkpoints instead of quantization.
 This keeps quality closer to full precision, but timing for offloaded models
-will include CPU-GPU transfer overhead. For gated/private
+will include CPU-GPU transfer overhead. The local runner unloads each HF model
+after its inference and clears the CUDA cache before the next local model. For gated/private
 downloads, set `HF_TOKEN`. For Azure/Foundry-hosted variants, expect an endpoint
 URL plus API key and a dedicated provider adapter.
 

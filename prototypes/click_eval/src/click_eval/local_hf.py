@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import json
 import subprocess
 from contextlib import contextmanager
@@ -60,33 +61,36 @@ class LocalHFClient:
                 f"{model.estimated_vram_gb:.1f}GB"
             )
 
-        adapter = _adapter_for(model)
-        if adapter == "molmopoint":
-            return self._predict_molmopoint(model, image_path, instruction)
-        if adapter == "showui":
-            return self._predict_showui(model, image_path, instruction)
-        if adapter == "groundnext":
-            return self._predict_groundnext(model, image_path, instruction)
-        if adapter == "uground":
-            return self._predict_qwen2_relative_1000(
-                model,
-                image_path,
-                _uground_prompt(instruction),
-                class_names=("Qwen2VLForConditionalGeneration",),
-            )
-        if adapter == "os_atlas_7b":
-            return self._predict_qwen2_relative_1000(
-                model,
-                image_path,
-                _os_atlas_prompt(instruction, "with point"),
-                class_names=("Qwen2VLForConditionalGeneration",),
-            )
-        if adapter == "os_atlas_4b":
-            return self._predict_os_atlas_4b(model, image_path, instruction)
-        if adapter == "qwen3_vl":
-            return self._predict_qwen3_vl(model, image_path, instruction)
+        try:
+            adapter = _adapter_for(model)
+            if adapter == "molmopoint":
+                return self._predict_molmopoint(model, image_path, instruction)
+            if adapter == "showui":
+                return self._predict_showui(model, image_path, instruction)
+            if adapter == "groundnext":
+                return self._predict_groundnext(model, image_path, instruction)
+            if adapter == "uground":
+                return self._predict_qwen2_relative_1000(
+                    model,
+                    image_path,
+                    _uground_prompt(instruction),
+                    class_names=("Qwen2VLForConditionalGeneration",),
+                )
+            if adapter == "os_atlas_7b":
+                return self._predict_qwen2_relative_1000(
+                    model,
+                    image_path,
+                    _os_atlas_prompt(instruction, "with point"),
+                    class_names=("Qwen2VLForConditionalGeneration",),
+                )
+            if adapter == "os_atlas_4b":
+                return self._predict_os_atlas_4b(model, image_path, instruction)
+            if adapter == "qwen3_vl":
+                return self._predict_qwen3_vl(model, image_path, instruction)
 
-        return self._predict_generic(model, image_path, instruction, purpose)
+            return self._predict_generic(model, image_path, instruction, purpose)
+        finally:
+            self._clear_loaded_models()
 
     def gpu_info(self) -> GpuInfo:
         if self._gpu_info is None:
@@ -496,6 +500,23 @@ class LocalHFClient:
     def _log(self, message: str) -> None:
         if self._log_callback is not None:
             self._log_callback(f"[local_hf] {message}")
+
+    def _clear_loaded_models(self) -> None:
+        if self._loaded:
+            self._log("clearing loaded model objects and CUDA cache")
+        self._loaded.clear()
+        gc.collect()
+        try:
+            import torch
+        except ImportError:
+            return
+        if not torch.cuda.is_available():
+            return
+        torch.cuda.empty_cache()
+        try:
+            torch.cuda.ipc_collect()
+        except RuntimeError:
+            pass
 
 
 def detect_gpu() -> GpuInfo:
