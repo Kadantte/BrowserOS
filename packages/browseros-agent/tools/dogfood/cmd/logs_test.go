@@ -11,6 +11,9 @@ import (
 )
 
 func TestPrintLogsShowsDirectoryAndFiles(t *testing.T) {
+	restore := forceColor(t)
+	defer restore()
+
 	devDir := t.TempDir()
 	cfg := config.Config{DevUserDataDir: devDir}
 	logDir := cfg.LogDir()
@@ -30,7 +33,7 @@ func TestPrintLogsShowsDirectoryAndFiles(t *testing.T) {
 
 	got := out.String()
 	for _, want := range []string{
-		"Log directory: " + logDir,
+		"\x1b[1mLog directory:\x1b[22m \x1b[36m" + logDir + "\x1b[0m",
 		filepath.Join(logDir, "chromium.log"),
 		filepath.Join(logDir, "server.log"),
 	} {
@@ -41,6 +44,9 @@ func TestPrintLogsShowsDirectoryAndFiles(t *testing.T) {
 }
 
 func TestPrintLogsHandlesMissingDirectory(t *testing.T) {
+	restore := forceColor(t)
+	defer restore()
+
 	cfg := config.Config{DevUserDataDir: t.TempDir()}
 
 	var out bytes.Buffer
@@ -49,7 +55,7 @@ func TestPrintLogsHandlesMissingDirectory(t *testing.T) {
 	}
 
 	got := out.String()
-	if !strings.Contains(got, "No log files found.") {
+	if !strings.Contains(got, "\x1b[2mNo log files found.\x1b[22m") {
 		t.Fatalf("unexpected output:\n%s", got)
 	}
 }
