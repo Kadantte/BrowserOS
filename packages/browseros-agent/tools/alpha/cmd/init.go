@@ -67,6 +67,9 @@ func prompt(r *bufio.Reader, label string, current string) string {
 }
 
 func chooseProfile(r *bufio.Reader, profiles []profile.BrowserProfile) string {
+	if len(profiles) == 0 {
+		return "Default"
+	}
 	fmt.Printf("Found %d BrowserOS profiles:\n", len(profiles))
 	for i, p := range profiles {
 		email := ""

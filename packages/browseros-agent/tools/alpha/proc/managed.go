@@ -82,10 +82,15 @@ func (mp *ManagedProc) run(ctx context.Context) {
 			continue
 		}
 
+		exited := make(chan struct{})
 		mp.mu.Lock()
 		mp.proc = cmd.Process
-		mp.exited = make(chan struct{})
+		mp.exited = exited
+		cancelled := ctx.Err() != nil
 		mp.mu.Unlock()
+		if cancelled {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+		}
 
 		var streamWg sync.WaitGroup
 		streamWg.Add(2)

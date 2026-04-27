@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"browseros-alpha/internal/fspath"
+
 	"gopkg.in/yaml.v3"
 )
 
@@ -138,7 +140,7 @@ func (c Config) Validate() error {
 	if c.DevUserDataDir == "" || c.DevProfileDir == "" {
 		return fmt.Errorf("dev_user_data_dir and dev_profile_dir are required")
 	}
-	if isSameOrChild(c.DevUserDataDir, c.SourceUserDataDir) {
+	if fspath.IsSameOrChild(c.DevUserDataDir, c.SourceUserDataDir) {
 		return fmt.Errorf("dev_user_data_dir must not equal or live inside source_user_data_dir")
 	}
 	if err := validateRepo(c.AgentRoot()); err != nil {
@@ -224,14 +226,4 @@ func (c *Config) FillProductionEnvDefaults() {
 			c.ProductionEnv.CLI[key] = value
 		}
 	}
-}
-
-func isSameOrChild(child string, parent string) bool {
-	child = filepath.Clean(child)
-	parent = filepath.Clean(parent)
-	if child == parent {
-		return true
-	}
-	rel, err := filepath.Rel(parent, child)
-	return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }

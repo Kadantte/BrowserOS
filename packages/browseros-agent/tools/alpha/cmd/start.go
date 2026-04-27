@@ -128,21 +128,24 @@ func runEnvironment(cfg config.Config, agentRoot string) error {
 	fmt.Println()
 	proc.LogMsg(proc.TagInfo, proc.WarnColor.Sprint("Shutting down (Ctrl+C again to force)..."))
 	cancel()
-	go func() {
-		<-sigCh
-		for _, p := range managed {
-			p.ForceKill()
-		}
-		os.Exit(1)
-	}()
-	for _, p := range managed {
-		p.Stop()
-	}
 	done := make(chan struct{})
 	go func() {
 		wg.Wait()
 		close(done)
 	}()
+	go func() {
+		select {
+		case <-sigCh:
+			for _, p := range managed {
+				p.ForceKill()
+			}
+			os.Exit(1)
+		case <-done:
+		}
+	}()
+	for _, p := range managed {
+		p.Stop()
+	}
 	select {
 	case <-done:
 	case <-time.After(10 * time.Second):

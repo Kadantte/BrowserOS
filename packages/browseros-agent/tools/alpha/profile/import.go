@@ -6,7 +6,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strings"
+
+	"browseros-alpha/internal/fspath"
 )
 
 type ImportConfig struct {
@@ -33,7 +34,7 @@ func Import(cfg ImportConfig) error {
 	if cfg.SourceUserDataDir == "" || cfg.SourceProfileDir == "" || cfg.DevUserDataDir == "" || cfg.DevProfileDir == "" {
 		return fmt.Errorf("source and dev profile paths are required")
 	}
-	if sameOrChild(cfg.DevUserDataDir, cfg.SourceUserDataDir) {
+	if fspath.IsSameOrChild(cfg.DevUserDataDir, cfg.SourceUserDataDir) {
 		return fmt.Errorf("dev user-data dir must not equal or live inside source user-data dir")
 	}
 	sourceProfile := filepath.Join(cfg.SourceUserDataDir, cfg.SourceProfileDir)
@@ -155,14 +156,4 @@ func patchPreferences(path string) error {
 		return err
 	}
 	return os.WriteFile(path, out, 0644)
-}
-
-func sameOrChild(child string, parent string) bool {
-	child = filepath.Clean(child)
-	parent = filepath.Clean(parent)
-	if child == parent {
-		return true
-	}
-	rel, err := filepath.Rel(parent, child)
-	return err == nil && rel != "." && !strings.HasPrefix(rel, "..")
 }
