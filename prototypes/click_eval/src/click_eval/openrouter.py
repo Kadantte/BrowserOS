@@ -14,6 +14,8 @@ from .image_utils import image_data_url, image_size, require_pillow
 from .parsing import parse_point_response
 
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+GPT_POINT_MAX_TOKENS = 8192
+LENGTH_RETRY_MAX_TOKENS = 16384
 
 
 class OpenRouterClient:
@@ -54,7 +56,7 @@ class OpenRouterClient:
         payload = {
             "model": model_id,
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "max_tokens": _max_tokens_for_point_call(model_id, self.max_tokens),
             "messages": [
                 {
                     "role": "system",
@@ -75,12 +77,22 @@ class OpenRouterClient:
                 },
             ],
         }
-        if _disable_reasoning_for_point_call(model_id):
-            payload["reasoning"] = {"effort": "none"}
+        reasoning = _reasoning_for_point_call(model_id)
+        if reasoning is not None:
+            payload["reasoning"] = reasoning
         if _force_json_response_format(model_id):
             payload["response_format"] = {"type": "json_object"}
         raw = self._post(payload)
-        text = _message_text(raw)
+        try:
+            text = _message_text(raw)
+        except RuntimeError:
+            if not _is_null_content_length_response(raw):
+                raise
+            payload["max_tokens"] = max(
+                int(payload.get("max_tokens") or 0), LENGTH_RETRY_MAX_TOKENS
+            )
+            raw = self._post(payload)
+            text = _message_text(raw)
         if image_payload.resized:
             return _rescaled_reply(text, raw, image_payload, width, height)
         return ModelReply(text=text, raw=raw)
@@ -183,12 +195,37 @@ def _message_text(raw: dict[str, Any]) -> str:
     return str(content)
 
 
-def _disable_reasoning_for_point_call(model_id: str) -> bool:
-    return model_id.lower().startswith("z-ai/glm-")
+def _reasoning_for_point_call(model_id: str) -> dict[str, object] | None:
+    lowered = model_id.lower()
+    if lowered.startswith("z-ai/glm-"):
+        return {"effort": "none", "exclude": True}
+    if lowered.startswith("openai/") or "gpt-5" in lowered:
+        effort = os.environ.get("OPENROUTER_GPT_POINT_REASONING_EFFORT", "low")
+        return {"effort": effort, "exclude": True}
+    return None
 
 
 def _force_json_response_format(model_id: str) -> bool:
-    return model_id.lower().startswith("z-ai/glm-")
+    lowered = model_id.lower()
+    return lowered.startswith("z-ai/glm-") or lowered.startswith("openai/")
+
+
+def _max_tokens_for_point_call(model_id: str, default: int) -> int:
+    lowered = model_id.lower()
+    if lowered.startswith("openai/") or "gpt-5" in lowered:
+        return max(default, GPT_POINT_MAX_TOKENS)
+    return default
+
+
+def _is_null_content_length_response(raw: dict[str, Any]) -> bool:
+    try:
+        choice = raw["choices"][0]
+        return (
+            choice.get("finish_reason") == "length"
+            and choice.get("message", {}).get("content") is None
+        )
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return False
 
 
 class _ImagePayload:
