@@ -41,6 +41,11 @@ def main(argv: list[str] | None = None) -> int:
     run_parser.add_argument("--no-progress", action="store_true", help="hide progress/log output")
     run_parser.add_argument("--limit", type=int, help="only run the first N tasks")
     run_parser.add_argument(
+        "--model-limit",
+        type=int,
+        help="only run the first N candidate models",
+    )
+    run_parser.add_argument(
         "--timeout",
         type=int,
         default=60 * 4,
@@ -64,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
                 annotate=not args.no_annotate,
                 fail_fast=args.fail_fast,
                 limit=args.limit,
+                model_limit=args.model_limit,
                 progress=not args.no_progress,
             ),
             client.predict_point,

@@ -226,6 +226,8 @@ python -m click_eval run
 On an interactive terminal, `run` shows tqdm progress bars for tasks and model
 calls. In non-interactive output, it prints plain status lines instead. Use
 `--no-progress` to suppress both.
+Use `--limit N` to run only the first N tasks, and `--model-limit N` to run
+only the first N candidate models.
 
 The CLI also loads `MOONDREAM_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, and
 `OPENROUTER_API_KEY` from a local `.env` file in `prototypes/click_eval/` or

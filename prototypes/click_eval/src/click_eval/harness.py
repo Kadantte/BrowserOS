@@ -32,6 +32,7 @@ class RunOptions:
     annotate: bool = True
     fail_fast: bool = False
     limit: int | None = None
+    model_limit: int | None = None
     progress: bool = True
 
 
@@ -40,6 +41,10 @@ def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, obje
     tasks = load_tasks(options.tasks_path)
     if options.limit is not None:
         tasks = tasks[: options.limit]
+    if options.model_limit is not None:
+        if options.model_limit < 1:
+            raise ValueError("model_limit must be at least 1")
+        candidates = candidates[: options.model_limit]
 
     options.out_dir.mkdir(parents=True, exist_ok=True)
     _log(
