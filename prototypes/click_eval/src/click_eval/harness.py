@@ -82,6 +82,7 @@ def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, obje
             _log(options, f"[{task.task_id}] GT: n/a")
         else:
             _log(options, f"[{task.task_id}] GT: ({gt_point.x:.1f}, {gt_point.y:.1f})")
+        _log_judge_statuses(options, task.task_id, resolved)
         resolved_rows.append(resolved)
         task_image_size = image_size(task.image_path)
         judge_annotations = _judge_annotations(resolved, gt_point)
@@ -349,8 +350,6 @@ def _judge_annotations(
         if not isinstance(row, dict):
             continue
         point = parse_point_value(row.get("point"))
-        if point is None:
-            continue
         annotations.append(
             {
                 "label": f"GT{index}",
@@ -360,12 +359,49 @@ def _judge_annotations(
                 "point": point,
                 "l2": (
                     math.hypot(point.x - gt_point.x, point.y - gt_point.y)
-                    if gt_point is not None
+                    if point is not None and gt_point is not None
                     else None
                 ),
+                "error": row.get("error"),
+                "skipped": row.get("skipped"),
             }
         )
     return annotations
+
+
+def _log_judge_statuses(
+    options: RunOptions, task_id: str, resolved: dict[str, object]
+) -> None:
+    rows = resolved.get("gt_judges")
+    if not isinstance(rows, list):
+        return
+
+    for index, row in enumerate(rows, start=1):
+        if not isinstance(row, dict):
+            continue
+        name = str(row.get("name") or row.get("model_id") or f"judge-{index}")
+        duration = row.get("duration_seconds")
+        duration_text = (
+            f" in {float(duration):.2f}s"
+            if isinstance(duration, int | float)
+            else ""
+        )
+        error = row.get("error")
+        if row.get("skipped"):
+            _log(options, f"[{task_id}] GT{index} {name} skipped{duration_text}: {error}")
+            continue
+        if error:
+            _log(options, f"[{task_id}] GT{index} {name} failed{duration_text}: {error}")
+            continue
+        point = parse_point_value(row.get("point"))
+        if point is None:
+            _log(options, f"[{task_id}] GT{index} {name} finished{duration_text}: no point")
+            continue
+        _log(
+            options,
+            f"[{task_id}] GT{index} {name} finished{duration_text}: "
+            f"({point.x:.1f}, {point.y:.1f})",
+        )
 
 
 def _predict_judges_for_task(

@@ -52,7 +52,8 @@ def annotate_image(
             distance = f"{float(l2):.1f}px" if l2 is not None else "n/a"
             legend_lines.append((f"{label} {model_name}: {distance}", color))
         else:
-            legend_lines.append((f"{label} {model_name}: error", color))
+            error = str(judge.get("error") or "no point")
+            legend_lines.append((f"{label} {model_name}: {_short_text(error)}", color))
 
     for index, prediction in enumerate(predictions):
         color = COLORS[index % len(COLORS)]
@@ -92,3 +93,10 @@ def _draw_legend(draw, lines, font) -> None:
     for index, (text, color) in enumerate(lines):
         y = padding + index * line_height
         draw.text((padding, y), text, fill=color, font=font)
+
+
+def _short_text(text: str, max_chars: int = 80) -> str:
+    compact = " ".join(text.split())
+    if len(compact) <= max_chars:
+        return compact
+    return compact[: max_chars - 1] + "..."
