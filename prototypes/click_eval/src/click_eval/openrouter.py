@@ -63,6 +63,8 @@ class OpenRouterClient:
                 },
             ],
         }
+        if _disable_reasoning_for_point_call(model_id):
+            payload["reasoning"] = {"effort": "none"}
         raw = self._post(payload)
         return ModelReply(text=_message_text(raw), raw=raw)
 
@@ -110,14 +112,19 @@ def _point_prompt(instruction: str, width: int, height: int, purpose: str) -> st
         "Coordinate system: x increases left to right, y increases top to bottom, "
         "origin is the top-left pixel of the screenshot.\n\n"
         f"Instruction: {instruction}\n\n"
-        "Return only this JSON shape, with no markdown:\n"
+        "Choose the center of the target UI element. If your natural output is "
+        "a bounding box, convert it to its center point. Always estimate a point; "
+        "do not answer with a label, description, placeholder, or bounding box.\n\n"
+        "Return only this JSON shape with numeric pixel coordinates, no markdown:\n"
         '{"x": 123, "y": 456, "reason": "short reason"}'
     )
 
 
 def _message_text(raw: dict[str, Any]) -> str:
     try:
-        content = raw["choices"][0]["message"]["content"]
+        choice = raw["choices"][0]
+        message = choice["message"]
+        content = message["content"]
     except (KeyError, IndexError, TypeError) as exc:
         raise RuntimeError(f"Unexpected OpenRouter response shape: {raw}") from exc
 
@@ -130,4 +137,16 @@ def _message_text(raw: dict[str, Any]) -> str:
                 parts.append(str(item.get("text", "")))
         return "\n".join(parts)
 
+    if content is None:
+        finish_reason = choice.get("finish_reason")
+        has_reasoning = bool(message.get("reasoning"))
+        raise RuntimeError(
+            "OpenRouter returned null message.content "
+            f"(finish_reason={finish_reason}, has_reasoning={has_reasoning})"
+        )
+
     return str(content)
+
+
+def _disable_reasoning_for_point_call(model_id: str) -> bool:
+    return model_id.lower().startswith("z-ai/glm-")

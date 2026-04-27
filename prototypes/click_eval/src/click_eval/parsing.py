@@ -45,11 +45,19 @@ def parse_point_value(value: Any) -> Point | None:
 
     if isinstance(value, dict):
         if "x" in value and "y" in value:
-            return _point_from_numbers(value["x"], value["y"])
+            point = _point_from_numbers(value["x"], value["y"])
+            if point is not None:
+                return point
+            for key in ("x", "y"):
+                point = parse_point_value(value[key])
+                if point is not None:
+                    return point
         for key in (
             "point",
             "POINT",
             "click_point",
+            "clickPoint",
+            "target_point",
             "coordinate",
             "Coordinate",
             "coordinates",
@@ -70,35 +78,46 @@ def parse_point_value(value: Any) -> Point | None:
     return None
 
 
+def _strip_thinking(text: str) -> str:
+    marker = "</think>"
+    if marker in text:
+        return text.split(marker, 1)[1].strip()
+    return text
+
+
 def parse_point_response(text: str) -> ParsedPoint:
-    obj_text = _first_json_object(text)
-    value_text = obj_text or _first_tagged_point(text) or _first_sequence(text)
-    if value_text is None:
-        point = _point_from_keyed_text(text)
-        if point is not None:
-            return ParsedPoint(point=point)
-        return ParsedPoint(point=None, error="response did not contain a point value")
+    text = _strip_thinking(text)
+    fallback_error: str | None = None
 
-    obj, error = _parse_structured_value(value_text)
-    if error is not None:
+    for value_text in _structured_value_candidates(text):
+        obj, error = _parse_structured_value(value_text)
+        if error is not None:
+            fallback_error = fallback_error or error
+            point = _point_from_keyed_text(value_text)
+            if point is not None:
+                return ParsedPoint(point=point)
+            continue
+
+        point = parse_point_value(obj)
+        if point is not None:
+            reason = obj.get("reason") if isinstance(obj, dict) else None
+            return ParsedPoint(
+                point=point, reason=str(reason) if reason is not None else None
+            )
+
         point = _point_from_keyed_text(value_text)
-        if point is None and value_text != text:
-            point = _point_from_keyed_text(text)
         if point is not None:
             return ParsedPoint(point=point)
-        return ParsedPoint(point=None, error=error)
+        fallback_error = fallback_error or "response did not contain numeric x/y"
 
-    point = parse_point_value(obj)
-    if point is None:
-        point = _point_from_keyed_text(value_text)
-        if point is None and value_text != text:
-            point = _point_from_keyed_text(text)
-        if point is not None:
-            return ParsedPoint(point=point)
-        return ParsedPoint(point=None, error="response did not contain numeric x/y")
+    point = _point_from_keyed_text(text)
+    if point is not None:
+        return ParsedPoint(point=point)
 
-    reason = obj.get("reason") if isinstance(obj, dict) else None
-    return ParsedPoint(point=point, reason=str(reason) if reason is not None else None)
+    return ParsedPoint(
+        point=None,
+        error=fallback_error or "response did not contain a point value",
+    )
 
 
 def _point_from_numbers(x_value: Any, y_value: Any) -> Point | None:
@@ -184,6 +203,43 @@ def _parse_structured_value(text: str) -> tuple[Any | None, str | None]:
             )
 
 
+def _structured_value_candidates(text: str) -> list[str]:
+    candidates: list[str] = []
+    seen: set[str] = set()
+
+    def add(value: str | None) -> None:
+        if value is None:
+            return
+        stripped = value.strip()
+        if not stripped or stripped in seen:
+            return
+        seen.add(stripped)
+        candidates.append(stripped)
+
+    for fenced in re.finditer(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL):
+        add(fenced.group(1))
+
+    for tagged in re.finditer(
+        r"<\|(?:point|box)_start\|>\s*(.*?)\s*<\|(?:point|box)_end\|>",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    ):
+        add(tagged.group(1))
+
+    for tagged in re.finditer(
+        r"<(?:point|box)[^>]*>\s*(.*?)\s*</(?:point|box)>",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    ):
+        add(tagged.group(1))
+
+    for opener, closer in (("{", "}"), ("[", "]"), ("(", ")")):
+        for value in _balanced_values(text, opener, closer):
+            add(value)
+
+    return candidates
+
+
 def _first_json_object(text: str) -> str | None:
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, flags=re.DOTALL)
     if fenced:
@@ -221,7 +277,26 @@ def _first_balanced(text: str, opener: str, closer: str) -> str | None:
     start = text.find(opener)
     if start == -1:
         return None
+    return _balanced_from(text, start, opener, closer)
 
+
+def _balanced_values(text: str, opener: str, closer: str) -> list[str]:
+    values: list[str] = []
+    index = 0
+    while index < len(text):
+        start = text.find(opener, index)
+        if start == -1:
+            break
+        value = _balanced_from(text, start, opener, closer)
+        if value is None:
+            index = start + 1
+            continue
+        values.append(value)
+        index = start + len(value)
+    return values
+
+
+def _balanced_from(text: str, start: int, opener: str, closer: str) -> str | None:
     depth = 0
     in_string = False
     escaped = False

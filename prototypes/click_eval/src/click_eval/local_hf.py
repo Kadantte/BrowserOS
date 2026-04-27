@@ -142,7 +142,7 @@ class LocalHFClient:
         image = _open_rgb_image(image_path)
         width, height = image.size
         prompt = _relative_1000_prompt(instruction)
-        inputs = _build_inputs(processor, image, prompt)
+        inputs = _build_qwen3_vl_inputs(processor, image, prompt, model)
         text = self._generate_text(torch, processor, hf_model, inputs, model)
         return self._scaled_reply(
             model, text, width, height, coordinate_max=1000, adapter="qwen3_vl"
@@ -1081,6 +1081,41 @@ def _build_inputs(processor, image, prompt: str):
     return processor(images=image, text=prompt, return_tensors="pt")
 
 
+def _build_qwen3_vl_inputs(processor, image, prompt: str, model: ModelSpec):
+    messages = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "image": image},
+                {"type": "text", "text": prompt},
+            ],
+        }
+    ]
+    apply_chat_template = getattr(processor, "apply_chat_template", None)
+    if apply_chat_template is not None:
+        kwargs = {
+            "tokenize": True,
+            "add_generation_prompt": True,
+            "return_dict": True,
+            "return_tensors": "pt",
+        }
+        if _is_thinking_model(model):
+            try:
+                return apply_chat_template(messages, thinking=False, **kwargs)
+            except TypeError:
+                pass
+        try:
+            return apply_chat_template(messages, **kwargs)
+        except TypeError:
+            pass
+
+    return processor(images=image, text=prompt, return_tensors="pt")
+
+
+def _is_thinking_model(model: ModelSpec) -> bool:
+    return "thinking" in model.name.lower() or "thinking" in model.model_id.lower()
+
+
 def _qwen_messages_to_inputs(processor, messages):
     try:
         from qwen_vl_utils import process_vision_info
@@ -1484,9 +1519,8 @@ def _uground_prompt(instruction: str) -> str:
 
 def _os_atlas_prompt(instruction: str, suffix: str) -> str:
     return (
-        "In the screenshot of this web page, please give me the coordinates of "
-        f'the element I want to click on according to my instructions({suffix}).\n'
-        f'"{instruction}"'
+        "In this UI screenshot, what is the position of the element "
+        f'corresponding to the command "{instruction}" ({suffix})?'
     )
 
 
@@ -1687,7 +1721,7 @@ def _patch_os_atlas_generate_without_cache(hf_model) -> None:
                 generation_config.use_cache = False
             except AttributeError:
                 pass
-        return self.language_model.generate(
+        generated = self.language_model.generate(
             input_ids=input_ids,
             inputs_embeds=input_embeds,
             attention_mask=attention_mask,
@@ -1697,6 +1731,13 @@ def _patch_os_atlas_generate_without_cache(hf_model) -> None:
             use_cache=False,
             **generate_kwargs,
         )
+        if (
+            input_ids is not None
+            and hasattr(generated, "shape")
+            and generated.shape[-1] > input_ids.shape[-1]
+        ):
+            return generated[:, input_ids.shape[-1] :]
+        return generated
 
     hf_model.generate = MethodType(generate_without_cache, hf_model)
     hf_model._click_eval_no_cache_generate = True
@@ -1809,6 +1850,8 @@ def _adapter_for(model: ModelSpec) -> str:
         marker in model_id
         for marker in ("qwen3-vl", "gui-owl-1.5", "kv-ground", "ui-venus", "holo2")
     ):
+        return "qwen3_vl"
+    if "mai-ui" in model_id:
         return "qwen3_vl"
     return "generic"
 

@@ -19,15 +19,33 @@ Create a JSONL task file:
 ```
 
 `image_path` is resolved relative to the task file. If `gt_point` is absent,
-the judge model is called once and the resolved coordinate is cached in the run
-output.
+the configured judge model(s) are called and the resolved coordinate is cached
+in the run output. With multiple successful judges, the harness uses the
+coordinate-wise median point and stores every judge response in
+`resolved_tasks.jsonl`.
 
 The default model config is `examples/models.json`. The abbreviated cloud/API
 portion is:
 
 ```json
 {
-  "judge_model": "anthropic/claude-opus-4.7",
+  "judge_models": [
+    {
+      "name": "claude-opus-4.7-judge",
+      "provider": "openrouter",
+      "model": "anthropic/claude-opus-4.7"
+    },
+    {
+      "name": "gpt-5.5-judge",
+      "provider": "openrouter",
+      "model": "openai/gpt-5.5"
+    },
+    {
+      "name": "gemini-3.1-pro-judge",
+      "provider": "openrouter",
+      "model": "google/gemini-3.1-pro-preview"
+    }
+  ],
   "candidate_models": [
     {
       "name": "qwen3-vl-8b-instruct",
@@ -63,7 +81,14 @@ portion is:
 
 The `name` is only the short label shown in plots and summary files. OpenRouter
 is the default provider, but the examples keep it explicit for routability
-audits. The active OpenRouter click-model shortlist was checked against
+audits. The default judge IDs were checked against
+`https://openrouter.ai/api/v1/models` on 2026-04-27 and are:
+
+- `anthropic/claude-opus-4.7`
+- `openai/gpt-5.5`
+- `google/gemini-3.1-pro-preview`
+
+The active OpenRouter click-model shortlist was checked against
 `https://openrouter.ai/api/v1/models` on 2026-04-26 and includes:
 
 - `qwen/qwen3-vl-8b-instruct`
@@ -97,7 +122,7 @@ recorded as skipped with the CUDA detection reason.
 | `InfiX-ai/InfiGUI-G1-3B` | Hugging Face | Included as `local_hf`; outputs JSON `point_2d` coordinates after Qwen smart resize. |
 | `InfiX-ai/InfiGUI-G1-7B` | Hugging Face | Included as `local_hf`; outputs JSON `point_2d` coordinates after Qwen smart resize. |
 | `tencent/POINTS-GUI-G` | Hugging Face | Included as `local_hf`; outputs normalized `(x, y)` coordinates and needs `WePOINTS`. |
-| `Tongyi-MAI/MAI-UI-8B` | Hugging Face | Included as `local_hf`; may need `HF_TOKEN` depending on access. |
+| `Tongyi-MAI/MAI-UI-8B` | Hugging Face | Included as `local_hf`; Qwen3-VL GUI agent, may need `HF_TOKEN` depending on access. |
 | `allenai/MolmoPoint-GUI-8B` | Hugging Face | Included as `local_hf`; outputs pointing tokens, so model-specific parser tuning may improve results. |
 | `microsoft/Fara-7B` | Hugging Face and Microsoft Foundry | Included as `local_hf`; Foundry use would need endpoint credentials and a separate adapter. |
 | `ServiceNow/GroundNext-7B-V0` | Hugging Face and Azure AI Foundry | Included as `local_hf`; Azure use would need endpoint credentials and a separate adapter. |
@@ -146,7 +171,7 @@ means a misconfigured container where `nvidia-smi` works but `torch.cuda` does
 not will be skipped instead of silently running an 8B model on CPU. Local
 generation uses the CLI `--timeout` value as the Transformers `max_time` budget.
 Several model-specific adapters are included for MolmoPoint, GroundNext,
-UGround, OS-Atlas, ShowUI, Qwen3-VL, OpenCUA, GTA1, InfiGUI, and POINTS-GUI-G.
+UGround, OS-Atlas, ShowUI, Qwen3-VL/MAI-UI, OpenCUA, GTA1, InfiGUI, and POINTS-GUI-G.
 Local model configs use `fp16` and CPU offload for the larger checkpoints
 instead of quantization. MolmoPoint is the
 exception: its official inference path uses BF16 autocast, and FP16 overflows in
@@ -215,9 +240,10 @@ During a run, the CLI shows progress bars for tasks and per-task candidate model
 calls. It also prints compact status lines for GT resolution, provider/model
 calls, prediction failures, and the output directory.
 
-OpenRouter candidate calls are sent concurrently in bounded batches of 4. Local
-HF/GPU candidates stay synchronous and serial to avoid GPU memory contention;
-Moondream, Gemini, and GT resolution also remain synchronous.
+OpenRouter candidate calls and OpenRouter GT judges are sent concurrently in
+bounded batches of 4. Local HF/GPU candidates stay synchronous and serial to
+avoid GPU memory contention; Moondream and Gemini provider calls remain
+synchronous.
 
 Outputs:
 

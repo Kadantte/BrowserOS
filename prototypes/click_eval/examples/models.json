@@ -1,5 +1,21 @@
 {
-  "judge_model": "anthropic/claude-opus-4.7",
+  "judge_models": [
+    {
+      "name": "claude-opus-4.7-judge",
+      "provider": "openrouter",
+      "model": "anthropic/claude-opus-4.7"
+    },
+    {
+      "name": "gpt-5.5-judge",
+      "provider": "openrouter",
+      "model": "openai/gpt-5.5"
+    },
+    {
+      "name": "gemini-3.1-pro-judge",
+      "provider": "openrouter",
+      "model": "google/gemini-3.1-pro-preview"
+    }
+  ],
   "candidate_models": [
     {
       "name": "qwen3-vl-8b-instruct",
@@ -244,9 +260,12 @@
       "name": "mai-ui-8b-local",
       "provider": "local_hf",
       "model": "Tongyi-MAI/MAI-UI-8B",
+      "adapter": "qwen3_vl",
       "dtype": "fp16",
       "allow_cpu_offload": true,
-      "estimated_vram_gb": 24
+      "estimated_vram_gb": 24,
+      "max_pixels": 1310720,
+      "max_new_tokens": 128
     },
     {
       "name": "molmopoint-gui-8b-local",

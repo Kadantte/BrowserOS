@@ -35,7 +35,7 @@ class RunOptions:
 
 
 def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, object]:
-    judge, candidates, config = load_model_config(options.models_path)
+    judges, candidates, config = load_model_config(options.models_path)
     tasks = load_tasks(options.tasks_path)
     if options.limit is not None:
         tasks = tasks[: options.limit]
@@ -55,16 +55,12 @@ def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, obje
     for task in task_iter:
         if task.gt_point is not None:
             _log(options, f"[{task.task_id}] Using provided GT")
-        elif judge is not None:
-            _log(
-                options,
-                f"[{task.task_id}] Resolving GT with {judge.name} "
-                f"({judge.provider}/{judge.model_id})",
-            )
+        elif judges:
+            _log(options, _judge_log_message(task.task_id, judges))
         else:
             _log(options, f"[{task.task_id}] Resolving GT")
         try:
-            gt_point, resolved = _resolve_ground_truth(task, judge, predict_point)
+            gt_point, resolved = _resolve_ground_truth(task, judges, predict_point)
         except Exception as exc:
             _log(options, f"[{task.task_id}] GT failed: {exc}")
             if options.fail_fast:
@@ -118,11 +114,12 @@ def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, obje
     summary = {
         "tasks": len(tasks),
         "models": [model.name for model in candidates],
-        "judge_model": judge.model_id if judge else None,
+        "judge_model": judges[0].model_id if len(judges) == 1 else None,
+        "judge_models": [judge.model_id for judge in judges],
         "config": {
             key: value
             for key, value in config.items()
-            if key not in {"candidate_models", "judge_model"}
+            if key not in {"candidate_models", "judge_model", "judge_models"}
         },
         "summary": summarize_scores(score_rows),
         "result_rows": _build_result_rows(score_rows),
@@ -205,27 +202,154 @@ def _predict_openrouter_candidates(
         return [future.result() for future in futures]
 
 
-def _resolve_ground_truth(task, judge: ModelSpec | None, predict_point: PredictPoint):
+def _resolve_ground_truth(
+    task, judges: list[ModelSpec], predict_point: PredictPoint
+) -> tuple[Point, dict[str, object]]:
     resolved = dict(task.raw)
     if task.gt_point is not None:
         resolved["gt_point"] = task.gt_point.as_list()
         return task.gt_point, resolved
 
-    if judge is None:
+    if not judges:
         raise RuntimeError(
-            f"{task.task_id}: missing gt_point and no judge_model configured"
+            f"{task.task_id}: missing gt_point and no judge model configured"
         )
 
-    reply = predict_point(judge, task.image_path, task.instruction, "ground_truth")
-    parsed = parse_point_response(reply.text)
-    if parsed.point is None:
-        raise RuntimeError(f"{task.task_id}: judge failed: {parsed.error}")
+    successful: list[tuple[ModelSpec, Point, str | None, str]] = []
+    judge_results = _predict_judges_for_task(task, judges, predict_point)
+    judge_rows = [row for row, _point, _reason, _raw_text in judge_results]
+    for judge, (row, point, reason, raw_text) in zip(
+        judges, judge_results, strict=True
+    ):
+        if point is not None:
+            successful.append((judge, point, reason, raw_text))
 
-    resolved["gt_point"] = parsed.point.as_list()
-    resolved["gt_model"] = judge.model_id
-    resolved["gt_reason"] = parsed.reason
-    resolved["gt_raw_text"] = reply.text
-    return parsed.point, resolved
+    if not successful:
+        errors = "; ".join(
+            f"{row.get('name')}: {row.get('error')}" for row in judge_rows
+        )
+        raise RuntimeError(f"{task.task_id}: all judges failed: {errors}")
+
+    gt_point = _median_point([point for _judge, point, _reason, _raw in successful])
+    resolved["gt_point"] = gt_point.as_list()
+    resolved["gt_judges"] = judge_rows
+    resolved["gt_models"] = [
+        judge.model_id for judge, _point, _reason, _raw in successful
+    ]
+    if len(successful) == 1:
+        judge, _point, reason, raw_text = successful[0]
+        resolved["gt_model"] = judge.model_id
+        resolved["gt_reason"] = reason
+        resolved["gt_raw_text"] = raw_text
+    else:
+        resolved["gt_model"] = "judge_median"
+        resolved["gt_reason"] = f"median of {len(successful)} successful judge points"
+    return gt_point, resolved
+
+
+def _predict_judge(
+    task,
+    judge: ModelSpec,
+    predict_point: PredictPoint,
+) -> tuple[dict[str, object], Point | None, str | None, str]:
+    row: dict[str, object] = {
+        "name": judge.name,
+        "provider": judge.provider,
+        "model_id": judge.model_id,
+        "point": None,
+        "reason": None,
+        "raw_text": None,
+        "error": None,
+        "skipped": False,
+        "duration_seconds": None,
+    }
+    started = time.perf_counter()
+    try:
+        reply = predict_point(judge, task.image_path, task.instruction, "ground_truth")
+    except ModelSkipped as exc:
+        row["duration_seconds"] = time.perf_counter() - started
+        row["skipped"] = True
+        row["error"] = str(exc)
+        return row, None, None, ""
+    except Exception as exc:
+        row["duration_seconds"] = time.perf_counter() - started
+        row["error"] = str(exc)
+        return row, None, None, ""
+
+    row["duration_seconds"] = time.perf_counter() - started
+    parsed = parse_point_response(reply.text)
+    row["raw_text"] = reply.text
+    row["reason"] = parsed.reason
+    if parsed.point is None:
+        row["error"] = parsed.error
+        return row, None, parsed.reason, reply.text
+
+    row["point"] = parsed.point.as_list()
+    return row, parsed.point, parsed.reason, reply.text
+
+
+def _median_point(points: list[Point]) -> Point:
+    return Point(
+        x=float(statistics.median(point.x for point in points)),
+        y=float(statistics.median(point.y for point in points)),
+    )
+
+
+def _judge_log_message(task_id: str, judges: list[ModelSpec]) -> str:
+    if len(judges) == 1:
+        judge = judges[0]
+        return (
+            f"[{task_id}] Resolving GT with {judge.name} "
+            f"({judge.provider}/{judge.model_id})"
+        )
+    names = ", ".join(judge.name for judge in judges)
+    return f"[{task_id}] Resolving GT with {len(judges)} judges: {names}"
+
+
+def _predict_judges_for_task(
+    task,
+    judges: list[ModelSpec],
+    predict_point: PredictPoint,
+) -> list[tuple[dict[str, object], Point | None, str | None, str]]:
+    results: list[tuple[dict[str, object], Point | None, str | None, str] | None] = [
+        None
+    ] * len(judges)
+    start = 0
+    while start < len(judges):
+        judge = judges[start]
+        if judge.provider.lower() == "openrouter":
+            end = start + 1
+            while (
+                end < len(judges)
+                and judges[end].provider.lower() == "openrouter"
+            ):
+                end += 1
+            group_results = _predict_openrouter_judges(
+                task, judges[start:end], predict_point
+            )
+            for offset, result in enumerate(group_results):
+                results[start + offset] = result
+            start = end
+            continue
+
+        results[start] = _predict_judge(task, judge, predict_point)
+        start += 1
+
+    return [result for result in results if result is not None]
+
+
+def _predict_openrouter_judges(
+    task,
+    judges: list[ModelSpec],
+    predict_point: PredictPoint,
+) -> list[tuple[dict[str, object], Point | None, str | None, str]]:
+    max_workers = min(OPENROUTER_CANDIDATE_CONCURRENCY, len(judges))
+    with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [
+            executor.submit(_predict_judge, task, judge, predict_point)
+            for judge in judges
+        ]
+        return [future.result() for future in futures]
 
 
 def _predict_candidate(

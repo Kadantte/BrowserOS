@@ -59,18 +59,36 @@ def load_tasks(path: Path) -> list[ClickTask]:
     return tasks
 
 
-def load_model_config(path: Path) -> tuple[ModelSpec | None, list[ModelSpec], dict[str, Any]]:
+def load_model_config(
+    path: Path,
+) -> tuple[list[ModelSpec], list[ModelSpec], dict[str, Any]]:
     config = json.loads(path.read_text(encoding="utf-8"))
-    judge = None
-    if config.get("judge_model"):
-        judge = _model_spec(config["judge_model"], default_name="judge")
+    judges = _judge_specs(config)
 
     candidate_entries = config.get("candidate_models") or []
     candidates = [_model_spec(entry) for entry in candidate_entries]
     if not candidates:
         raise ValueError(f"{path}: candidate_models must contain at least one model")
 
-    return judge, candidates, config
+    return judges, candidates, config
+
+
+def _judge_specs(config: dict[str, Any]) -> list[ModelSpec]:
+    if "judge_models" in config:
+        entries = config.get("judge_models") or []
+        if isinstance(entries, (str, dict)):
+            entries = [entries]
+        if not isinstance(entries, list):
+            raise ValueError("judge_models must be a model entry or list of entries")
+        return [
+            _model_spec(entry, default_name=f"judge-{index}")
+            for index, entry in enumerate(entries, start=1)
+        ]
+
+    if config.get("judge_model"):
+        return [_model_spec(config["judge_model"], default_name="judge")]
+
+    return []
 
 
 def _model_spec(entry: Any, default_name: str | None = None) -> ModelSpec:
