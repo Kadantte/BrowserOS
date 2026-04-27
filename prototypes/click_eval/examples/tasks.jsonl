@@ -1,3 +1,3 @@
-{"task_id":"hn_second_comments","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the comments link under the second item.","gt_point":[433.1,101.5]}
-{"task_id":"hn_7th_title_link","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the title link of the 7th post.","gt_point":[332.9,261.5]}
-{"task_id":"hn_19th_hide","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the hide link on the 19th post.","gt_point":[360.1,696.5]}
+{"task_id":"hn_second_comments","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the comments link under the second item.","gt_point":[442.8,101.5]}
+{"task_id":"hn_7th_title_link","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the title link of the 7th post.","gt_point":[359.2,261.5]}
+{"task_id":"hn_19th_hide","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the hide link on the 19th post.","gt_point":[354.9,696.5]}
