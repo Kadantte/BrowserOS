@@ -24,6 +24,11 @@ left unscored: judge outputs are recorded for inspection, but no median fallback
 GT is created and no green `GT` marker is rendered. If `gt_point` is present,
 that provided point is the scoring GT.
 
+The bundled Hacker News sample screenshot is captured at `1280x768` DPR 1. That
+keeps the image under the common `1280 * 28 * 28` Qwen-derived pixel budget used
+by several local GUI models while preserving enough vertical context for desktop
+web tasks.
+
 The default model config is `examples/models.json`. The abbreviated cloud/API
 portion is:
 
