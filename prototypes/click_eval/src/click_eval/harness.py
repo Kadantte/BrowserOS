@@ -64,9 +64,9 @@ def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, obje
         elif task.gt_point is not None:
             _log(options, f"[{task.task_id}] Using provided GT")
         elif judges:
-            _log(options, _judge_log_message(task.task_id, judges))
+            _log(options, _judge_overlay_without_gt_log_message(task.task_id, judges))
         else:
-            _log(options, f"[{task.task_id}] Resolving GT")
+            _log(options, f"[{task.task_id}] No GT; scoring will be n/a")
         try:
             gt_point, resolved = _resolve_ground_truth(task, judges, predict_point)
         except Exception as exc:
@@ -78,7 +78,10 @@ def run_eval(options: RunOptions, predict_point: PredictPoint) -> dict[str, obje
             resolved_rows.append(resolved)
             continue
 
-        _log(options, f"[{task.task_id}] GT: ({gt_point.x:.1f}, {gt_point.y:.1f})")
+        if gt_point is None:
+            _log(options, f"[{task.task_id}] GT: n/a")
+        else:
+            _log(options, f"[{task.task_id}] GT: ({gt_point.x:.1f}, {gt_point.y:.1f})")
         resolved_rows.append(resolved)
         task_image_size = image_size(task.image_path)
         judge_annotations = _judge_annotations(resolved, gt_point)
@@ -214,7 +217,7 @@ def _predict_openrouter_candidates(
 
 def _resolve_ground_truth(
     task, judges: list[ModelSpec], predict_point: PredictPoint
-) -> tuple[Point, dict[str, object]]:
+) -> tuple[Point | None, dict[str, object]]:
     resolved = dict(task.raw)
     if task.gt_point is not None:
         resolved["gt_point"] = task.gt_point.as_list()
@@ -228,33 +231,19 @@ def _resolve_ground_truth(
             resolved["gt_reason"] = "provided gt_point; judges recorded for overlay"
         return task.gt_point, resolved
 
-    if not judges:
-        raise RuntimeError(
-            f"{task.task_id}: missing gt_point and no judge model configured"
+    resolved["gt_point"] = None
+    resolved["gt_model"] = None
+    resolved["gt_reason"] = "missing gt_point; candidates are unscored"
+    if judges:
+        judge_rows, successful = _resolve_judges(task, judges, predict_point)
+        resolved["gt_judges"] = judge_rows
+        resolved["gt_models"] = [
+            judge.model_id for judge, _point, _reason, _raw in successful
+        ]
+        resolved["gt_reason"] = (
+            "missing gt_point; judges recorded for overlay only"
         )
-
-    judge_rows, successful = _resolve_judges(task, judges, predict_point)
-    if not successful:
-        errors = "; ".join(
-            f"{row.get('name')}: {row.get('error')}" for row in judge_rows
-        )
-        raise RuntimeError(f"{task.task_id}: all judges failed: {errors}")
-
-    gt_point = _median_point([point for _judge, point, _reason, _raw in successful])
-    resolved["gt_point"] = gt_point.as_list()
-    resolved["gt_judges"] = judge_rows
-    resolved["gt_models"] = [
-        judge.model_id for judge, _point, _reason, _raw in successful
-    ]
-    if len(successful) == 1:
-        judge, _point, reason, raw_text = successful[0]
-        resolved["gt_model"] = judge.model_id
-        resolved["gt_reason"] = reason
-        resolved["gt_raw_text"] = raw_text
-    else:
-        resolved["gt_model"] = "judge_median"
-        resolved["gt_reason"] = f"median of {len(successful)} successful judge points"
-    return gt_point, resolved
+    return None, resolved
 
 
 def _resolve_judges(
@@ -340,8 +329,16 @@ def _judge_overlay_log_message(task_id: str, judges: list[ModelSpec]) -> str:
     )
 
 
+def _judge_overlay_without_gt_log_message(task_id: str, judges: list[ModelSpec]) -> str:
+    names = ", ".join(judge.name for judge in judges)
+    return (
+        f"[{task_id}] No GT; resolving {len(judges)} judge overlay(s) "
+        f"without scoring fallback: {names}"
+    )
+
+
 def _judge_annotations(
-    resolved: dict[str, object], gt_point: Point
+    resolved: dict[str, object], gt_point: Point | None
 ) -> list[dict[str, object]]:
     rows = resolved.get("gt_judges")
     if not isinstance(rows, list):
@@ -361,7 +358,11 @@ def _judge_annotations(
                     row.get("name") or row.get("model_id") or f"judge-{index}"
                 ),
                 "point": point,
-                "l2": math.hypot(point.x - gt_point.x, point.y - gt_point.y),
+                "l2": (
+                    math.hypot(point.x - gt_point.x, point.y - gt_point.y)
+                    if gt_point is not None
+                    else None
+                ),
             }
         )
     return annotations
@@ -548,7 +549,9 @@ def _result_status(total: int, scored: int, errors: int, skipped: int) -> str:
         return "error"
     if skipped:
         return "skipped"
-    return "error"
+    if scored == 0:
+        return "unscored"
+    return "ok"
 
 
 def _result_reason(rows: list[dict[str, object]], status: str) -> str:

@@ -25,7 +25,7 @@ JUDGE_COLORS = [
 def annotate_image(
     image_path: Path,
     output_path: Path,
-    gt_point: Point,
+    gt_point: Point | None,
     predictions: list[dict[str, Any]],
     judge_points: list[dict[str, Any]] | None = None,
 ) -> None:
@@ -35,9 +35,11 @@ def annotate_image(
 
     draw = ImageDraw.Draw(image)
     font = ImageFont.load_default()
-    legend_lines: list[tuple[str, tuple[int, int, int]]] = [("GT", GT_COLOR)]
+    legend_lines: list[tuple[str, tuple[int, int, int]]] = []
 
-    _draw_marker(draw, gt_point, GT_COLOR, "GT")
+    if gt_point is not None:
+        legend_lines.append(("GT", GT_COLOR))
+        _draw_marker(draw, gt_point, GT_COLOR, "GT")
 
     for index, judge in enumerate(judge_points or []):
         color = JUDGE_COLORS[index % len(JUDGE_COLORS)]
@@ -80,6 +82,8 @@ def _draw_marker(draw, point: Point, color: tuple[int, int, int], label: str) ->
 
 
 def _draw_legend(draw, lines, font) -> None:
+    if not lines:
+        return
     padding = 6
     line_height = 14
     width = max(90, max(len(text) for text, _ in lines) * 7 + padding * 2)

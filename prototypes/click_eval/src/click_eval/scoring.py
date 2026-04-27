@@ -13,7 +13,7 @@ THRESHOLDS = (10, 25, 50)
 def score_point(
     task_id: str,
     model_name: str,
-    gt: Point,
+    gt: Point | None,
     pred: Point | None,
     image_size: tuple[int, int],
     error: str | None = None,
@@ -21,8 +21,8 @@ def score_point(
     row: dict[str, Any] = {
         "task_id": task_id,
         "model": model_name,
-        "gt_x": gt.x,
-        "gt_y": gt.y,
+        "gt_x": gt.x if gt is not None else "",
+        "gt_y": gt.y if gt is not None else "",
         "pred_x": "",
         "pred_y": "",
         "dx": "",
@@ -37,6 +37,10 @@ def score_point(
     if pred is None:
         return row
 
+    row.update({"pred_x": pred.x, "pred_y": pred.y})
+    if gt is None:
+        return row
+
     dx = pred.x - gt.x
     dy = pred.y - gt.y
     l2 = math.hypot(dx, dy)
@@ -45,8 +49,6 @@ def score_point(
 
     row.update(
         {
-            "pred_x": pred.x,
-            "pred_y": pred.y,
             "dx": dx,
             "dy": dy,
             "l2": l2,

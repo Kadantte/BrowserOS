@@ -13,8 +13,6 @@ from .contracts import ModelReply, Point
 from .image_utils import image_size, require_pillow
 
 OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses"
-MAX_DISPLAY_WIDTH = 1280
-MAX_DISPLAY_HEIGHT = 800
 
 
 class OpenAIComputerUseClient:
@@ -40,7 +38,7 @@ class OpenAIComputerUseClient:
         purpose: str,
     ) -> ModelReply:
         original_width, original_height = image_size(image_path)
-        screenshot = _scaled_screenshot(image_path, MAX_DISPLAY_WIDTH, MAX_DISPLAY_HEIGHT)
+        screenshot = _original_screenshot(image_path)
         raw = self._post(
             {
                 "model": model_id,
@@ -124,17 +122,10 @@ class _ScaledScreenshot:
         self.data_url = data_url
 
 
-def _scaled_screenshot(path: Path, max_width: int, max_height: int) -> _ScaledScreenshot:
+def _original_screenshot(path: Path) -> _ScaledScreenshot:
     Image, _, _ = require_pillow()
     with Image.open(path) as source:
         image = source.convert("RGB")
-    width, height = image.size
-    scale = min(max_width / width, max_height / height, 1.0)
-    if scale < 1.0:
-        image = image.resize(
-            (max(1, round(width * scale)), max(1, round(height * scale))),
-            Image.Resampling.LANCZOS,
-        )
     buffer = io.BytesIO()
     image.save(buffer, format="PNG")
     encoded = base64.b64encode(buffer.getvalue()).decode("ascii")

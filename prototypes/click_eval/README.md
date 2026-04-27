@@ -19,10 +19,10 @@ Create a JSONL task file:
 ```
 
 `image_path` is resolved relative to the task file. Configured judge model(s)
-are called and cached in the run output. If `gt_point` is absent, the harness
-uses the coordinate-wise median point from successful judges as the scoring GT.
-If `gt_point` is present, that provided point remains the scoring GT and judge
-outputs are still recorded for inspection.
+are called and cached in the run output. If `gt_point` is absent, the task is
+left unscored: judge outputs are recorded for inspection, but no median fallback
+GT is created and no green `GT` marker is rendered. If `gt_point` is present,
+that provided point is the scoring GT.
 
 The default model config is `examples/models.json`. The abbreviated cloud/API
 portion is:
@@ -251,8 +251,8 @@ image exceeds Claude's no-resize long-edge limit, then remap parsed coordinates
 from the resized image back to original screenshot pixels. Claude Opus 4.7 uses a
 2576 px long-edge target; older Claude models use 1568 px.
 OpenAI Computer Use calls use the Responses API with `computer_use_preview`,
-request `detail: "original"`, return a `click` action, and remap from a
-downscaled display back to original screenshot pixels.
+request `detail: "original"`, send the original screenshot dimensions, and
+return a `click` action in that display coordinate space.
 The default Gemini candidate uses OpenRouter's regular multimodal chat API and
 the same JSON point prompt as the other OpenRouter VLMs. Native Gemini Computer
 Use support remains available for manually configured `provider: "gemini"`
@@ -269,12 +269,12 @@ synchronous.
 
 Outputs:
 
-- `resolved_tasks.jsonl`: task manifest with cached `gt_point`
+- `resolved_tasks.jsonl`: task manifest with `gt_point` when provided
 - `predictions.jsonl`: raw candidate responses and parsed points
-- `scores.csv`: per-task L2 distances and threshold hits
+- `scores.csv`: per-task L2 distances when a scoring GT is available
 - `summary.json`: aggregate metrics per model
-- `annotated/*.png`: screenshot overlays with GT, judge points (`GT1`, `GT2`,
-  ...), and candidate predictions
+- `annotated/*.png`: screenshot overlays with the scoring `GT` when present,
+  judge points (`GT1`, `GT2`, ...), and candidate predictions
 
 `predictions.jsonl`, `scores.csv`, and `summary.json` include per-model
 `duration_seconds` timing fields. Skipped local models are marked with
