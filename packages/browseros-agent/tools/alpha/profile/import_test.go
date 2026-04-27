@@ -17,7 +17,7 @@ func TestImportCopiesAllowlistAndLocalState(t *testing.T) {
 	  "profile": {
 	    "info_cache": {
 	      "Default": {"name": "Personal", "user_name": "me@example.com"},
-	      "Profile 25": {"name": "Nithin", "user_name": "work@example.com"}
+	      "Profile 25": {"name": "Sam", "user_name": "sam@example.test"}
 	    },
 	    "last_used": "Default",
 	    "last_active_profiles": ["Default", "Profile 25"],
@@ -87,7 +87,7 @@ func assertImportedLocalState(t *testing.T, path string) {
 		t.Fatalf("expected one dev profile in info_cache, got %#v", infoCache)
 	}
 	selected := infoCache["Default"].(map[string]any)
-	if selected["name"] != "Nithin" || selected["user_name"] != "work@example.com" {
+	if selected["name"] != "Sam" || selected["user_name"] != "sam@example.test" {
 		t.Fatalf("selected profile metadata not remapped: %#v", selected)
 	}
 	if profile["last_used"] != "Default" {
