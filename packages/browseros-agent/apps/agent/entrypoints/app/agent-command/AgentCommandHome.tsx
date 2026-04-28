@@ -79,9 +79,9 @@ function RecentThreads({
 export const AgentCommandHome: FC = () => {
   const navigate = useNavigate()
   const activeHint = useActiveHint()
-  const { agents } = useAgentCommandData()
+  const { agents, status } = useAgentCommandData()
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
-  const cardData = buildAgentCardData(agents, undefined, undefined)
+  const cardData = buildAgentCardData(agents, status?.status, undefined)
 
   useEffect(() => {
     if (agents.length === 0) {
@@ -101,11 +101,6 @@ export const AgentCommandHome: FC = () => {
 
   const handleSend = (input: { text: string }) => {
     if (!selectedAgentId) return
-    // Home composer navigates to the conversation page with the prompt in
-    // the query string. Attachments are dropped at this boundary in v1 —
-    // the conversation page (where staging UX is most useful anyway) is
-    // where users can attach. A future iteration can stash staged files
-    // in chrome.storage.session and replay them on first mount there.
     navigate(
       `/home/agents/${selectedAgentId}?q=${encodeURIComponent(input.text)}`,
     )
@@ -118,7 +113,11 @@ export const AgentCommandHome: FC = () => {
   const selectedAgent = agents.find(
     (agent) => agent.agentId === selectedAgentId,
   )
-  const selectedAgentReady = Boolean(selectedAgent)
+  const selectedAgentReady = selectedAgent
+    ? selectedAgent.source === 'agent-harness' || status?.status === 'running'
+    : false
+  const selectedAgentStatus =
+    selectedAgent?.source === 'agent-harness' ? 'running' : status?.status
   const selectedCard =
     cardData.find((agent) => agent.agentId === selectedAgentId) ?? cardData[0]
 
@@ -148,7 +147,7 @@ export const AgentCommandHome: FC = () => {
                   onCreateAgent={() => navigate('/agents')}
                   streaming={false}
                   disabled={!selectedAgentReady}
-                  status={selectedAgentReady ? 'running' : undefined}
+                  status={selectedAgentStatus}
                   attachmentsEnabled={false}
                   placeholder={
                     selectedAgentReady

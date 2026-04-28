@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { getAgentServerUrl } from '@/lib/browseros/helpers'
 import { useAgentServerUrl } from '@/lib/browseros/useBrowserOSProviders'
+import { buildAgentApiUrl } from './agent-api-url'
 import {
   type AgentHarnessStreamEvent,
   type CreateHarnessAgentInput,
@@ -22,7 +23,7 @@ async function agentsFetch<T>(
   path: string,
   init?: RequestInit,
 ): Promise<T> {
-  const res = await fetch(`${baseUrl}/agents${path}`, init)
+  const res = await fetch(buildAgentApiUrl(baseUrl, path), init)
   if (!res.ok) {
     let message = `Request failed with status ${res.status}`
     try {

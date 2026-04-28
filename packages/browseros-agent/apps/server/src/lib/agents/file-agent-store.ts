@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { getBrowserosDir } from '../browseros-dir'
+import { logger } from '../logger'
 import {
   resolveDefaultModelId,
   resolveDefaultReasoningEffort,
@@ -37,12 +38,24 @@ export class FileAgentStore {
 
   async list(): Promise<AgentDefinition[]> {
     const file = await this.read()
-    return [...file.agents].sort((a, b) => b.updatedAt - a.updatedAt)
+    const agents = [...file.agents].sort((a, b) => b.updatedAt - a.updatedAt)
+    logger.debug('Agent harness store listed agents', {
+      count: agents.length,
+      filePath: this.filePath,
+    })
+    return agents
   }
 
   async get(id: string): Promise<AgentDefinition | null> {
     const file = await this.read()
-    return file.agents.find((agent) => agent.id === id) ?? null
+    const agent = file.agents.find((entry) => entry.id === id) ?? null
+    logger.debug('Agent harness store loaded agent', {
+      agentId: id,
+      found: Boolean(agent),
+      adapter: agent?.adapter,
+      filePath: this.filePath,
+    })
+    return agent
   }
 
   async create(input: CreateAgentInput): Promise<AgentDefinition> {
@@ -62,6 +75,15 @@ export class FileAgentStore {
     }
     const file = await this.read()
     await this.write({ ...file, agents: [...file.agents, agent] })
+    logger.info('Agent harness store created agent', {
+      agentId: agent.id,
+      name: agent.name,
+      adapter: agent.adapter,
+      modelId: agent.modelId,
+      reasoningEffort: agent.reasoningEffort,
+      sessionKey: agent.sessionKey,
+      filePath: this.filePath,
+    })
     return agent
   }
 
@@ -70,6 +92,10 @@ export class FileAgentStore {
     const agents = file.agents.filter((agent) => agent.id !== id)
     if (agents.length === file.agents.length) return false
     await this.write({ ...file, agents })
+    logger.info('Agent harness store deleted agent', {
+      agentId: id,
+      filePath: this.filePath,
+    })
     return true
   }
 

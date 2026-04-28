@@ -8,6 +8,7 @@ import { randomUUID } from 'node:crypto'
 import { appendFile, mkdir, readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { getBrowserosDir } from '../browseros-dir'
+import { logger } from '../logger'
 import type { AgentTranscriptEntry } from './agent-types'
 
 export interface TranscriptListInput {
@@ -43,19 +44,40 @@ export class FileTranscriptStore {
     const filePath = this.pathFor(input)
     await mkdir(dirname(filePath), { recursive: true })
     await appendFile(filePath, `${JSON.stringify(entry)}\n`, 'utf8')
+    logger.debug('Agent harness transcript appended entry', {
+      agentId: entry.agentId,
+      sessionId: entry.sessionId,
+      role: entry.role,
+      textLength: entry.text.length,
+      filePath,
+    })
     return entry
   }
 
   async list(input: TranscriptListInput): Promise<AgentTranscriptEntry[]> {
     try {
       const raw = await readFile(this.pathFor(input), 'utf8')
-      return raw
+      const entries = raw
         .split('\n')
         .filter(Boolean)
         .map((line) => JSON.parse(line) as AgentTranscriptEntry)
         .sort((a, b) => a.createdAt - b.createdAt)
+      logger.debug('Agent harness transcript listed entries', {
+        agentId: input.agentId,
+        sessionId: input.sessionId,
+        count: entries.length,
+        filePath: this.pathFor(input),
+      })
+      return entries
     } catch (err) {
-      if (isNotFoundError(err)) return []
+      if (isNotFoundError(err)) {
+        logger.debug('Agent harness transcript file missing', {
+          agentId: input.agentId,
+          sessionId: input.sessionId,
+          filePath: this.pathFor(input),
+        })
+        return []
+      }
       throw err
     }
   }

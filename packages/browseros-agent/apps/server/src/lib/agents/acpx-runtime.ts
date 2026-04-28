@@ -17,6 +17,7 @@ import {
   createRuntimeStore,
 } from 'acpx/runtime'
 import { getBrowserosDir } from '../browseros-dir'
+import { logger } from '../logger'
 import type {
   AgentHistoryPage,
   AgentPromptInput,
@@ -69,6 +70,18 @@ export class AcpxRuntime implements AgentRuntime {
   async send(
     input: AgentPromptInput,
   ): Promise<ReadableStream<AgentStreamEvent>> {
+    logger.info('Agent harness acpx send requested', {
+      agentId: input.agent.id,
+      adapter: input.agent.adapter,
+      sessionId: input.sessionId,
+      sessionKey: input.sessionKey,
+      cwd: this.cwd,
+      stateDir: this.stateDir,
+      permissionMode: input.permissionMode,
+      modelId: input.agent.modelId,
+      reasoningEffort: input.agent.reasoningEffort,
+      messageLength: input.message.length,
+    })
     const runtime = this.getRuntime({
       cwd: this.cwd,
       permissionMode: input.permissionMode,
@@ -98,6 +111,13 @@ export class AcpxRuntime implements AgentRuntime {
       timeoutMs: input.timeoutMs,
     })
     this.runtimes.set(key, runtime)
+    logger.debug('Agent harness acpx runtime created', {
+      cwd: input.cwd,
+      stateDir: this.stateDir,
+      permissionMode: input.permissionMode,
+      nonInteractivePermissions: input.nonInteractivePermissions,
+      timeoutMs: input.timeoutMs,
+    })
     return runtime
   }
 }
@@ -116,6 +136,15 @@ function createAcpxEventStream(
           sessionKey: input.sessionKey,
           agent: input.agent.adapter,
           mode: 'persistent',
+          cwd,
+        })
+        logger.info('Agent harness acpx session ensured', {
+          agentId: input.agent.id,
+          adapter: input.agent.adapter,
+          sessionKey: input.sessionKey,
+          backendSessionId: handle.backendSessionId,
+          agentSessionId: handle.agentSessionId,
+          acpxRecordId: handle.acpxRecordId,
           cwd,
         })
 
@@ -140,10 +169,21 @@ function createAcpxEventStream(
           controller.enqueue(mapRuntimeEvent(event))
         }
         controller.enqueue(mapTurnResult(await turn.result))
+        logger.info('Agent harness acpx turn completed', {
+          agentId: input.agent.id,
+          adapter: input.agent.adapter,
+          sessionKey: input.sessionKey,
+        })
         controller.close()
       }
 
       void run().catch((err) => {
+        logger.error('Agent harness acpx turn failed', {
+          agentId: input.agent.id,
+          adapter: input.agent.adapter,
+          sessionKey: input.sessionKey,
+          error: err instanceof Error ? err.message : String(err),
+        })
         controller.enqueue({
           type: 'error',
           message: err instanceof Error ? err.message : String(err),
@@ -186,7 +226,22 @@ async function applyRuntimeControls(
       key,
       value: input.agent.reasoningEffort,
     })
+    logger.debug('Agent harness acpx config applied', {
+      agentId: input.agent.id,
+      adapter: input.agent.adapter,
+      sessionKey: input.sessionKey,
+      key,
+      value: input.agent.reasoningEffort,
+    })
   } catch (err) {
+    logger.warn('Agent harness acpx config unavailable', {
+      agentId: input.agent.id,
+      adapter: input.agent.adapter,
+      sessionKey: input.sessionKey,
+      key,
+      value: input.agent.reasoningEffort,
+      error: err instanceof Error ? err.message : String(err),
+    })
     events.push({
       type: 'status',
       text: `Could not apply ${key}=${input.agent.reasoningEffort}; continuing with the adapter default. ${

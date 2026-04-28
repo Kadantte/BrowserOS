@@ -5,6 +5,10 @@ import type {
   AgentEntry,
   OpenClawStatus,
 } from '@/entrypoints/app/agents/useOpenClaw'
+import {
+  useOpenClawAgents,
+  useOpenClawStatus,
+} from '@/entrypoints/app/agents/useOpenClaw'
 
 interface AgentCommandContextValue {
   agents: AgentEntry[]
@@ -14,16 +18,27 @@ interface AgentCommandContextValue {
 }
 
 export const AgentCommandLayout: FC = () => {
-  const { agents, loading: agentsLoading } = useHarnessAgents()
+  const { status, loading: statusLoading } = useOpenClawStatus(5000)
+  const openClawEnabled =
+    status?.status === 'running' && status.controlPlaneStatus === 'connected'
+  const { agents: openClawAgents, loading: openClawAgentsLoading } =
+    useOpenClawAgents(openClawEnabled)
+  const { agents: harnessAgents, loading: harnessAgentsLoading } =
+    useHarnessAgents()
+  const visibleOpenClawAgents = openClawEnabled ? openClawAgents : []
+  const agents = [...visibleOpenClawAgents, ...harnessAgents]
 
   return (
     <Outlet
       context={
         {
           agents,
-          agentsLoading,
-          status: null,
-          statusLoading: false,
+          agentsLoading:
+            harnessAgentsLoading ||
+            statusLoading ||
+            (openClawEnabled && openClawAgentsLoading),
+          status,
+          statusLoading,
         } satisfies AgentCommandContextValue
       }
     />
