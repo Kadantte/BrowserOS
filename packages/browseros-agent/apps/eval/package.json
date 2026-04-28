@@ -12,8 +12,6 @@
     "@aws-sdk/client-s3": "^3.1014.0",
     "@browseros/server": "workspace:*",
     "@browseros/shared": "workspace:*",
-    "@google/gemini-cli-core": "^0.16.0",
-    "@google/genai": "1.30.0",
     "@modelcontextprotocol/sdk": "^1.25.2",
     "ai": "^6.0.94",
     "hono": "^4.6.0",

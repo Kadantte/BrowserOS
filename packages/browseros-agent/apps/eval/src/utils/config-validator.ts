@@ -70,13 +70,6 @@ export async function validateConfig(
         envVarsToCheck.push(config.agent.executor.apiKey)
       }
     }
-  } else if (config.agent.type === 'gemini-computer-use') {
-    // Gemini Computer Use agent
-    if (config.agent.apiKey) {
-      if (/^[A-Z][A-Z0-9_]*$/.test(config.agent.apiKey)) {
-        envVarsToCheck.push(config.agent.apiKey)
-      }
-    }
   }
 
   // Grader API key is checked at runtime - just warn if not set

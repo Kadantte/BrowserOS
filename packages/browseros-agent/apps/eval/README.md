@@ -141,8 +141,6 @@ The executor config stays the same across all orchestrator providers — it alwa
 |------|-------------|----------------|
 | `single` | Single LLM agent via Gemini CLI + MCP | `webvoyager-test.json` |
 | `tool-loop` | AI SDK tool loop, connects via CDP | `tool-loop-test.json` |
-| `gemini-computer-use` | Google native computer use API | `gemini-computer-use.json` |
-| `yutori-navigator` | Yutori N1 visual model | `yutori-navigator.json` |
 
 ## Configuration Reference
 

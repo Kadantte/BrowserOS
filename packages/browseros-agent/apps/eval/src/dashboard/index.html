@@ -197,8 +197,6 @@
           <select id="cfg-agent-type" onchange="onAgentTypeChange(this.value)">
             <option value="single">Single Agent</option>
             <option value="orchestrator-executor">Orchestrator-Executor</option>
-            <option value="gemini-computer-use">Gemini Computer Use</option>
-            <option value="yutori-navigator">Yutori Navigator</option>
           </select>
         </div>
 
@@ -284,50 +282,6 @@
               <label>Base URL <span class="req">*</span></label>
               <input type="text" id="cfg-exec-baseurl" value="https://clado-ai--clado-browseros-action-actionmodel-generate.modal.run">
             </div>
-          </div>
-        </div>
-
-        <!-- Gemini Computer Use fields -->
-        <div class="agent-fields" id="fields-gemini-computer-use">
-          <div class="config-field">
-            <label>API Key <span class="req">*</span></label>
-            <input type="password" id="cfg-gemini-apikey" placeholder="GOOGLE_AI_API_KEY">
-          </div>
-          <div class="config-row">
-            <div class="config-field">
-              <label>Screen Width</label>
-              <input type="number" id="cfg-gemini-width" value="1440" min="800" max="2560">
-            </div>
-            <div class="config-field">
-              <label>Screen Height</label>
-              <input type="number" id="cfg-gemini-height" value="900" min="600" max="1440">
-            </div>
-          </div>
-          <div class="config-field">
-            <label>Turn Limit</label>
-            <input type="number" id="cfg-gemini-turns" value="30" min="1" max="100">
-          </div>
-        </div>
-
-        <!-- Yutori Navigator fields -->
-        <div class="agent-fields" id="fields-yutori-navigator">
-          <div class="config-field">
-            <label>API Key <span class="req">*</span></label>
-            <input type="password" id="cfg-yutori-apikey" placeholder="YUTORI_API_KEY">
-          </div>
-          <div class="config-row">
-            <div class="config-field">
-              <label>Screen Width</label>
-              <input type="number" id="cfg-yutori-width" value="1280" min="800" max="2560">
-            </div>
-            <div class="config-field">
-              <label>Screen Height</label>
-              <input type="number" id="cfg-yutori-height" value="800" min="600" max="1440">
-            </div>
-          </div>
-          <div class="config-field">
-            <label>Turn Limit</label>
-            <input type="number" id="cfg-yutori-turns" value="30" min="1" max="100">
           </div>
         </div>
 
@@ -816,20 +770,6 @@ function fillForm(cfg) {
     setVal('cfg-exec-model', exec.model);
     setVal('cfg-exec-apikey', exec.apiKey);
     setVal('cfg-exec-baseurl', exec.baseUrl);
-  } else if (type === 'gemini-computer-use') {
-    setVal('cfg-gemini-apikey', agent.apiKey);
-    if (agent.screenSize) {
-      setVal('cfg-gemini-width', agent.screenSize.width);
-      setVal('cfg-gemini-height', agent.screenSize.height);
-    }
-    setVal('cfg-gemini-turns', agent.turnLimit);
-  } else if (type === 'yutori-navigator') {
-    setVal('cfg-yutori-apikey', agent.apiKey);
-    if (agent.screenSize) {
-      setVal('cfg-yutori-width', agent.screenSize.width);
-      setVal('cfg-yutori-height', agent.screenSize.height);
-    }
-    setVal('cfg-yutori-turns', agent.turnLimit);
   }
 
   // Infrastructure
@@ -912,26 +852,6 @@ function buildConfigFromForm() {
         apiKey: getVal('cfg-exec-apikey') || undefined,
         baseUrl: getVal('cfg-exec-baseurl') || undefined,
       },
-    };
-  } else if (type === 'gemini-computer-use') {
-    agent = {
-      type: 'gemini-computer-use',
-      apiKey: getVal('cfg-gemini-apikey'),
-      screenSize: {
-        width: parseInt(getVal('cfg-gemini-width'), 10) || 1440,
-        height: parseInt(getVal('cfg-gemini-height'), 10) || 900,
-      },
-      turnLimit: parseInt(getVal('cfg-gemini-turns'), 10) || 30,
-    };
-  } else if (type === 'yutori-navigator') {
-    agent = {
-      type: 'yutori-navigator',
-      apiKey: getVal('cfg-yutori-apikey'),
-      screenSize: {
-        width: parseInt(getVal('cfg-yutori-width'), 10) || 1280,
-        height: parseInt(getVal('cfg-yutori-height'), 10) || 800,
-      },
-      turnLimit: parseInt(getVal('cfg-yutori-turns'), 10) || 30,
     };
   }
 

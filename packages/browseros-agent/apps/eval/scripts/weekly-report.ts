@@ -334,9 +334,7 @@ const html = `<!DOCTYPE html>
             ? 'Orch-Exec'
             : r.agentType === 'single'
               ? 'Tool Loop'
-              : r.agentType === 'gemini-computer-use'
-                ? 'Gemini CU'
-                : r.agentType || '—'
+              : r.agentType || '—'
         return `<tr data-config="${escHtml(r.runId)}" data-search="${escHtml(`${r.date} ${r.runId} ${r.model} ${r.dataset} ${archLabel}`)}">
       <td>${escHtml(r.date)}</td>
       <td class="mono">${escHtml(r.runId)}</td>
@@ -385,7 +383,6 @@ const html = `<!DOCTYPE html>
     var latest = runs[runs.length - 1];
     var archLabel = latest.agentType === 'orchestrator-executor' ? 'Orchestrator-Executor'
       : latest.agentType === 'single' ? 'Single Agent (Tool Loop)'
-      : latest.agentType === 'gemini-computer-use' ? 'Gemini Computer Use'
       : latest.agentType || 'Unknown';
     var scoreColor = latest.avgScore >= 75 ? '#3fb950' : latest.avgScore >= 40 ? '#f0883e' : '#f85149';
     el.innerHTML =
