@@ -226,7 +226,9 @@ function createBrowserosAgentRegistry(
   if (permissionMode !== 'approve-all') return registry
 
   return {
-    list: () => registry.list(),
+    list() {
+      return registry.list()
+    },
     resolve(agentName) {
       const command = registry.resolve(agentName)
       switch (agentName.trim().toLowerCase()) {
@@ -245,15 +247,22 @@ function createBrowserosAgentRegistry(
 }
 
 function appendCommandArg(command: string, arg: string): string {
-  return command.includes(arg) ? command : `${command} ${arg}`
+  return command.split(/\s+/).includes(arg) ? command : `${command} ${arg}`
 }
 
 function buildBrowserosAcpPrompt(message: string): string {
   return `${BROWSEROS_ACP_AGENT_INSTRUCTIONS}
 
 <user_request>
-${message}
+${escapePromptTagText(message)}
 </user_request>`
+}
+
+function escapePromptTagText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 async function applyRuntimeControls(
