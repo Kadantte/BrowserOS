@@ -3,8 +3,6 @@ import { type FC, useEffect, useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Button } from '@/components/ui/button'
-import { Checkbox } from '@/components/ui/checkbox'
-import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import {
   Select,
@@ -14,133 +12,93 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { Skeleton } from '@/components/ui/skeleton'
-import type { ProviderType } from '@/lib/llm-providers/types'
 import {
-  type ResolvedAgentConfigValue,
+  type RegisteredModel,
   useAgentModels,
+  useRegisteredModels,
   useUpdateAgentModels,
 } from './useOpenClaw'
-import { getRecommendedVisionModels } from './vision-models'
 
-const CUSTOM_VALUE = '__custom__'
-const DEFAULT_VALUE = '__default__'
+const INHERIT_VALUE = '__inherit__'
 
 interface AgentModelsPanelProps {
   agentId: string
-  /**
-   * Provider type the agent currently runs against. Used to populate
-   * the recommended-models list and to forward as the `providerType`
-   * hint on the PATCH so the server can prefix the model id correctly.
-   * Derived from the global default model in AgentsPage when this panel
-   * is rendered (e.g. `moonshot/...` → `moonshot`).
-   */
-  providerType?: ProviderType
-  /** Pretty model id stripped of the provider prefix. */
-  defaultTextModel: string | null
-  defaultImageModel: string | null
+  /** Resolved global default text model (e.g. `anthropic/claude-...`). */
+  defaultTextRef: string | null
+  /** Resolved global default image model. */
+  defaultImageRef: string | null
 }
 
-function stripProviderPrefix(value: string | null): string {
-  if (!value) return ''
-  const slash = value.indexOf('/')
-  return slash === -1 ? value : value.slice(slash + 1)
-}
-
-function makeFieldState(resolved: ResolvedAgentConfigValue): {
-  override: boolean
-  bareValue: string
-} {
-  return {
-    override: resolved.source === 'agent',
-    bareValue: stripProviderPrefix(resolved.value),
-  }
-}
-
+/**
+ * Per-agent override editor. Two dropdowns — Text + Image — sourced
+ * from the registered-models pool that lives at the OpenClaw level.
+ * The first option in each is "Use default", followed by every
+ * registered entry. The image dropdown filters to vision-capable
+ * entries.
+ */
 export const AgentModelsPanel: FC<AgentModelsPanelProps> = ({
   agentId,
-  providerType,
-  defaultTextModel,
-  defaultImageModel,
+  defaultTextRef,
+  defaultImageRef,
 }) => {
   const { details, loading, error } = useAgentModels(agentId)
+  const { models } = useRegisteredModels()
   const updateModels = useUpdateAgentModels()
 
   // Form state — derived once from the loaded details, then user-driven.
-  const [textOverride, setTextOverride] = useState(false)
-  const [textValue, setTextValue] = useState('')
-  const [imageOverride, setImageOverride] = useState(false)
-  const [imageValue, setImageValue] = useState('')
+  const [textValue, setTextValue] = useState<string>(INHERIT_VALUE)
+  const [imageValue, setImageValue] = useState<string>(INHERIT_VALUE)
   const [initialised, setInitialised] = useState(false)
-
-  useEffect(() => {
-    if (!details || initialised) return
-    const text = makeFieldState(details.model)
-    const image = makeFieldState(details.imageModel)
-    setTextOverride(text.override)
-    setTextValue(text.bareValue)
-    setImageOverride(image.override)
-    setImageValue(image.bareValue)
-    setInitialised(true)
-  }, [details, initialised])
-
-  const visionRecommendations = useMemo(
-    () => getRecommendedVisionModels(providerType),
-    [providerType],
-  )
 
   const initialState = useMemo(() => {
     if (!details) return null
     return {
-      textOverride: details.model.source === 'agent',
-      textValue: stripProviderPrefix(details.model.value),
-      imageOverride: details.imageModel.source === 'agent',
-      imageValue: stripProviderPrefix(details.imageModel.value),
+      text:
+        details.model.source === 'agent'
+          ? (findIdForRef(models, details.model.value) ?? INHERIT_VALUE)
+          : INHERIT_VALUE,
+      image:
+        details.imageModel.source === 'agent'
+          ? (findIdForRef(models, details.imageModel.value) ?? INHERIT_VALUE)
+          : INHERIT_VALUE,
     }
-  }, [details])
+  }, [details, models])
+
+  useEffect(() => {
+    if (!initialState || initialised) return
+    setTextValue(initialState.text)
+    setImageValue(initialState.image)
+    setInitialised(true)
+  }, [initialState, initialised])
+
+  const visionCapableModels = useMemo(
+    () => models.filter((m) => m.supportsImages),
+    [models],
+  )
 
   const dirty =
     initialState !== null &&
-    (initialState.textOverride !== textOverride ||
-      initialState.imageOverride !== imageOverride ||
-      (textOverride && initialState.textValue !== textValue) ||
-      (imageOverride && initialState.imageValue !== imageValue))
-
-  const isSavable =
-    dirty &&
-    (!textOverride || !!textValue.trim()) &&
-    (!imageOverride || !!imageValue.trim()) &&
-    !updateModels.isPending
+    (initialState.text !== textValue || initialState.image !== imageValue)
 
   const handleSave = async () => {
     if (!initialState) return
     const payload: {
       agentId: string
-      model?: string | null
-      imageModel?: string | null
-      providerType?: string
+      model?: 'inherit' | string | null
+      imageModel?: 'inherit' | string | null
     } = { agentId }
-    if (textOverride !== initialState.textOverride) {
-      payload.model = textOverride ? textValue.trim() : null
-    } else if (textOverride && textValue.trim() !== initialState.textValue) {
-      payload.model = textValue.trim()
+    if (textValue !== initialState.text) {
+      payload.model = textValue === INHERIT_VALUE ? 'inherit' : textValue
     }
-    if (imageOverride !== initialState.imageOverride) {
-      payload.imageModel = imageOverride ? imageValue.trim() : null
-    } else if (imageOverride && imageValue.trim() !== initialState.imageValue) {
-      payload.imageModel = imageValue.trim()
+    if (imageValue !== initialState.image) {
+      payload.imageModel = imageValue === INHERIT_VALUE ? 'inherit' : imageValue
     }
-    if (providerType) payload.providerType = providerType
 
     try {
-      const next = await updateModels.mutateAsync(payload)
-      // Reseed the form state from the server-confirmed values so the
-      // dirty flag clears and the (default)/(override) tag flips.
-      const text = makeFieldState(next.model)
-      const image = makeFieldState(next.imageModel)
-      setTextOverride(text.override)
-      setTextValue(text.bareValue)
-      setImageOverride(image.override)
-      setImageValue(image.bareValue)
+      await updateModels.mutateAsync(payload)
+      // Reset the dirty flag — the next render reads fresh details
+      // from the cache via the query invalidation in onSettled.
+      setInitialised(false)
       toast.success('Agent models updated')
     } catch (err) {
       toast.error(
@@ -150,13 +108,9 @@ export const AgentModelsPanel: FC<AgentModelsPanelProps> = ({
   }
 
   const handleReset = () => {
-    if (!details) return
-    const text = makeFieldState(details.model)
-    const image = makeFieldState(details.imageModel)
-    setTextOverride(text.override)
-    setTextValue(text.bareValue)
-    setImageOverride(image.override)
-    setImageValue(image.bareValue)
+    if (!initialState) return
+    setTextValue(initialState.text)
+    setImageValue(initialState.image)
   }
 
   if (loading) {
@@ -180,28 +134,22 @@ export const AgentModelsPanel: FC<AgentModelsPanelProps> = ({
 
   return (
     <div className="space-y-4 border-t bg-muted/20 px-4 py-4">
-      <ModelField
+      <ModelDropdown
         idPrefix={`${agentId}-text`}
         label="Text model"
-        override={textOverride}
-        onOverrideChange={setTextOverride}
         value={textValue}
-        onValueChange={setTextValue}
-        defaultModelLabel={defaultTextModel ?? '— not set —'}
-        recommendations={[]}
-        customPlaceholder="provider/model-id"
+        onChange={setTextValue}
+        options={models}
+        defaultLabel={describeRef(defaultTextRef, models) ?? 'not set'}
       />
 
-      <ModelField
+      <ModelDropdown
         idPrefix={`${agentId}-image`}
         label="Image model"
-        override={imageOverride}
-        onOverrideChange={setImageOverride}
         value={imageValue}
-        onValueChange={setImageValue}
-        defaultModelLabel={defaultImageModel ?? '— not set —'}
-        recommendations={visionRecommendations}
-        customPlaceholder="provider/model-id (e.g. openai/gpt-4o)"
+        onChange={setImageValue}
+        options={visionCapableModels}
+        defaultLabel={describeRef(defaultImageRef, models) ?? 'not set'}
       />
 
       <div className="flex items-center justify-end gap-2">
@@ -217,7 +165,7 @@ export const AgentModelsPanel: FC<AgentModelsPanelProps> = ({
         <Button
           size="sm"
           onClick={() => void handleSave()}
-          disabled={!isSavable}
+          disabled={!dirty || updateModels.isPending}
         >
           {updateModels.isPending ? (
             <>
@@ -233,98 +181,77 @@ export const AgentModelsPanel: FC<AgentModelsPanelProps> = ({
   )
 }
 
-interface ModelFieldProps {
+interface ModelDropdownProps {
   idPrefix: string
   label: string
-  override: boolean
-  onOverrideChange: (value: boolean) => void
   value: string
-  onValueChange: (value: string) => void
-  defaultModelLabel: string
-  recommendations: string[]
-  customPlaceholder: string
+  onChange: (value: string) => void
+  options: RegisteredModel[]
+  defaultLabel: string
 }
 
-const ModelField: FC<ModelFieldProps> = ({
+const ModelDropdown: FC<ModelDropdownProps> = ({
   idPrefix,
   label,
-  override,
-  onOverrideChange,
   value,
-  onValueChange,
-  defaultModelLabel,
-  recommendations,
-  customPlaceholder,
+  onChange,
+  options,
+  defaultLabel,
 }) => {
-  const isCustom = override && value !== '' && !recommendations.includes(value)
-  const selectValue = !override
-    ? DEFAULT_VALUE
-    : isCustom || recommendations.length === 0
-      ? CUSTOM_VALUE
-      : value
-
   return (
     <div className="space-y-2">
-      <div className="flex items-center justify-between">
-        <Label htmlFor={`${idPrefix}-select`}>{label}</Label>
-        <span className="text-muted-foreground text-xs">
-          Default: {defaultModelLabel}
-        </span>
-      </div>
-
-      <Select
-        value={selectValue}
-        onValueChange={(next) => {
-          if (next === DEFAULT_VALUE) {
-            onOverrideChange(false)
-            return
-          }
-          if (next === CUSTOM_VALUE) {
-            onOverrideChange(true)
-            if (recommendations.includes(value)) onValueChange('')
-            return
-          }
-          onOverrideChange(true)
-          onValueChange(next)
-        }}
-      >
+      <Label htmlFor={`${idPrefix}-select`}>{label}</Label>
+      <Select value={value} onValueChange={onChange}>
         <SelectTrigger id={`${idPrefix}-select`}>
-          <SelectValue placeholder="Select a model" />
+          <SelectValue placeholder="Use default" />
         </SelectTrigger>
         <SelectContent>
-          <SelectItem value={DEFAULT_VALUE}>
-            Inherit default — {defaultModelLabel}
+          <SelectItem value={INHERIT_VALUE}>
+            Use default — {defaultLabel}
           </SelectItem>
-          {recommendations.map((model) => (
-            <SelectItem key={model} value={model}>
-              {model}
+          {options.map((option) => (
+            <SelectItem key={option.id} value={option.id}>
+              {formatLabel(option)}
             </SelectItem>
           ))}
-          <SelectItem value={CUSTOM_VALUE}>Custom...</SelectItem>
         </SelectContent>
       </Select>
-
-      {selectValue === CUSTOM_VALUE && (
-        <Input
-          placeholder={customPlaceholder}
-          value={value}
-          onChange={(event) => onValueChange(event.target.value)}
-        />
-      )}
-
-      <div className="flex items-center gap-2">
-        <Checkbox
-          id={`${idPrefix}-override`}
-          checked={override}
-          onCheckedChange={(next) => onOverrideChange(next === true)}
-        />
-        <Label
-          htmlFor={`${idPrefix}-override`}
-          className="cursor-pointer font-normal text-muted-foreground text-xs"
-        >
-          Override the global default for this agent
-        </Label>
-      </div>
     </div>
   )
+}
+
+function formatLabel(entry: RegisteredModel): string {
+  const provider = entry.providerName ?? entry.providerType
+  const capitalised = provider
+    ? provider[0].toUpperCase() + provider.slice(1)
+    : entry.providerType
+  return `${capitalised} — ${entry.modelId}`
+}
+
+function findIdForRef(
+  models: RegisteredModel[],
+  ref: string | null,
+): string | null {
+  if (!ref) return null
+  const match = models.find((m) => {
+    const expected = `${m.providerType}/${m.modelId}`
+    return ref === expected || ref.endsWith(`/${m.modelId}`)
+  })
+  return match?.id ?? null
+}
+
+function describeRef(
+  ref: string | null,
+  models: RegisteredModel[],
+): string | null {
+  if (!ref) return null
+  const matchedId = findIdForRef(models, ref)
+  if (matchedId) {
+    const match = models.find((m) => m.id === matchedId)
+    if (match) return formatLabel(match)
+  }
+  // Fall back to the bare ref so the user still sees what's bound,
+  // even if the registered entry behind it has been removed.
+  const slash = ref.indexOf('/')
+  return slash === -1 ? ref : ref.slice(slash + 1)
 }

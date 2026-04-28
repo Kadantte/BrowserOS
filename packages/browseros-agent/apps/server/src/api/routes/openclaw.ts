@@ -204,708 +204,818 @@ function parsePositiveIntQuery(
 }
 
 export function createOpenClawRoutes() {
-  return new Hono()
-    .get('/status', async (c) => {
-      const status = await getOpenClawService().getStatus()
-      return c.json(status)
-    })
-
-    .get('/providers/:providerId/auth-status', async (c) => {
-      const { providerId } = c.req.param()
-      const provider = getOpenClawCliProvider(providerId)
-      if (!provider) {
-        return c.json({ error: `Unknown CLI provider: ${providerId}` }, 404)
-      }
-      try {
-        const status =
-          await getOpenClawService().getCliProviderAuthStatus(provider)
+  return (
+    new Hono()
+      .get('/status', async (c) => {
+        const status = await getOpenClawService().getStatus()
         return c.json(status)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.warn('CLI provider auth-status failed', {
-          providerId,
-          error: message,
-        })
-        return c.json(
-          { installed: false, loggedIn: false, error: message },
-          500,
-        )
-      }
-    })
+      })
 
-    .post('/setup', async (c) => {
-      const body = await c.req.json<{
-        providerType?: string
-        providerName?: string
-        baseUrl?: string
-        apiKey?: string
-        modelId?: string
-        imageModelId?: string
-      }>()
+      .get('/providers/:providerId/auth-status', async (c) => {
+        const { providerId } = c.req.param()
+        const provider = getOpenClawCliProvider(providerId)
+        if (!provider) {
+          return c.json({ error: `Unknown CLI provider: ${providerId}` }, 404)
+        }
+        try {
+          const status =
+            await getOpenClawService().getCliProviderAuthStatus(provider)
+          return c.json(status)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.warn('CLI provider auth-status failed', {
+            providerId,
+            error: message,
+          })
+          return c.json(
+            { installed: false, loggedIn: false, error: message },
+            500,
+          )
+        }
+      })
 
-      try {
-        logger.info('OpenClaw setup requested', {
-          providerType: body.providerType,
-          providerName: body.providerName,
-          hasBaseUrl: !!body.baseUrl,
-          hasModel: !!body.modelId,
-          hasApiKey: !!body.apiKey,
-          hasImageModel: !!body.imageModelId,
-        })
-        const logs: string[] = []
-        await getOpenClawService().setup(body, (msg) => logs.push(msg))
+      .post('/setup', async (c) => {
+        const body = await c.req.json<{
+          providerType?: string
+          providerName?: string
+          baseUrl?: string
+          apiKey?: string
+          modelId?: string
+          imageModelId?: string
+        }>()
 
-        const agents = await getOpenClawService().listAgents()
-        return c.json(
-          {
-            status: 'running',
-            port: getOpenClawService().getPort(),
-            agents: agents.map((a) => ({
-              agentId: a.agentId,
-              name: a.name,
+        try {
+          logger.info('OpenClaw setup requested', {
+            providerType: body.providerType,
+            providerName: body.providerName,
+            hasBaseUrl: !!body.baseUrl,
+            hasModel: !!body.modelId,
+            hasApiKey: !!body.apiKey,
+            hasImageModel: !!body.imageModelId,
+          })
+          const logs: string[] = []
+          await getOpenClawService().setup(body, (msg) => logs.push(msg))
+
+          const agents = await getOpenClawService().listAgents()
+          return c.json(
+            {
               status: 'running',
-            })),
-            logs,
-          },
-          201,
-        )
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.error('OpenClaw setup failed', {
-          error: message,
-          providerType: body.providerType,
-          providerName: body.providerName,
-        })
-        if (isUnsupportedOpenClawProviderError(err)) {
-          return c.json({ error: err.message }, 400)
+              port: getOpenClawService().getPort(),
+              agents: agents.map((a) => ({
+                agentId: a.agentId,
+                name: a.name,
+                status: 'running',
+              })),
+              logs,
+            },
+            201,
+          )
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.error('OpenClaw setup failed', {
+            error: message,
+            providerType: body.providerType,
+            providerName: body.providerName,
+          })
+          if (isUnsupportedOpenClawProviderError(err)) {
+            return c.json({ error: err.message }, 400)
+          }
+          if (message.includes('VM runtime is not available')) {
+            return c.json({ error: message }, 503)
+          }
+          return c.json({ error: message }, 500)
         }
-        if (message.includes('VM runtime is not available')) {
-          return c.json({ error: message }, 503)
+      })
+
+      .post('/start', async (c) => {
+        try {
+          logger.info('OpenClaw start requested')
+          await getOpenClawService().start()
+          return c.json({ status: 'running' })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.error('OpenClaw start failed', { error: message })
+          return c.json({ error: message }, 500)
         }
-        return c.json({ error: message }, 500)
-      }
-    })
+      })
 
-    .post('/start', async (c) => {
-      try {
-        logger.info('OpenClaw start requested')
-        await getOpenClawService().start()
-        return c.json({ status: 'running' })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.error('OpenClaw start failed', { error: message })
-        return c.json({ error: message }, 500)
-      }
-    })
-
-    .post('/stop', async (c) => {
-      try {
-        logger.info('OpenClaw stop requested')
-        await getOpenClawService().stop()
-        return c.json({ status: 'stopped' })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.error('OpenClaw stop failed', { error: message })
-        return c.json({ error: message }, 500)
-      }
-    })
-
-    .post('/restart', async (c) => {
-      try {
-        logger.info('OpenClaw restart requested')
-        await getOpenClawService().restart()
-        return c.json({ status: 'running' })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.error('OpenClaw restart failed', { error: message })
-        return c.json({ error: message }, 500)
-      }
-    })
-
-    .post('/reconnect', async (c) => {
-      try {
-        logger.info('OpenClaw reconnect requested')
-        await getOpenClawService().reconnectControlPlane()
-        return c.json({ status: 'connected' })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        logger.error('OpenClaw reconnect failed', { error: message })
-        return c.json({ error: message }, 500)
-      }
-    })
-
-    .get('/agents', async (c) => {
-      try {
-        const agents = await getOpenClawService().listAgents()
-        return c.json({ agents })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
-
-    .post('/agents', async (c) => {
-      const body = await c.req.json<{
-        name: string
-        providerType?: string
-        providerName?: string
-        baseUrl?: string
-        apiKey?: string
-        modelId?: string
-      }>()
-      const validationError = getCreateAgentValidationError(body)
-      if (validationError) {
-        return c.json({ error: validationError }, 400)
-      }
-
-      try {
-        const agent = await getOpenClawService().createAgent({
-          name: body.name.trim(),
-          providerType: body.providerType,
-          providerName: body.providerName,
-          baseUrl: body.baseUrl,
-          apiKey: body.apiKey,
-          modelId: body.modelId,
-        })
-        return c.json({ agent }, 201)
-      } catch (err) {
-        if (err instanceof OpenClawAgentAlreadyExistsError) {
-          return c.json({ error: err.message }, 409)
+      .post('/stop', async (c) => {
+        try {
+          logger.info('OpenClaw stop requested')
+          await getOpenClawService().stop()
+          return c.json({ status: 'stopped' })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.error('OpenClaw stop failed', { error: message })
+          return c.json({ error: message }, 500)
         }
-        if (err instanceof OpenClawInvalidAgentNameError) {
-          return c.json({ error: err.message }, 400)
+      })
+
+      .post('/restart', async (c) => {
+        try {
+          logger.info('OpenClaw restart requested')
+          await getOpenClawService().restart()
+          return c.json({ status: 'running' })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.error('OpenClaw restart failed', { error: message })
+          return c.json({ error: message }, 500)
         }
-        if (isUnsupportedOpenClawProviderError(err)) {
-          return c.json({ error: err.message }, 400)
+      })
+
+      .post('/reconnect', async (c) => {
+        try {
+          logger.info('OpenClaw reconnect requested')
+          await getOpenClawService().reconnectControlPlane()
+          return c.json({ status: 'connected' })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          logger.error('OpenClaw reconnect failed', { error: message })
+          return c.json({ error: message }, 500)
         }
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      })
 
-    .delete('/agents/:id', async (c) => {
-      const { id } = c.req.param()
-
-      try {
-        await getOpenClawService().removeAgent(id)
-        return c.json({ success: true })
-      } catch (err) {
-        if (err instanceof OpenClawAgentNotFoundError) {
-          return c.json({ error: err.message }, 404)
+      .get('/agents', async (c) => {
+        try {
+          const agents = await getOpenClawService().listAgents()
+          return c.json({ agents })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
         }
-        if (err instanceof OpenClawProtectedAgentError) {
-          return c.json({ error: err.message }, 400)
+      })
+
+      .post('/agents', async (c) => {
+        const body = await c.req.json<{
+          name: string
+          providerType?: string
+          providerName?: string
+          baseUrl?: string
+          apiKey?: string
+          modelId?: string
+        }>()
+        const validationError = getCreateAgentValidationError(body)
+        if (validationError) {
+          return c.json({ error: validationError }, 400)
         }
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
 
-    .get('/agents/:id/sessions', async (c) => {
-      const { id } = c.req.param()
-      const limit = parsePositiveIntQuery(c.req.query('limit'), 20)
+        try {
+          const agent = await getOpenClawService().createAgent({
+            name: body.name.trim(),
+            providerType: body.providerType,
+            providerName: body.providerName,
+            baseUrl: body.baseUrl,
+            apiKey: body.apiKey,
+            modelId: body.modelId,
+          })
+          return c.json({ agent }, 201)
+        } catch (err) {
+          if (err instanceof OpenClawAgentAlreadyExistsError) {
+            return c.json({ error: err.message }, 409)
+          }
+          if (err instanceof OpenClawInvalidAgentNameError) {
+            return c.json({ error: err.message }, 400)
+          }
+          if (isUnsupportedOpenClawProviderError(err)) {
+            return c.json({ error: err.message }, 400)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
 
-      try {
-        const sessions = await getOpenClawService().listSessions(id)
-        return c.json({
-          agentId: id,
-          sessions: sessions.slice(0, Math.min(limit, 100)),
-        })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      .delete('/agents/:id', async (c) => {
+        const { id } = c.req.param()
 
-    .get('/agents/:id/session', async (c) => {
-      const { id } = c.req.param()
+        try {
+          await getOpenClawService().removeAgent(id)
+          return c.json({ success: true })
+        } catch (err) {
+          if (err instanceof OpenClawAgentNotFoundError) {
+            return c.json({ error: err.message }, 404)
+          }
+          if (err instanceof OpenClawProtectedAgentError) {
+            return c.json({ error: err.message }, 400)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
 
-      try {
-        const session = await getOpenClawService().resolveAgentSession(id)
-        return c.json(session)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      .get('/agents/:id/sessions', async (c) => {
+        const { id } = c.req.param()
+        const limit = parsePositiveIntQuery(c.req.query('limit'), 20)
 
-    .get('/agents/:id/history', async (c) => {
-      const { id } = c.req.param()
-      const limit = parsePositiveIntQuery(c.req.query('limit'), 50)
+        try {
+          const sessions = await getOpenClawService().listSessions(id)
+          return c.json({
+            agentId: id,
+            sessions: sessions.slice(0, Math.min(limit, 100)),
+          })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
 
-      try {
-        const page = await getOpenClawService().getAgentHistoryPage(id, {
-          sessionKey: c.req.query('sessionKey'),
-          cursor: c.req.query('cursor'),
-          limit,
-        })
-        return c.json(page)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      .get('/agents/:id/session', async (c) => {
+        const { id } = c.req.param()
 
-    .get('/dashboard', (c) => {
-      try {
-        const dashboard = getOpenClawService().getDashboard()
-        return c.json(dashboard)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+        try {
+          const session = await getOpenClawService().resolveAgentSession(id)
+          return c.json(session)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
 
-    .get('/dashboard/stream', (c) => {
-      c.header('Content-Type', 'text/event-stream')
-      c.header('Cache-Control', 'no-cache')
-      c.header('Connection', 'keep-alive')
+      .get('/agents/:id/history', async (c) => {
+        const { id } = c.req.param()
+        const limit = parsePositiveIntQuery(c.req.query('limit'), 50)
 
-      return stream(c, async (s) => {
-        const encoder = new TextEncoder()
+        try {
+          const page = await getOpenClawService().getAgentHistoryPage(id, {
+            sessionKey: c.req.query('sessionKey'),
+            cursor: c.req.query('cursor'),
+            limit,
+          })
+          return c.json(page)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
 
-        // Send initial snapshot
+      .get('/dashboard', (c) => {
         try {
           const dashboard = getOpenClawService().getDashboard()
-          await s.write(
-            encoder.encode(
-              `event: snapshot\ndata: ${JSON.stringify(dashboard)}\n\n`,
-            ),
-          )
-        } catch {}
+          return c.json(dashboard)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
 
-        // Subscribe to live status changes
-        const unsubscribe = getOpenClawService().onAgentStatusChange(
-          (agentId, entry) => {
-            const event = {
-              agentId,
-              status: entry.status,
-              currentTool: entry.currentTool,
-              error: entry.error,
-              timestamp: entry.lastEventAt,
-            }
+      .get('/dashboard/stream', (c) => {
+        c.header('Content-Type', 'text/event-stream')
+        c.header('Cache-Control', 'no-cache')
+        c.header('Connection', 'keep-alive')
+
+        return stream(c, async (s) => {
+          const encoder = new TextEncoder()
+
+          // Send initial snapshot
+          try {
+            const dashboard = getOpenClawService().getDashboard()
+            await s.write(
+              encoder.encode(
+                `event: snapshot\ndata: ${JSON.stringify(dashboard)}\n\n`,
+              ),
+            )
+          } catch {}
+
+          // Subscribe to live status changes
+          const unsubscribe = getOpenClawService().onAgentStatusChange(
+            (agentId, entry) => {
+              const event = {
+                agentId,
+                status: entry.status,
+                currentTool: entry.currentTool,
+                error: entry.error,
+                timestamp: entry.lastEventAt,
+              }
+              s.write(
+                encoder.encode(
+                  `event: status\ndata: ${JSON.stringify(event)}\n\n`,
+                ),
+              ).catch(() => {})
+            },
+          )
+
+          // Heartbeat every 15s to keep connection alive
+          const heartbeat = setInterval(() => {
             s.write(
               encoder.encode(
-                `event: status\ndata: ${JSON.stringify(event)}\n\n`,
+                `event: heartbeat\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`,
               ),
             ).catch(() => {})
-          },
-        )
+          }, 15_000)
 
-        // Heartbeat every 15s to keep connection alive
-        const heartbeat = setInterval(() => {
-          s.write(
-            encoder.encode(
-              `event: heartbeat\ndata: ${JSON.stringify({ ts: Date.now() })}\n\n`,
-            ),
-          ).catch(() => {})
-        }, 15_000)
-
-        // Wait until client disconnects
-        try {
-          await new Promise<void>((resolve) => {
-            s.onAbort(() => resolve())
-          })
-        } finally {
-          unsubscribe()
-          clearInterval(heartbeat)
-        }
-      })
-    })
-    .post('/agents/:id/chat', async (c) => {
-      const { id } = c.req.param()
-      const body = await c.req.json<{
-        message: string
-        sessionKey?: string
-        history?: MonitoringChatTurn[]
-        attachments?: unknown
-      }>()
-
-      const trimmedMessage = body.message?.trim() ?? ''
-      const attachmentValidation = validateChatAttachments(body.attachments)
-      if (attachmentValidation.error) {
-        return c.json({ error: attachmentValidation.error }, 400)
-      }
-      const attachments = attachmentValidation.attachments ?? []
-      // Either a non-empty text body or at least one attachment is required.
-      if (!trimmedMessage && attachments.length === 0) {
-        return c.json({ error: 'Message is required' }, 400)
-      }
-
-      const sessionKey = normalizeBrowserOSChatSessionKey(
-        id,
-        body.sessionKey ?? crypto.randomUUID(),
-      )
-      const history = Array.isArray(body.history)
-        ? body.history.filter((entry): entry is MonitoringChatTurn =>
-            Boolean(
-              entry &&
-                (entry.role === 'user' || entry.role === 'assistant') &&
-                typeof entry.content === 'string',
-            ),
-          )
-        : []
-
-      // Replace the immediate 409 with a bounded wait so back-to-back user
-      // sends or a cron / hook turn that's still finishing don't reject the
-      // user-chat outright. The client-side outbound queue (Feature 2) keeps
-      // the per-agent send rate at 1, so this only kicks in for cross-source
-      // contention.
-      try {
-        await getMonitoringService().waitForSessionFree(id, {
-          timeoutMs: 30_000,
-        })
-      } catch (err) {
-        return c.json(
-          {
-            error:
-              err instanceof Error
-                ? err.message
-                : 'Agent is busy. Try again shortly.',
-          },
-          503,
-        )
-      }
-
-      const { text: composedMessage, parts: messageParts } =
-        buildMessagePartsFromAttachments(trimmedMessage, attachments)
-
-      const monitoringContext = await getMonitoringService().startSession({
-        agentId: id,
-        sessionKey,
-        originalPrompt: composedMessage,
-        chatHistory: history,
-      })
-
-      try {
-        const eventStream = await getOpenClawService().chatStream(
-          id,
-          sessionKey,
-          composedMessage,
-          history,
-          { messageParts },
-        )
-
-        c.header('Content-Type', 'text/event-stream')
-        c.header('Cache-Control', 'no-cache')
-        c.header('X-Session-Key', sessionKey)
-
-        return stream(c, async (s) => {
-          const reader = eventStream.getReader()
-          const encoder = new TextEncoder()
-          let finalAssistantMessage: string | undefined
-          let status: 'completed' | 'failed' | 'aborted' | 'incomplete' =
-            'incomplete'
-          let finalError: string | undefined
+          // Wait until client disconnects
           try {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              if (
-                value.type === 'done' &&
-                typeof value.data.text === 'string' &&
-                value.data.text.trim()
-              ) {
-                finalAssistantMessage = value.data.text
-                status = 'completed'
-              }
-              if (value.type === 'error') {
-                finalError =
-                  (typeof value.data.message === 'string'
-                    ? value.data.message
-                    : typeof value.data.error === 'string'
-                      ? value.data.error
-                      : undefined) ?? 'Unknown chat stream error'
-                status = 'failed'
-              }
-              await s.write(
-                encoder.encode(`data: ${JSON.stringify(value)}\n\n`),
-              )
-            }
-            await s.write(encoder.encode('data: [DONE]\n\n'))
-          } catch (error) {
-            if (c.req.raw.signal.aborted) {
-              status = 'aborted'
-            } else {
-              status = 'failed'
-              finalError =
-                error instanceof Error ? error.message : String(error)
-            }
-            throw error
-          } finally {
-            await reader.cancel()
-            await getMonitoringService().finalizeSession({
-              monitoringSessionId: monitoringContext.monitoringSessionId,
-              agentId: id,
-              sessionKey,
-              status,
-              finalAssistantMessage,
-              error: finalError,
+            await new Promise<void>((resolve) => {
+              s.onAbort(() => resolve())
             })
+          } finally {
+            unsubscribe()
+            clearInterval(heartbeat)
           }
         })
-      } catch (err) {
-        await getMonitoringService().finalizeSession({
-          monitoringSessionId: monitoringContext.monitoringSessionId,
+      })
+      .post('/agents/:id/chat', async (c) => {
+        const { id } = c.req.param()
+        const body = await c.req.json<{
+          message: string
+          sessionKey?: string
+          history?: MonitoringChatTurn[]
+          attachments?: unknown
+        }>()
+
+        const trimmedMessage = body.message?.trim() ?? ''
+        const attachmentValidation = validateChatAttachments(body.attachments)
+        if (attachmentValidation.error) {
+          return c.json({ error: attachmentValidation.error }, 400)
+        }
+        const attachments = attachmentValidation.attachments ?? []
+        // Either a non-empty text body or at least one attachment is required.
+        if (!trimmedMessage && attachments.length === 0) {
+          return c.json({ error: 'Message is required' }, 400)
+        }
+
+        const sessionKey = normalizeBrowserOSChatSessionKey(
+          id,
+          body.sessionKey ?? crypto.randomUUID(),
+        )
+        const history = Array.isArray(body.history)
+          ? body.history.filter((entry): entry is MonitoringChatTurn =>
+              Boolean(
+                entry &&
+                  (entry.role === 'user' || entry.role === 'assistant') &&
+                  typeof entry.content === 'string',
+              ),
+            )
+          : []
+
+        // Replace the immediate 409 with a bounded wait so back-to-back user
+        // sends or a cron / hook turn that's still finishing don't reject the
+        // user-chat outright. The client-side outbound queue (Feature 2) keeps
+        // the per-agent send rate at 1, so this only kicks in for cross-source
+        // contention.
+        try {
+          await getMonitoringService().waitForSessionFree(id, {
+            timeoutMs: 30_000,
+          })
+        } catch (err) {
+          return c.json(
+            {
+              error:
+                err instanceof Error
+                  ? err.message
+                  : 'Agent is busy. Try again shortly.',
+            },
+            503,
+          )
+        }
+
+        const { text: composedMessage, parts: messageParts } =
+          buildMessagePartsFromAttachments(trimmedMessage, attachments)
+
+        const monitoringContext = await getMonitoringService().startSession({
           agentId: id,
           sessionKey,
-          status: c.req.raw.signal.aborted ? 'aborted' : 'failed',
-          error: err instanceof Error ? err.message : String(err),
+          originalPrompt: composedMessage,
+          chatHistory: history,
         })
-        if (isUnsupportedOpenClawProviderError(err)) {
-          return c.json({ error: err.message }, 400)
-        }
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
 
-    .post('/agents/:id/queue', async (c) => {
-      const { id } = c.req.param()
-      const body = await c.req.json<{
-        message: string
-        sessionKey?: string
-        history?: MonitoringChatTurn[]
-        attachments?: unknown
-        // Optional client-provided id — when set, the queue uses it as
-        // the canonical item id so the browser's optimistic row and the
-        // SSE snapshot reconcile on the same key.
-        id?: string
-      }>()
-      const trimmedMessage = body.message?.trim() ?? ''
-      const attachmentValidation = validateChatAttachments(body.attachments)
-      if (attachmentValidation.error) {
-        return c.json({ error: attachmentValidation.error }, 400)
-      }
-      const attachments = attachmentValidation.attachments ?? []
-      if (!trimmedMessage && attachments.length === 0) {
-        return c.json({ error: 'Message is required' }, 400)
-      }
-
-      const sessionKey = body.sessionKey
-        ? normalizeBrowserOSChatSessionKey(id, body.sessionKey)
-        : undefined
-      const history = Array.isArray(body.history)
-        ? body.history.filter((entry): entry is MonitoringChatTurn =>
-            Boolean(
-              entry &&
-                (entry.role === 'user' || entry.role === 'assistant') &&
-                typeof entry.content === 'string',
-            ),
-          )
-        : []
-
-      const { text: composedMessage, parts: messageParts } =
-        buildMessagePartsFromAttachments(trimmedMessage, attachments)
-
-      const item = getOutboundQueueService().enqueue({
-        agentId: id,
-        id: typeof body.id === 'string' && body.id ? body.id : undefined,
-        message: composedMessage,
-        messageParts,
-        sessionKey,
-        history,
-        attachmentsPreview: attachments.map((a) => ({
-          kind: a.kind,
-          mediaType: a.mediaType,
-          name: 'name' in a ? a.name : undefined,
-        })),
-      })
-      return c.json({ id: item.id }, 202)
-    })
-
-    .delete('/agents/:id/queue/:itemId', (c) => {
-      const { id, itemId } = c.req.param()
-      const result = getOutboundQueueService().cancel(id, itemId)
-      if (!result.ok) {
-        const code = result.reason === 'dispatching' ? 409 : 404
-        const message =
-          result.reason === 'dispatching'
-            ? 'Item is already dispatching'
-            : 'Item not found'
-        return c.json({ error: message }, code)
-      }
-      return c.json({ ok: true })
-    })
-
-    .post('/agents/:id/queue/:itemId/retry', (c) => {
-      const { id, itemId } = c.req.param()
-      const result = getOutboundQueueService().retry(id, itemId)
-      if (!result.ok) {
-        return c.json({ error: 'Item not found or not failed' }, 404)
-      }
-      return c.json({ ok: true })
-    })
-
-    .get('/agents/:id/queue/stream', (c) => {
-      const { id } = c.req.param()
-      c.header('Content-Type', 'text/event-stream')
-      c.header('Cache-Control', 'no-cache')
-      return stream(c, async (s) => {
-        const encoder = new TextEncoder()
-        const sendSnapshot = (items: QueuedItemPublic[]) => {
-          void s.write(encoder.encode(`data: ${JSON.stringify({ items })}\n\n`))
-        }
-        const unsubscribe = getOutboundQueueService().subscribe(
-          id,
-          sendSnapshot,
-        )
-        const heartbeat = setInterval(() => {
-          void s.write(encoder.encode(': keep-alive\n\n'))
-        }, 15_000)
         try {
-          await new Promise<void>((resolve) => {
-            s.onAbort(() => resolve())
+          const eventStream = await getOpenClawService().chatStream(
+            id,
+            sessionKey,
+            composedMessage,
+            history,
+            { messageParts },
+          )
+
+          c.header('Content-Type', 'text/event-stream')
+          c.header('Cache-Control', 'no-cache')
+          c.header('X-Session-Key', sessionKey)
+
+          return stream(c, async (s) => {
+            const reader = eventStream.getReader()
+            const encoder = new TextEncoder()
+            let finalAssistantMessage: string | undefined
+            let status: 'completed' | 'failed' | 'aborted' | 'incomplete' =
+              'incomplete'
+            let finalError: string | undefined
+            try {
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                if (
+                  value.type === 'done' &&
+                  typeof value.data.text === 'string' &&
+                  value.data.text.trim()
+                ) {
+                  finalAssistantMessage = value.data.text
+                  status = 'completed'
+                }
+                if (value.type === 'error') {
+                  finalError =
+                    (typeof value.data.message === 'string'
+                      ? value.data.message
+                      : typeof value.data.error === 'string'
+                        ? value.data.error
+                        : undefined) ?? 'Unknown chat stream error'
+                  status = 'failed'
+                }
+                await s.write(
+                  encoder.encode(`data: ${JSON.stringify(value)}\n\n`),
+                )
+              }
+              await s.write(encoder.encode('data: [DONE]\n\n'))
+            } catch (error) {
+              if (c.req.raw.signal.aborted) {
+                status = 'aborted'
+              } else {
+                status = 'failed'
+                finalError =
+                  error instanceof Error ? error.message : String(error)
+              }
+              throw error
+            } finally {
+              await reader.cancel()
+              await getMonitoringService().finalizeSession({
+                monitoringSessionId: monitoringContext.monitoringSessionId,
+                agentId: id,
+                sessionKey,
+                status,
+                finalAssistantMessage,
+                error: finalError,
+              })
+            }
           })
-        } finally {
-          clearInterval(heartbeat)
-          unsubscribe()
+        } catch (err) {
+          await getMonitoringService().finalizeSession({
+            monitoringSessionId: monitoringContext.monitoringSessionId,
+            agentId: id,
+            sessionKey,
+            status: c.req.raw.signal.aborted ? 'aborted' : 'failed',
+            error: err instanceof Error ? err.message : String(err),
+          })
+          if (isUnsupportedOpenClawProviderError(err)) {
+            return c.json({ error: err.message }, 400)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
         }
       })
-    })
 
-    .get('/session/:key/history', async (c) => {
-      const key = c.req.param('key')
-      const limitRaw = c.req.query('limit')
-      const cursor = c.req.query('cursor')
-      const limitParsed =
-        limitRaw !== undefined ? Number.parseInt(limitRaw, 10) : Number.NaN
-      const limit = Number.isFinite(limitParsed) ? limitParsed : undefined
-      const wantsStream = (c.req.header('accept') ?? '').includes(
-        'text/event-stream',
-      )
-
-      try {
-        if (!wantsStream) {
-          const history = await getOpenClawService().getSessionHistory(key, {
-            limit,
-            cursor,
-          })
-          return c.json(history)
+      .post('/agents/:id/queue', async (c) => {
+        const { id } = c.req.param()
+        const body = await c.req.json<{
+          message: string
+          sessionKey?: string
+          history?: MonitoringChatTurn[]
+          attachments?: unknown
+          // Optional client-provided id — when set, the queue uses it as
+          // the canonical item id so the browser's optimistic row and the
+          // SSE snapshot reconcile on the same key.
+          id?: string
+        }>()
+        const trimmedMessage = body.message?.trim() ?? ''
+        const attachmentValidation = validateChatAttachments(body.attachments)
+        if (attachmentValidation.error) {
+          return c.json({ error: attachmentValidation.error }, 400)
+        }
+        const attachments = attachmentValidation.attachments ?? []
+        if (!trimmedMessage && attachments.length === 0) {
+          return c.json({ error: 'Message is required' }, 400)
         }
 
-        const eventStream = await getOpenClawService().streamSessionHistory(
-          key,
-          { limit, cursor, signal: c.req.raw.signal },
-        )
+        const sessionKey = body.sessionKey
+          ? normalizeBrowserOSChatSessionKey(id, body.sessionKey)
+          : undefined
+        const history = Array.isArray(body.history)
+          ? body.history.filter((entry): entry is MonitoringChatTurn =>
+              Boolean(
+                entry &&
+                  (entry.role === 'user' || entry.role === 'assistant') &&
+                  typeof entry.content === 'string',
+              ),
+            )
+          : []
 
+        const { text: composedMessage, parts: messageParts } =
+          buildMessagePartsFromAttachments(trimmedMessage, attachments)
+
+        const item = getOutboundQueueService().enqueue({
+          agentId: id,
+          id: typeof body.id === 'string' && body.id ? body.id : undefined,
+          message: composedMessage,
+          messageParts,
+          sessionKey,
+          history,
+          attachmentsPreview: attachments.map((a) => ({
+            kind: a.kind,
+            mediaType: a.mediaType,
+            name: 'name' in a ? a.name : undefined,
+          })),
+        })
+        return c.json({ id: item.id }, 202)
+      })
+
+      .delete('/agents/:id/queue/:itemId', (c) => {
+        const { id, itemId } = c.req.param()
+        const result = getOutboundQueueService().cancel(id, itemId)
+        if (!result.ok) {
+          const code = result.reason === 'dispatching' ? 409 : 404
+          const message =
+            result.reason === 'dispatching'
+              ? 'Item is already dispatching'
+              : 'Item not found'
+          return c.json({ error: message }, code)
+        }
+        return c.json({ ok: true })
+      })
+
+      .post('/agents/:id/queue/:itemId/retry', (c) => {
+        const { id, itemId } = c.req.param()
+        const result = getOutboundQueueService().retry(id, itemId)
+        if (!result.ok) {
+          return c.json({ error: 'Item not found or not failed' }, 404)
+        }
+        return c.json({ ok: true })
+      })
+
+      .get('/agents/:id/queue/stream', (c) => {
+        const { id } = c.req.param()
         c.header('Content-Type', 'text/event-stream')
         c.header('Cache-Control', 'no-cache')
-        c.header('X-Session-Key', key)
-
         return stream(c, async (s) => {
-          const reader = eventStream.getReader()
           const encoder = new TextEncoder()
+          const sendSnapshot = (items: QueuedItemPublic[]) => {
+            void s.write(
+              encoder.encode(`data: ${JSON.stringify({ items })}\n\n`),
+            )
+          }
+          const unsubscribe = getOutboundQueueService().subscribe(
+            id,
+            sendSnapshot,
+          )
+          const heartbeat = setInterval(() => {
+            void s.write(encoder.encode(': keep-alive\n\n'))
+          }, 15_000)
           try {
-            while (true) {
-              const { done, value } = await reader.read()
-              if (done) break
-              await s.write(
-                encoder.encode(
-                  `event: ${value.type}\ndata: ${JSON.stringify(value.data)}\n\n`,
-                ),
-              )
-            }
+            await new Promise<void>((resolve) => {
+              s.onAbort(() => resolve())
+            })
           } finally {
-            await reader.cancel()
+            clearInterval(heartbeat)
+            unsubscribe()
           }
         })
-      } catch (err) {
-        if (err instanceof OpenClawSessionNotFoundError) {
-          return c.json({ error: err.message }, 404)
+      })
+
+      .get('/session/:key/history', async (c) => {
+        const key = c.req.param('key')
+        const limitRaw = c.req.query('limit')
+        const cursor = c.req.query('cursor')
+        const limitParsed =
+          limitRaw !== undefined ? Number.parseInt(limitRaw, 10) : Number.NaN
+        const limit = Number.isFinite(limitParsed) ? limitParsed : undefined
+        const wantsStream = (c.req.header('accept') ?? '').includes(
+          'text/event-stream',
+        )
+
+        try {
+          if (!wantsStream) {
+            const history = await getOpenClawService().getSessionHistory(key, {
+              limit,
+              cursor,
+            })
+            return c.json(history)
+          }
+
+          const eventStream = await getOpenClawService().streamSessionHistory(
+            key,
+            { limit, cursor, signal: c.req.raw.signal },
+          )
+
+          c.header('Content-Type', 'text/event-stream')
+          c.header('Cache-Control', 'no-cache')
+          c.header('X-Session-Key', key)
+
+          return stream(c, async (s) => {
+            const reader = eventStream.getReader()
+            const encoder = new TextEncoder()
+            try {
+              while (true) {
+                const { done, value } = await reader.read()
+                if (done) break
+                await s.write(
+                  encoder.encode(
+                    `event: ${value.type}\ndata: ${JSON.stringify(value.data)}\n\n`,
+                  ),
+                )
+              }
+            } finally {
+              await reader.cancel()
+            }
+          })
+        } catch (err) {
+          if (err instanceof OpenClawSessionNotFoundError) {
+            return c.json({ error: err.message }, 404)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
         }
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      })
 
-    .get('/logs', async (c) => {
-      try {
-        const logs = await getOpenClawService().getLogs()
-        return c.json({ logs })
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
-
-    .post('/providers', async (c) => {
-      const body = await c.req.json<{
-        providerType: string
-        apiKey: string
-        providerName?: string
-        baseUrl?: string
-        modelId?: string
-        imageModelId?: string
-      }>()
-
-      if (!body.providerType || !body.apiKey) {
-        return c.json({ error: 'providerType and apiKey are required' }, 400)
-      }
-
-      try {
-        const result = await getOpenClawService().updateProviderKeys(body)
-        return c.json({
-          status: result.restarted ? 'restarting' : 'updated',
-          message: result.restarted
-            ? 'Provider updated, restarting gateway'
-            : 'Provider updated without a restart',
-          imageModelUpdated: result.imageModelUpdated,
-        })
-      } catch (err) {
-        if (isUnsupportedOpenClawProviderError(err)) {
-          return c.json({ error: err.message }, 400)
+      .get('/logs', async (c) => {
+        try {
+          const logs = await getOpenClawService().getLogs()
+          return c.json({ logs })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
         }
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      })
 
-    .patch('/agents/:id/models', async (c) => {
-      const { id } = c.req.param()
-      const body = await c.req.json<{
-        model?: string | null
-        imageModel?: string | null
-        providerType?: string
-      }>()
+      .post('/providers', async (c) => {
+        const body = await c.req.json<{
+          providerType: string
+          apiKey: string
+          providerName?: string
+          baseUrl?: string
+          modelId?: string
+          imageModelId?: string
+        }>()
 
-      try {
-        const updateInput: {
+        if (!body.providerType || !body.apiKey) {
+          return c.json({ error: 'providerType and apiKey are required' }, 400)
+        }
+
+        try {
+          const result = await getOpenClawService().updateProviderKeys(body)
+          return c.json({
+            status: result.restarted ? 'restarting' : 'updated',
+            message: result.restarted
+              ? 'Provider updated, restarting gateway'
+              : 'Provider updated without a restart',
+            imageModelUpdated: result.imageModelUpdated,
+          })
+        } catch (err) {
+          if (isUnsupportedOpenClawProviderError(err)) {
+            return c.json({ error: err.message }, 400)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
+
+      .patch('/agents/:id/models', async (c) => {
+        const { id } = c.req.param()
+        const body = await c.req.json<{
+          // Each field accepts: 'inherit' (clear override) | <registeredId>
+          // (resolve from registry) | null (synonym for 'inherit') |
+          // undefined (leave untouched).
           model?: string | null
           imageModel?: string | null
-          providerType?: string
-        } = {}
-        if ('model' in body) updateInput.model = body.model ?? null
-        if ('imageModel' in body)
-          updateInput.imageModel = body.imageModel ?? null
-        if (body.providerType) updateInput.providerType = body.providerType
+        }>()
 
-        const result = await getOpenClawService().updateAgentModels(
-          id,
-          updateInput,
-        )
-        const resolved = await getOpenClawService().resolveAgentModelDetails(id)
-        return c.json({
-          ...result,
-          resolved,
-        })
-      } catch (err) {
-        if (isUnsupportedOpenClawProviderError(err)) {
-          return c.json({ error: err.message }, 400)
+        try {
+          const service = getOpenClawService()
+          const updateInput: {
+            model?: string | null
+            imageModel?: string | null
+          } = {}
+
+          if ('model' in body) {
+            updateInput.model = await resolveAgentModelOverride(body.model)
+          }
+          if ('imageModel' in body) {
+            updateInput.imageModel = await resolveAgentModelOverride(
+              body.imageModel,
+            )
+          }
+
+          const result = await service.updateAgentModels(id, updateInput)
+          const resolved = await service.resolveAgentModelDetails(id)
+          return c.json({ ...result, resolved })
+        } catch (err) {
+          if (isUnsupportedOpenClawProviderError(err)) {
+            return c.json({ error: err.message }, 400)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
         }
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      })
 
-    .get('/agents/:id/models', async (c) => {
-      const { id } = c.req.param()
-      try {
-        const resolved = await getOpenClawService().resolveAgentModelDetails(id)
-        return c.json(resolved)
-      } catch (err) {
-        const message = err instanceof Error ? err.message : String(err)
-        return c.json({ error: message }, 500)
-      }
-    })
+      .get('/agents/:id/models', async (c) => {
+        const { id } = c.req.param()
+        try {
+          const resolved =
+            await getOpenClawService().resolveAgentModelDetails(id)
+          return c.json(resolved)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
+
+      // ── Registered models (the pool /agents picks defaults from) ────
+      .get('/models', async (c) => {
+        try {
+          const models = await getOpenClawService().listRegisteredModels()
+          return c.json({ models })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
+
+      .post('/models', async (c) => {
+        const body = await c.req.json<{
+          providerType?: string
+          providerName?: string
+          baseUrl?: string
+          apiKey?: string
+          modelId?: string
+          supportsImages?: boolean
+        }>()
+        if (!body.providerType?.trim() || !body.modelId?.trim()) {
+          return c.json({ error: 'providerType and modelId are required' }, 400)
+        }
+        try {
+          const entry = await getOpenClawService().registerModel({
+            providerType: body.providerType.trim(),
+            providerName: body.providerName,
+            baseUrl: body.baseUrl,
+            apiKey: body.apiKey,
+            modelId: body.modelId.trim(),
+            supportsImages: !!body.supportsImages,
+          })
+          return c.json({ entry }, 201)
+        } catch (err) {
+          if (isUnsupportedOpenClawProviderError(err)) {
+            return c.json({ error: err.message }, 400)
+          }
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
+
+      .delete('/models/:id', async (c) => {
+        const { id } = c.req.param()
+        try {
+          const result = await getOpenClawService().removeRegisteredModel(id)
+          if (!result.removed) {
+            return c.json({ error: 'Registered model not found' }, 404)
+          }
+          return c.json({
+            removed: result.removed,
+            clearedTextDefault: result.clearedTextDefault,
+            clearedImageDefault: result.clearedImageDefault,
+          })
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
+
+      .patch('/defaults', async (c) => {
+        const body = await c.req.json<{
+          textModelId?: string | null
+          imageModelId?: string | null
+        }>()
+        try {
+          const service = getOpenClawService()
+          const result: {
+            text?: { ref: string | null }
+            image?: { ref: string | null }
+          } = {}
+          if ('textModelId' in body) {
+            result.text = await service.setDefaultTextModel(
+              body.textModelId ?? null,
+            )
+          }
+          if ('imageModelId' in body) {
+            result.image = await service.setDefaultImageModel(
+              body.imageModelId ?? null,
+            )
+          }
+          return c.json(result)
+        } catch (err) {
+          const message = err instanceof Error ? err.message : String(err)
+          return c.json({ error: message }, 500)
+        }
+      })
+  )
+}
+
+/**
+ * Translate the `/agents/:id/models` PATCH body into the bare model ref
+ * the service expects. `'inherit'` and `null` both mean "clear the
+ * override"; anything else is treated as a registered-model id and
+ * resolved through the registry. If the id is unknown we fall back to
+ * the raw value so existing free-text callers keep working.
+ */
+async function resolveAgentModelOverride(
+  value: string | null | undefined,
+): Promise<string | null | undefined> {
+  if (value === undefined) return undefined
+  if (value === null || value === 'inherit') return null
+  const ref = await getOpenClawService().resolveRegisteredModelRef(value)
+  return ref ?? value
 }

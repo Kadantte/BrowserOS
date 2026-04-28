@@ -78,6 +78,10 @@ import {
   resolveSupportedOpenClawProvider,
 } from './openclaw-provider-map'
 import type { OpenClawStreamEvent } from './openclaw-types'
+import {
+  type RegisteredModelEntry,
+  RegisteredModelsStore,
+} from './registered-models'
 import { allocateGatewayPort, readPersistedGatewayPort } from './runtime-state'
 
 const READY_TIMEOUT_MS = 30_000
@@ -149,6 +153,13 @@ export interface SetupInput {
   modelId?: string
   /** Bare vision-model id (e.g. `gpt-4o`). Mapped to `agents.defaults.imageModel`. */
   imageModelId?: string
+  /**
+   * Whether the picked chat model supports images. Used to seed the
+   * registered-models entry's `supportsImages` flag during setup so
+   * the Models dialog and image-default dropdown can filter
+   * correctly afterwards.
+   */
+  modelSupportsImages?: boolean
 }
 
 export interface OpenClawProviderUpdateResult {
@@ -600,6 +611,14 @@ export class OpenClawService {
     return this._jsonlReader
   }
 
+  private _registeredModels: RegisteredModelsStore | null = null
+  private get registeredModelsStore(): RegisteredModelsStore {
+    if (!this._registeredModels) {
+      this._registeredModels = new RegisteredModelsStore(this.openclawDir)
+    }
+    return this._registeredModels
+  }
+
   constructor(config: OpenClawServiceConfig = {}) {
     this.openclawDir = getOpenClawDir()
     this.runtime = buildContainerRuntime({
@@ -728,6 +747,19 @@ export class OpenClawService {
           .unsetConfig('agents.defaults.imageModel')
           .catch(() => {})
         logger.info('Cleared global image model')
+      }
+
+      // Seed the registered-models registry with the chosen chat
+      // entry so /agents Models dialog renders correctly the first
+      // time a user lands on it after setup.
+      if (input.providerType && input.modelId) {
+        await this.registeredModelsStore.upsert({
+          providerType: input.providerType,
+          providerName: input.providerName,
+          baseUrl: input.baseUrl,
+          modelId: input.modelId,
+          supportsImages: !!input.modelSupportsImages,
+        })
       }
 
       logProgress('Validating OpenClaw config...')
@@ -1380,6 +1412,237 @@ export class OpenClawService {
       modelUpdated: !!provider.model,
       imageModelUpdated,
     }
+  }
+
+  // ── Registered models (the pool /agents picks defaults from) ───────
+
+  /**
+   * Read the registry. Each entry comes from a `(providerType, modelId)`
+   * pair the user added through `/claw/setup` or `/claw/models`.
+   */
+  async listRegisteredModels(): Promise<RegisteredModelEntry[]> {
+    return this.registeredModelsStore.list()
+  }
+
+  /**
+   * Register a provider+model pair with OpenClaw. Reuses the existing
+   * provider-config + env-key plumbing — when the env or custom-provider
+   * config actually changes, the gateway is bounced. Idempotent: calling
+   * twice with the same pair just refreshes the entry's `addedAt`.
+   */
+  async registerModel(input: {
+    providerType: string
+    providerName?: string
+    baseUrl?: string
+    apiKey?: string
+    modelId: string
+    supportsImages: boolean
+  }): Promise<RegisteredModelEntry> {
+    await this.registeredModelsStore.ensureDir()
+    const provider = this.resolveProviderForAgent(input)
+    const configChanged = await this.mergeProviderConfigIfChanged(provider)
+    const envChanged = provider.envValues
+      ? await this.writeStateEnv(provider.envValues)
+      : false
+    // Restart only when the gateway is already up. During /claw/setup
+    // the gateway hasn't started yet, so the merge lands in the state
+    // dir and the bootstrap path picks it up.
+    const gatewayUp = this.controlPlaneStatus === 'connected'
+    if ((configChanged || envChanged) && gatewayUp) {
+      await this.restart().catch((err) => {
+        logger.warn(
+          'Gateway restart after registerModel failed; continuing anyway',
+          { error: err instanceof Error ? err.message : String(err) },
+        )
+      })
+    }
+    const entry = await this.registeredModelsStore.upsert({
+      providerType: input.providerType,
+      providerName: input.providerName,
+      baseUrl: input.baseUrl,
+      modelId: input.modelId,
+      supportsImages: input.supportsImages,
+    })
+    logger.info('Registered model with OpenClaw', {
+      id: entry.id,
+      providerType: entry.providerType,
+      modelId: entry.modelId,
+    })
+    return entry
+  }
+
+  /**
+   * Remove a registered model. If it's currently bound to a default
+   * (text or image), clear that default — we never leave the config
+   * pointing at a model that's no longer in the pool.
+   */
+  async removeRegisteredModel(id: string): Promise<{
+    removed: RegisteredModelEntry | null
+    clearedTextDefault: boolean
+    clearedImageDefault: boolean
+  }> {
+    const { removed, remaining } = await this.registeredModelsStore.remove(id)
+    if (!removed) {
+      return {
+        removed: null,
+        clearedTextDefault: false,
+        clearedImageDefault: false,
+      }
+    }
+
+    const removedRef = this.buildRegisteredEntryModelRef(removed)
+    let clearedTextDefault = false
+    let clearedImageDefault = false
+    const [defaultText, defaultImage] = await Promise.all([
+      this.readConfigString('agents.defaults.model'),
+      this.readConfigString('agents.defaults.imageModel'),
+    ])
+    if (removedRef && defaultText === removedRef) {
+      await this.applyCliMutation(() =>
+        this.cliClient.unsetConfig('agents.defaults.model'),
+      )
+      clearedTextDefault = true
+    }
+    if (removedRef && defaultImage === removedRef) {
+      await this.applyCliMutation(() =>
+        this.cliClient.unsetConfig('agents.defaults.imageModel'),
+      )
+      clearedImageDefault = true
+    }
+
+    // If no other registered entry shares this provider, drop the API
+    // key from .env. Mirrors what setup did originally — shared keys
+    // mean shared env entries.
+    const providerStillUsed = remaining.some(
+      (entry) =>
+        entry.providerType === removed.providerType &&
+        (entry.baseUrl ?? null) === (removed.baseUrl ?? null),
+    )
+    if (!providerStillUsed) {
+      await this.dropProviderEnvForRemovedEntry(removed).catch((err) => {
+        logger.warn('Failed to drop env for removed provider', {
+          providerType: removed.providerType,
+          error: err instanceof Error ? err.message : String(err),
+        })
+      })
+    }
+
+    logger.info('Unregistered model from OpenClaw', {
+      id,
+      clearedTextDefault,
+      clearedImageDefault,
+      providerStillUsed,
+    })
+    return { removed, clearedTextDefault, clearedImageDefault }
+  }
+
+  /**
+   * Set the global default text model to a registered entry's ref, or
+   * clear it. `null` ⟶ `unset agents.defaults.model`.
+   */
+  async setDefaultTextModel(
+    registeredId: string | null,
+  ): Promise<{ ref: string | null }> {
+    if (registeredId === null) {
+      await this.applyCliMutation(() =>
+        this.cliClient.unsetConfig('agents.defaults.model'),
+      )
+      return { ref: null }
+    }
+    const entry = await this.registeredModelsStore.findById(registeredId)
+    if (!entry) {
+      throw new Error(`Registered model not found: ${registeredId}`)
+    }
+    const ref = this.buildRegisteredEntryModelRef(entry)
+    if (!ref) {
+      throw new Error(
+        `Could not build model ref for registered entry ${registeredId}`,
+      )
+    }
+    await this.applyCliMutation(() => this.cliClient.setDefaultModel(ref))
+    return { ref }
+  }
+
+  /**
+   * Set the global default image model to a registered entry's ref, or
+   * clear it. The caller is expected to only pass entries whose
+   * `supportsImages` is true; the server still accepts any registered
+   * id and trusts the gateway to error if it's wrong.
+   */
+  async setDefaultImageModel(
+    registeredId: string | null,
+  ): Promise<{ ref: string | null }> {
+    if (registeredId === null) {
+      await this.applyCliMutation(() =>
+        this.cliClient.unsetConfig('agents.defaults.imageModel'),
+      )
+      return { ref: null }
+    }
+    const entry = await this.registeredModelsStore.findById(registeredId)
+    if (!entry) {
+      throw new Error(`Registered model not found: ${registeredId}`)
+    }
+    const ref = this.buildRegisteredEntryModelRef(entry)
+    if (!ref) {
+      throw new Error(
+        `Could not build model ref for registered entry ${registeredId}`,
+      )
+    }
+    await this.applyCliMutation(() => this.cliClient.setImageModel(ref))
+    return { ref }
+  }
+
+  /**
+   * Build the provider-prefixed model ref for a registered entry.
+   * Mirrors `buildAgentScopedModelRef` but works from the persisted
+   * entry shape so callers don't have to reconstruct the input.
+   */
+  private buildRegisteredEntryModelRef(
+    entry: RegisteredModelEntry,
+  ): string | undefined {
+    return this.buildAgentScopedModelRef(entry.providerType, entry.modelId)
+  }
+
+  /**
+   * Look up a registered entry's text model ref by id. Used by the
+   * per-agent override path so the UI can pass a registered id and the
+   * server resolves it the same way it does for defaults.
+   */
+  async resolveRegisteredModelRef(id: string): Promise<string | null> {
+    const entry = await this.registeredModelsStore.findById(id)
+    if (!entry) return null
+    return this.buildRegisteredEntryModelRef(entry) ?? null
+  }
+
+  /**
+   * Drop the env key for a provider whose last registered entry just
+   * went away. We don't aggressively rewrite the custom-provider config
+   * blocks — those remain idempotent and harmless if unused.
+   */
+  private async dropProviderEnvForRemovedEntry(
+    entry: RegisteredModelEntry,
+  ): Promise<void> {
+    const provider = this.resolveProviderForAgent({
+      providerType: entry.providerType,
+      providerName: entry.providerName,
+      baseUrl: entry.baseUrl,
+      // No apiKey ⟶ resolved env block is empty ⟶ writeStateEnv removes
+      // the entry's key when we serialize the next time. Provider envs
+      // are managed via mergeEnvContent which handles the diff.
+      apiKey: undefined,
+    })
+    if (!provider.envValues || Object.keys(provider.envValues).length > 0) {
+      // resolveProviderForAgent returns the keyset shape regardless of
+      // apiKey; iterate the keys and clear them in-place.
+    }
+    // Build an explicit clear map: every env var the provider would
+    // have written becomes empty.
+    const clearedEnv: Record<string, string> = {}
+    for (const key of Object.keys(provider.envValues ?? {})) {
+      clearedEnv[key] = ''
+    }
+    if (Object.keys(clearedEnv).length === 0) return
+    await this.writeStateEnv(clearedEnv)
   }
 
   // ── Per-agent model overrides ───────────────────────────────────────

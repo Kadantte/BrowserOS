@@ -40,6 +40,7 @@ import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
 import { AgentTerminal } from './AgentTerminal'
 import { AgentModelsPanel } from './agents-page.agent-models-panel'
 import { SetupImageModelField } from './agents-page.image-model-field'
+import { ModelsDialog } from './agents-page.models-dialog'
 import {
   buildOpenClawCliProviderOptions,
   findOpenClawCliProviderById,
@@ -262,6 +263,7 @@ interface AgentsPageHeaderProps {
   status: OpenClawStatus | null
   onCreateAgent: () => void
   onOpenTerminal: () => void
+  onOpenModels: () => void
   onReconnect: () => void
   onRestart: () => void
   onStop: () => void
@@ -275,6 +277,7 @@ const AgentsPageHeader: FC<AgentsPageHeaderProps> = ({
   status,
   onCreateAgent,
   onOpenTerminal,
+  onOpenModels,
   onReconnect,
   onRestart,
   onStop,
@@ -331,6 +334,10 @@ const AgentsPageHeader: FC<AgentsPageHeaderProps> = ({
             <Button variant="outline" onClick={onOpenTerminal}>
               <TerminalSquare className="mr-1 size-4" />
               Terminal
+            </Button>
+            <Button variant="outline" onClick={onOpenModels}>
+              <Settings2 className="mr-1 size-4" />
+              Models
             </Button>
             <Button onClick={onCreateAgent} disabled={!canManageAgents}>
               <Plus className="mr-1 size-4" />
@@ -568,11 +575,8 @@ const RunningAgentsSection: FC<RunningAgentsSectionProps> = ({
     )
   }
 
-  const defaultProviderType = inferProviderTypeFromModelRef(
-    status?.defaultModel ?? null,
-  )
-  const defaultTextModel = stripModelRefPrefix(status?.defaultModel ?? null)
-  const defaultImageModel = stripModelRefPrefix(
+  const defaultTextLabel = stripModelRefPrefix(status?.defaultModel ?? null)
+  const defaultImageLabel = stripModelRefPrefix(
     status?.defaultImageModel ?? null,
   )
 
@@ -582,12 +586,12 @@ const RunningAgentsSection: FC<RunningAgentsSectionProps> = ({
         <AlertDescription className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           <span>
             <span className="text-muted-foreground">Default text model:</span>{' '}
-            <span className="font-medium">{defaultTextModel ?? 'not set'}</span>
+            <span className="font-medium">{defaultTextLabel ?? 'not set'}</span>
           </span>
           <span>
             <span className="text-muted-foreground">Default image model:</span>{' '}
             <span className="font-medium">
-              {defaultImageModel ?? (
+              {defaultImageLabel ?? (
                 <span className="text-amber-600">
                   not set — uploads ignored
                 </span>
@@ -603,9 +607,8 @@ const RunningAgentsSection: FC<RunningAgentsSectionProps> = ({
           agent={agent}
           canManageAgents={canManageAgents}
           deleting={deleting}
-          providerType={defaultProviderType}
-          defaultTextModel={defaultTextModel}
-          defaultImageModel={defaultImageModel}
+          defaultTextRef={status?.defaultModel ?? null}
+          defaultImageRef={status?.defaultImageModel ?? null}
           onChatAgent={onChatAgent}
           onDeleteAgent={onDeleteAgent}
         />
@@ -618,9 +621,8 @@ interface AgentRowProps {
   agent: AgentEntry
   canManageAgents: boolean
   deleting: boolean
-  providerType: ProviderType | undefined
-  defaultTextModel: string | null
-  defaultImageModel: string | null
+  defaultTextRef: string | null
+  defaultImageRef: string | null
   onChatAgent: (agentId: string) => void
   onDeleteAgent: (agentId: string) => void
 }
@@ -629,9 +631,8 @@ const AgentRow: FC<AgentRowProps> = ({
   agent,
   canManageAgents,
   deleting,
-  providerType,
-  defaultTextModel,
-  defaultImageModel,
+  defaultTextRef,
+  defaultImageRef,
   onChatAgent,
   onDeleteAgent,
 }) => {
@@ -691,31 +692,13 @@ const AgentRow: FC<AgentRowProps> = ({
         <div id={`${agent.agentId}-models-panel`}>
           <AgentModelsPanel
             agentId={agent.agentId}
-            providerType={providerType}
-            defaultTextModel={defaultTextModel}
-            defaultImageModel={defaultImageModel}
+            defaultTextRef={defaultTextRef}
+            defaultImageRef={defaultImageRef}
           />
         </div>
       )}
     </Card>
   )
-}
-
-const SUPPORTED_PROVIDER_PREFIXES = new Set<ProviderType>([
-  'anthropic',
-  'moonshot',
-  'openai',
-  'openrouter',
-])
-
-function inferProviderTypeFromModelRef(
-  ref: string | null,
-): ProviderType | undefined {
-  if (!ref) return undefined
-  const slash = ref.indexOf('/')
-  if (slash === -1) return undefined
-  const prefix = ref.slice(0, slash) as ProviderType
-  return SUPPORTED_PROVIDER_PREFIXES.has(prefix) ? prefix : undefined
 }
 
 function stripModelRefPrefix(ref: string | null): string | null {
@@ -767,6 +750,7 @@ export const AgentsPage: FC = () => {
   const [createProviderId, setCreateProviderId] = useState('')
 
   const [showTerminal, setShowTerminal] = useState(false)
+  const [modelsOpen, setModelsOpen] = useState(false)
   const [cliAuthModalOpen, setCliAuthModalOpen] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -936,6 +920,7 @@ export const AgentsPage: FC = () => {
         apiKey: llmOption?.apiKey,
         modelId: option?.modelId,
         imageModelId: setupImageModelId.trim() || undefined,
+        modelSupportsImages: llmOption?.supportsImages,
       })
       setSetupOpen(false)
       if (isCli) setCliAuthModalOpen(true)
@@ -1035,9 +1020,16 @@ export const AgentsPage: FC = () => {
         status={status}
         onCreateAgent={() => setCreateOpen(true)}
         onOpenTerminal={() => setShowTerminal(true)}
+        onOpenModels={() => setModelsOpen(true)}
         onReconnect={handleReconnect}
         onRestart={handleRestart}
         onStop={handleStop}
+      />
+
+      <ModelsDialog
+        open={modelsOpen}
+        onOpenChange={setModelsOpen}
+        status={status}
       />
 
       {lifecycleBanner && <LifecycleAlert message={lifecycleBanner} />}

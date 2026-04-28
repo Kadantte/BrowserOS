@@ -54,6 +54,13 @@ export interface OpenClawSetupInput {
   apiKey?: string
   modelId?: string
   imageModelId?: string
+  /**
+   * Whether the picked chat model supports images. Forwarded to the
+   * server so the seeded registered-models entry carries the right
+   * vision flag — without it, the setup-time entry would always
+   * show as text-only in the Models dialog regardless of capability.
+   */
+  modelSupportsImages?: boolean
 }
 
 export interface ResolvedAgentConfigValue {
@@ -68,10 +75,33 @@ export interface AgentModelDetails {
 
 export interface UpdateAgentModelsInput {
   agentId: string
-  /** Bare model id (no provider prefix). `null` clears the override. `undefined` leaves it untouched. */
-  model?: string | null
-  imageModel?: string | null
-  providerType?: string
+  /**
+   * Per-agent override for the text model. `'inherit'` (or `null`)
+   * clears the override and falls back to `agents.defaults.model`.
+   * Any other value is treated as a registered-model id and resolved
+   * server-side. `undefined` leaves the existing value untouched.
+   */
+  model?: 'inherit' | string | null
+  imageModel?: 'inherit' | string | null
+}
+
+export interface RegisteredModel {
+  id: string
+  providerType: string
+  providerName?: string
+  baseUrl?: string
+  modelId: string
+  supportsImages: boolean
+  addedAt: number
+}
+
+export interface AddRegisteredModelInput {
+  providerType: string
+  providerName?: string
+  baseUrl?: string
+  apiKey?: string
+  modelId: string
+  supportsImages: boolean
 }
 
 export function getModelDisplayName(model: unknown): string | undefined {
@@ -83,6 +113,7 @@ export const OPENCLAW_QUERY_KEYS = {
   status: 'openclaw-status',
   agents: 'openclaw-agents',
   agentModels: 'openclaw-agent-models',
+  registeredModels: 'openclaw-registered-models',
 } as const
 
 export type GatewayLifecycleAction =
@@ -129,7 +160,134 @@ async function invalidateOpenClawQueries(
     queryClient.invalidateQueries({
       queryKey: [OPENCLAW_QUERY_KEYS.agentModels],
     }),
+    queryClient.invalidateQueries({
+      queryKey: [OPENCLAW_QUERY_KEYS.registeredModels],
+    }),
   ])
+}
+
+async function fetchRegisteredModels(
+  baseUrl: string,
+): Promise<RegisteredModel[]> {
+  const data = await clawFetch<{ models: RegisteredModel[] }>(
+    baseUrl,
+    '/models',
+  )
+  return data.models ?? []
+}
+
+export function useRegisteredModels(enabled = true) {
+  const {
+    baseUrl,
+    isLoading: urlLoading,
+    error: urlError,
+  } = useAgentServerUrl()
+
+  const query = useQuery<RegisteredModel[], Error>({
+    queryKey: [OPENCLAW_QUERY_KEYS.registeredModels, baseUrl],
+    queryFn: () => fetchRegisteredModels(baseUrl as string),
+    enabled: !!baseUrl && !urlLoading && enabled,
+  })
+
+  return {
+    models: query.data ?? [],
+    loading: query.isLoading || urlLoading,
+    error: query.error ?? urlError,
+    refetch: query.refetch,
+  }
+}
+
+export function useAddRegisteredModel() {
+  const { baseUrl, isLoading: urlLoading } = useAgentServerUrl()
+  const queryClient = useQueryClient()
+  return useMutation<RegisteredModel, Error, AddRegisteredModelInput>({
+    mutationFn: async (input) => {
+      if (!baseUrl || urlLoading) {
+        throw new Error('BrowserOS agent server URL is not ready')
+      }
+      const response = await clawFetch<{ entry: RegisteredModel }>(
+        baseUrl,
+        '/models',
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(input),
+        },
+      )
+      return response.entry
+    },
+    onSettled: () => invalidateOpenClawQueries(queryClient),
+  })
+}
+
+export function useRemoveRegisteredModel() {
+  const { baseUrl, isLoading: urlLoading } = useAgentServerUrl()
+  const queryClient = useQueryClient()
+  return useMutation<
+    {
+      removed: RegisteredModel
+      clearedTextDefault: boolean
+      clearedImageDefault: boolean
+    },
+    Error,
+    string,
+    { previous: RegisteredModel[] | undefined }
+  >({
+    mutationFn: async (id) => {
+      if (!baseUrl || urlLoading) {
+        throw new Error('BrowserOS agent server URL is not ready')
+      }
+      return clawFetch(baseUrl, `/models/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+      })
+    },
+    onMutate: async (id) => {
+      const queryKey = [OPENCLAW_QUERY_KEYS.registeredModels, baseUrl]
+      await queryClient.cancelQueries({ queryKey })
+      const previous = queryClient.getQueryData<RegisteredModel[]>(queryKey)
+      if (previous) {
+        queryClient.setQueryData(
+          queryKey,
+          previous.filter((entry) => entry.id !== id),
+        )
+      }
+      return { previous }
+    },
+    onError: (_error, _id, context) => {
+      if (!context) return
+      const queryKey = [OPENCLAW_QUERY_KEYS.registeredModels, baseUrl]
+      if (context.previous) queryClient.setQueryData(queryKey, context.previous)
+    },
+    onSettled: () => invalidateOpenClawQueries(queryClient),
+  })
+}
+
+export function useSetDefaultModels() {
+  const { baseUrl, isLoading: urlLoading } = useAgentServerUrl()
+  const queryClient = useQueryClient()
+  return useMutation<
+    {
+      text?: { ref: string | null }
+      image?: { ref: string | null }
+    },
+    Error,
+    {
+      textModelId?: string | null
+      imageModelId?: string | null
+    }
+  >({
+    mutationFn: async (input) => {
+      if (!baseUrl || urlLoading) {
+        throw new Error('BrowserOS agent server URL is not ready')
+      }
+      return clawFetch(baseUrl, '/defaults', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+    },
+    onSettled: () => invalidateOpenClawQueries(queryClient),
+  })
 }
 
 async function fetchAgentModels(
@@ -185,7 +343,6 @@ export function useUpdateAgentModels() {
       const body: Record<string, unknown> = {}
       if (input.model !== undefined) body.model = input.model
       if (input.imageModel !== undefined) body.imageModel = input.imageModel
-      if (input.providerType) body.providerType = input.providerType
       const response = await clawFetch<{
         modelUpdated: boolean
         imageModelUpdated: boolean

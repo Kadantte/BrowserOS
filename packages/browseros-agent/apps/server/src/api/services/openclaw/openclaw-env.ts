@@ -20,6 +20,10 @@ export function getOpenClawStateEnvPath(openclawDir: string): string {
   return join(getOpenClawStateDir(openclawDir), '.env')
 }
 
+export function getOpenClawRegisteredModelsPath(openclawDir: string): string {
+  return join(getOpenClawStateDir(openclawDir), 'registered-models.json')
+}
+
 export function getHostWorkspaceDir(
   openclawDir: string,
   agentName: string,
