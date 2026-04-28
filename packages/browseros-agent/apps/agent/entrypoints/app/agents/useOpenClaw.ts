@@ -91,6 +91,15 @@ export interface RegisteredModel {
   providerName?: string
   baseUrl?: string
   modelId: string
+  /**
+   * Fully-qualified model ref the gateway writes into
+   * `agents.defaults.*`. Used to reconcile the resolved default
+   * against the registry by exact-string equality. Optional for
+   * backwards compat with entries written before the field
+   * existed; UI falls back to the old prefix heuristic in that
+   * case.
+   */
+  modelRef?: string
   supportsImages: boolean
   addedAt: number
 }

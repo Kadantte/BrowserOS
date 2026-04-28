@@ -751,13 +751,16 @@ export class OpenClawService {
 
       // Seed the registered-models registry with the chosen chat
       // entry so /agents Models dialog renders correctly the first
-      // time a user lands on it after setup.
+      // time a user lands on it after setup. `provider.model` carries
+      // the same ref the gateway resolves so the UI can match it
+      // against `agents.defaults.*` by exact equality.
       if (input.providerType && input.modelId) {
         await this.registeredModelsStore.upsert({
           providerType: input.providerType,
           providerName: input.providerName,
           baseUrl: input.baseUrl,
           modelId: input.modelId,
+          modelRef: provider.model,
           supportsImages: !!input.modelSupportsImages,
         })
       }
@@ -1465,6 +1468,9 @@ export class OpenClawService {
       const entry = await this.registeredModelsStore.upsert({
         providerType: parsed.providerType,
         modelId: parsed.modelId,
+        // The ref we just parsed *is* the canonical ref OpenClaw uses
+        // for this model. Store it so the dropdown can match.
+        modelRef: ref,
         supportsImages,
       })
       entries.push(entry)
@@ -1514,12 +1520,17 @@ export class OpenClawService {
       providerName: input.providerName,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
+      // `provider.model` is the same ref OpenClaw writes into
+      // `agents.defaults.*`; persist it so the UI can match the
+      // resolved default against the registry by exact equality.
+      modelRef: provider.model,
       supportsImages: input.supportsImages,
     })
     logger.info('Registered model with OpenClaw', {
       id: entry.id,
       providerType: entry.providerType,
       modelId: entry.modelId,
+      modelRef: entry.modelRef,
     })
     return entry
   }
@@ -1647,12 +1658,15 @@ export class OpenClawService {
 
   /**
    * Build the provider-prefixed model ref for a registered entry.
-   * Mirrors `buildAgentScopedModelRef` but works from the persisted
-   * entry shape so callers don't have to reconstruct the input.
+   * Prefers the `modelRef` persisted at register time — that's the
+   * exact value the gateway sees in `agents.defaults.*`. Legacy
+   * entries written before `modelRef` existed fall back to the
+   * inferred prefix builder.
    */
   private buildRegisteredEntryModelRef(
     entry: RegisteredModelEntry,
   ): string | undefined {
+    if (entry.modelRef && entry.modelRef.trim()) return entry.modelRef
     return this.buildAgentScopedModelRef(entry.providerType, entry.modelId)
   }
 

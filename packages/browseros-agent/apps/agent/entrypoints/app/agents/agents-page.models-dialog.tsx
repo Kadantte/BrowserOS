@@ -457,11 +457,19 @@ function findIdForRef(
   ref: string | null,
 ): string | null {
   if (!ref) return null
-  const match = models.find((m) => {
+  // Preferred path — exact match on the canonical `modelRef` the
+  // server stored at register time. Custom providers (whose refs
+  // are bare model ids) only resolve correctly through this
+  // branch, since the legacy prefix heuristic below assumes
+  // `<providerType>/<modelId>` shape.
+  const exact = models.find((m) => m.modelRef && m.modelRef === ref)
+  if (exact) return exact.id
+  // Legacy fallback for entries written before `modelRef` existed.
+  const heuristic = models.find((m) => {
     const expected = `${m.providerType}/${m.modelId}`
     return ref === expected || ref.endsWith(`/${m.modelId}`)
   })
-  return match?.id ?? null
+  return heuristic?.id ?? null
 }
 
 export type { LlmProviderConfig }

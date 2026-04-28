@@ -31,6 +31,17 @@ export interface RegisteredModelEntry {
   baseUrl?: string
   /** Bare model id (e.g. `claude-sonnet-4-5`). No provider prefix. */
   modelId: string
+  /**
+   * Fully-qualified model ref OpenClaw writes into `agents.defaults.*`
+   * — e.g. `anthropic/claude-sonnet-4-5` or, for custom providers,
+   * the bare model id. Populated at register time so the UI and the
+   * server can reconcile the resolved default against the registry
+   * entry by exact-string equality (no prefix gymnastics).
+   *
+   * Optional on disk for backwards compat with pre-modelRef entries;
+   * call sites fall back to building the ref on the fly when missing.
+   */
+  modelRef?: string
   supportsImages: boolean
   addedAt: number
 }
@@ -40,6 +51,8 @@ export interface RegisteredModelInput {
   providerName?: string
   baseUrl?: string
   modelId: string
+  /** See `RegisteredModelEntry.modelRef`. */
+  modelRef?: string
   supportsImages: boolean
 }
 
@@ -92,6 +105,7 @@ export class RegisteredModelsStore {
       providerName: input.providerName,
       baseUrl: input.baseUrl,
       modelId: input.modelId,
+      modelRef: input.modelRef,
       supportsImages: !!input.supportsImages,
       addedAt: Date.now(),
     }

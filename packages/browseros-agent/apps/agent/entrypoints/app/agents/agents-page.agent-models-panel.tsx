@@ -233,11 +233,17 @@ function findIdForRef(
   ref: string | null,
 ): string | null {
   if (!ref) return null
-  const match = models.find((m) => {
+  // Exact match on the canonical `modelRef` the server stored at
+  // register time. The legacy prefix heuristic below only handles
+  // refs shaped `<providerType>/<modelId>` and misses bare refs
+  // (custom-provider entries).
+  const exact = models.find((m) => m.modelRef && m.modelRef === ref)
+  if (exact) return exact.id
+  const heuristic = models.find((m) => {
     const expected = `${m.providerType}/${m.modelId}`
     return ref === expected || ref.endsWith(`/${m.modelId}`)
   })
-  return match?.id ?? null
+  return heuristic?.id ?? null
 }
 
 function describeRef(
