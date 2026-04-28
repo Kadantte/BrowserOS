@@ -187,11 +187,12 @@ async function applyRuntimeControls(
       value: input.agent.reasoningEffort,
     })
   } catch (err) {
-    throw new Error(
-      `Failed to set ${key}=${input.agent.reasoningEffort}: ${
+    events.push({
+      type: 'status',
+      text: `Could not apply ${key}=${input.agent.reasoningEffort}; continuing with the adapter default. ${
         err instanceof Error ? err.message : String(err)
       }`,
-    )
+    })
   }
   return events
 }

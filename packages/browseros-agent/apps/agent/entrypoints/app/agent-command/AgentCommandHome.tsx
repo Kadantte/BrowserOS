@@ -149,6 +149,7 @@ export const AgentCommandHome: FC = () => {
                   streaming={false}
                   disabled={!selectedAgentReady}
                   status={selectedAgentReady ? 'running' : undefined}
+                  attachmentsEnabled={false}
                   placeholder={
                     selectedAgentReady
                       ? `Ask ${selectedCard?.name ?? 'your agent'} to handle a task...`

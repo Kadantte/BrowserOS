@@ -109,10 +109,53 @@ describe('AcpxRuntime', () => {
       },
     ])
   })
+
+  it('continues the turn when runtime config control is unavailable', async () => {
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      cwd: '/tmp/browseros-acpx-runtime',
+      stateDir: '/tmp/browseros-acpx-state',
+      runtimeFactory: () => createFakeAcpRuntime(calls, { failConfig: true }),
+    })
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Claude bot',
+      adapter: 'claude',
+      modelId: 'haiku',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+
+    const events = await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'say hello',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    expect(events.map((event) => event.type)).toEqual([
+      'status',
+      'status',
+      'text_delta',
+      'tool_call',
+      'done',
+    ])
+    expect(events[1]).toMatchObject({
+      type: 'status',
+      text: expect.stringContaining('Could not apply effort=medium'),
+    })
+  })
 })
 
 function createFakeAcpRuntime(
   calls: Array<{ method: string; input: unknown }>,
+  options: { failConfig?: boolean } = {},
 ): AcpxCoreRuntime {
   return {
     async ensureSession(input) {
@@ -156,6 +199,9 @@ function createFakeAcpRuntime(
     async *runTurn() {},
     async setConfigOption(input) {
       calls.push({ method: 'setConfigOption', input })
+      if (options.failConfig) {
+        throw new Error('config key is not supported')
+      }
     },
     async cancel() {},
     async close() {},
