@@ -39,11 +39,11 @@ func confirmSourceProfileImportWithChecker(out io.Writer, r *bufio.Reader, hasSi
 		fmt.Fprintln(out, warnStyle.Sprint("BrowserOS appears to be using the source profile."))
 		fmt.Fprintf(out, "%s ", labelStyle.Sprint("Quit BrowserOS, then press Enter to retry, or type \"continue\" to import anyway:"))
 		line, err := r.ReadString('\n')
-		if err != nil {
-			return err
-		}
 		if strings.EqualFold(strings.TrimSpace(line), "continue") {
 			return nil
+		}
+		if err != nil {
+			return err
 		}
 	}
 }

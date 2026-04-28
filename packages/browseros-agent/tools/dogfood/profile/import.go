@@ -40,6 +40,8 @@ var profileGlobAllowlist = []string{
 	filepath.Join("IndexedDB", "chrome-extension_*"),
 }
 
+var warningOutput io.Writer = os.Stderr
+
 func Import(cfg ImportConfig) error {
 	if cfg.SourceUserDataDir == "" || cfg.SourceProfileDir == "" || cfg.DevUserDataDir == "" || cfg.DevProfileDir == "" {
 		return fmt.Errorf("source and dev profile paths are required")
@@ -186,6 +188,7 @@ func patchPreferences(path string) error {
 	}
 	var prefs map[string]any
 	if err := json.Unmarshal(data, &prefs); err != nil {
+		warnPatchSkipped(path, err)
 		return nil
 	}
 	profile, ok := prefs["profile"].(map[string]any)
@@ -212,6 +215,7 @@ func patchLocalState(path string, sourceProfileDir string, devProfileDir string)
 	}
 	var state map[string]any
 	if err := json.Unmarshal(data, &state); err != nil {
+		warnPatchSkipped(path, err)
 		return nil
 	}
 	profile := ensureObject(state, "profile")
@@ -227,6 +231,10 @@ func patchLocalState(path string, sourceProfileDir string, devProfileDir string)
 		return err
 	}
 	return os.WriteFile(path, out, 0644)
+}
+
+func warnPatchSkipped(path string, err error) {
+	fmt.Fprintf(warningOutput, "warning: could not patch %s: invalid JSON: %v\n", path, err)
 }
 
 func ensureObject(parent map[string]any, key string) map[string]any {

@@ -56,3 +56,15 @@ func TestConfirmSourceProfileImportCanContinuePastStaleLock(t *testing.T) {
 		t.Fatalf("missing continue escape hatch: %q", out.String())
 	}
 }
+
+func TestConfirmSourceProfileImportCanContinueWithoutTrailingNewline(t *testing.T) {
+	var out bytes.Buffer
+	err := confirmSourceProfileImportWithChecker(
+		&out,
+		bufio.NewReader(strings.NewReader("continue")),
+		func() (bool, error) { return true, nil },
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+}

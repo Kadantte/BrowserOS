@@ -178,7 +178,7 @@ func buildAndStartEnvironment(ctx context.Context, cfg config.Config, opts envir
 }
 
 func prepareEnvironment(cfg *config.Config, agentRoot string, opts environmentOptions) error {
-	if opts.RefreshProfile || !exists(cfg.DevUserDataDir) {
+	if profileImportNeeded(*cfg, opts.RefreshProfile) {
 		if err := profile.Import(profile.ImportConfig{
 			SourceUserDataDir: cfg.SourceUserDataDir,
 			SourceProfileDir:  cfg.SourceProfileDir,

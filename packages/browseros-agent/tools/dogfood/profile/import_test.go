@@ -1,9 +1,11 @@
 package profile
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -137,6 +139,48 @@ func TestHasSingletonsDetectsProfileLockFiles(t *testing.T) {
 	}
 	if !hasSingletons {
 		t.Fatal("expected singleton files")
+	}
+}
+
+func TestHasSingletonsReturnsFalseForMissingDir(t *testing.T) {
+	hasSingletons, err := HasSingletons(filepath.Join(t.TempDir(), "missing"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hasSingletons {
+		t.Fatal("expected no singleton files")
+	}
+}
+
+func TestPatchPreferencesWarnsOnInvalidJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Preferences")
+	mustWrite(t, path, "{")
+	var out bytes.Buffer
+	old := warningOutput
+	warningOutput = &out
+	defer func() { warningOutput = old }()
+
+	if err := patchPreferences(path); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "could not patch") || !strings.Contains(out.String(), path) {
+		t.Fatalf("missing warning, got %q", out.String())
+	}
+}
+
+func TestPatchLocalStateWarnsOnInvalidJSON(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "Local State")
+	mustWrite(t, path, "{")
+	var out bytes.Buffer
+	old := warningOutput
+	warningOutput = &out
+	defer func() { warningOutput = old }()
+
+	if err := patchLocalState(path, "Default", "Default"); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out.String(), "could not patch") || !strings.Contains(out.String(), path) {
+		t.Fatalf("missing warning, got %q", out.String())
 	}
 }
 
