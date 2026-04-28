@@ -205,6 +205,82 @@ describe('AcpxRuntime', () => {
     )
   })
 
+  it('launches ACP adapters with BrowserOS permission bypass flags', async () => {
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      cwd: '/tmp/browseros-acpx-runtime',
+      stateDir: '/tmp/browseros-acpx-state',
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Codex bot',
+      adapter: 'codex',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'open example.com',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    const runtimeOptions = calls[0]?.input as AcpRuntimeOptions
+    expect(runtimeOptions.agentRegistry.resolve('claude')).toContain(
+      '--dangerously-skip-permissions',
+    )
+    expect(runtimeOptions.agentRegistry.resolve('codex')).toContain(
+      '--dangerously-bypass-approvals-and-sandbox',
+    )
+  })
+
+  it('sets Claude approve-all sessions to bypass permissions before starting a turn', async () => {
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      cwd: '/tmp/browseros-acpx-runtime',
+      stateDir: '/tmp/browseros-acpx-state',
+      runtimeFactory: () => createFakeAcpRuntime(calls),
+    })
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Claude bot',
+      adapter: 'claude',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'open example.com',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    expect(calls.map((call) => call.method)).toEqual([
+      'ensureSession',
+      'setMode',
+      'startTurn',
+    ])
+    expect(calls[1]?.input).toMatchObject({
+      mode: 'bypassPermissions',
+    })
+  })
+
   it('reuses cached runtime instances across per-turn timeouts', async () => {
     const calls: Array<{ method: string; input: unknown }> = []
     const runtime = new AcpxRuntime({
@@ -303,6 +379,9 @@ function createFakeAcpRuntime(
       }
     },
     async *runTurn() {},
+    async setMode(input) {
+      calls.push({ method: 'setMode', input })
+    },
     async setConfigOption(input) {
       calls.push({ method: 'setConfigOption', input })
       if (options.failConfig) {
