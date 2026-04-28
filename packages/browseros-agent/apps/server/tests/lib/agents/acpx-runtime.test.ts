@@ -177,7 +177,7 @@ describe('AcpxRuntime', () => {
                 tool_name: 'read_file',
                 is_error: false,
                 content: { Text: 'file contents' },
-                output: 'file contents',
+                output: null,
               },
             },
           },
@@ -213,7 +213,7 @@ describe('AcpxRuntime', () => {
           sessionId: 'main',
           role: 'assistant',
           text: 'Done.',
-          createdAt: Date.parse(timestamp),
+          createdAt: Date.parse(timestamp) + 1,
           reasoning: { text: 'checking state' },
           toolCalls: [
             {

@@ -54,6 +54,7 @@ export class AcpxRuntime implements AgentRuntime {
   private readonly runtimeFactory: (
     options: AcpRuntimeOptions,
   ) => AcpxCoreRuntime
+  private readonly sessionStore: ReturnType<typeof createRuntimeStore>
   private readonly runtimes = new Map<string, AcpxCoreRuntime>()
 
   constructor(options: AcpxRuntimeOptions = {}) {
@@ -64,6 +65,7 @@ export class AcpxRuntime implements AgentRuntime {
       join(getBrowserosDir(), 'agents', 'acpx')
     this.browserosServerPort =
       options.browserosServerPort ?? DEFAULT_PORTS.server
+    this.sessionStore = createRuntimeStore({ stateDir: this.stateDir })
     this.runtimeFactory = options.runtimeFactory ?? createAcpRuntime
   }
 
@@ -81,9 +83,7 @@ export class AcpxRuntime implements AgentRuntime {
     agent: AgentPromptInput['agent']
     sessionId: 'main'
   }): Promise<AgentHistoryPage> {
-    const record = await createRuntimeStore({ stateDir: this.stateDir }).load(
-      input.agent.sessionKey,
-    )
+    const record = await this.sessionStore.load(input.agent.sessionKey)
     if (!record) {
       return { agentId: input.agent.id, sessionId: input.sessionId, items: [] }
     }
@@ -125,7 +125,7 @@ export class AcpxRuntime implements AgentRuntime {
 
     const runtime = this.runtimeFactory({
       cwd: input.cwd,
-      sessionStore: createRuntimeStore({ stateDir: this.stateDir }),
+      sessionStore: this.sessionStore,
       agentRegistry: createBrowserosAgentRegistry(input.permissionMode),
       mcpServers: createBrowserosMcpServers(this.browserosServerPort),
       permissionMode: input.permissionMode,
@@ -166,6 +166,7 @@ function mapAcpxSessionRecordToHistory(
     (message, index): AgentHistoryEntry[] => {
       if (message === 'Resume') return []
       const id = `${record.acpxRecordId}:${index}`
+      const messageCreatedAt = createdAt + index
 
       if ('User' in message) {
         const text = message.User.content
@@ -181,7 +182,7 @@ function mapAcpxSessionRecordToHistory(
             sessionId,
             role: 'user',
             text,
-            createdAt,
+            createdAt: messageCreatedAt,
           },
         ]
       }
@@ -190,7 +191,7 @@ function mapAcpxSessionRecordToHistory(
         id,
         agentId: agent.id,
         sessionId,
-        createdAt,
+        createdAt: messageCreatedAt,
         message: message.Agent,
       })
       return entry ? [entry] : []
@@ -280,7 +281,7 @@ function userContentToText(content: AcpxUserContent): string {
 }
 
 function toolResultValue(result: AcpxToolResult): unknown {
-  if (result.output !== undefined) return result.output
+  if (result.output != null) return result.output
   if ('Text' in result.content) return result.content.Text
   if ('Image' in result.content) return result.content.Image.source
   return undefined
