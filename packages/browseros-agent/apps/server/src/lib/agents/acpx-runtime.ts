@@ -7,6 +7,7 @@
 import { join } from 'node:path'
 import {
   type AcpRuntimeEvent,
+  type AcpRuntimeHandle,
   type AcpRuntimeOptions,
   type AcpRuntimeTurn,
   type AcpRuntimeTurnResult,
@@ -18,11 +19,11 @@ import {
 import { getBrowserosDir } from '../browseros-dir'
 import type {
   AgentHistoryPage,
+  AgentPromptInput,
   AgentRuntime,
   AgentSession,
   AgentStatus,
   AgentStreamEvent,
-  ResolvedAgentPromptInput,
 } from './types'
 
 type AcpxRuntimeOptions = {
@@ -52,32 +53,30 @@ export class AcpxRuntime implements AgentRuntime {
     return { state: 'unknown', message: 'acpx status is checked on send' }
   }
 
-  async listSessions(): Promise<AgentSession[]> {
-    return []
+  async listSessions(
+    input: AgentPromptInput['agent'],
+  ): Promise<AgentSession[]> {
+    return [{ agentId: input.id, id: 'main', updatedAt: input.updatedAt }]
   }
 
   async getHistory(input: {
-    profileId: string
-    sessionKey: string
+    agent: AgentPromptInput['agent']
+    sessionId: 'main'
   }): Promise<AgentHistoryPage> {
-    return { ...input, items: [] }
+    return { agentId: input.agent.id, sessionId: input.sessionId, items: [] }
   }
 
   async send(
-    input: ResolvedAgentPromptInput,
+    input: AgentPromptInput,
   ): Promise<ReadableStream<AgentStreamEvent>> {
-    const cwd = input.cwd ?? input.profile.cwd ?? this.cwd
-    const permissionMode =
-      input.permissionMode ?? input.profile.permissionMode ?? 'approve-reads'
-    const nonInteractivePermissions = input.nonInteractivePermissions ?? 'fail'
     const runtime = this.getRuntime({
-      cwd,
-      permissionMode,
-      nonInteractivePermissions,
+      cwd: this.cwd,
+      permissionMode: input.permissionMode,
+      nonInteractivePermissions: 'fail',
       timeoutMs: input.timeoutMs,
     })
 
-    return createAcpxEventStream(runtime, input, cwd)
+    return createAcpxEventStream(runtime, input, this.cwd)
   }
 
   private getRuntime(input: {
@@ -105,7 +104,7 @@ export class AcpxRuntime implements AgentRuntime {
 
 function createAcpxEventStream(
   runtime: AcpxCoreRuntime,
-  input: ResolvedAgentPromptInput,
+  input: AgentPromptInput,
   cwd: string,
 ): ReadableStream<AgentStreamEvent> {
   let activeTurn: AcpRuntimeTurn | null = null
@@ -115,10 +114,18 @@ function createAcpxEventStream(
       const run = async () => {
         const handle = await runtime.ensureSession({
           sessionKey: input.sessionKey,
-          agent: input.profile.agent,
+          agent: input.agent.adapter,
           mode: 'persistent',
           cwd,
         })
+
+        for (const event of await applyRuntimeControls(
+          runtime,
+          handle,
+          input,
+        )) {
+          controller.enqueue(event)
+        }
 
         const turn = runtime.startTurn({
           handle,
@@ -148,6 +155,45 @@ function createAcpxEventStream(
       void activeTurn?.cancel({ reason: 'BrowserOS stream cancelled' })
     },
   })
+}
+
+async function applyRuntimeControls(
+  runtime: AcpxCoreRuntime,
+  handle: AcpRuntimeHandle,
+  input: AgentPromptInput,
+): Promise<AgentStreamEvent[]> {
+  const events: AgentStreamEvent[] = []
+  if (input.agent.modelId && input.agent.modelId !== 'default') {
+    events.push({
+      type: 'status',
+      text: 'Requested model is stored on the BrowserOS agent, but this acpx/runtime version does not expose public model control. Using adapter default.',
+    })
+  }
+  if (!input.agent.reasoningEffort) return events
+
+  const key = input.agent.adapter === 'codex' ? 'reasoning_effort' : 'effort'
+  if (!runtime.setConfigOption) {
+    events.push({
+      type: 'status',
+      text: `Requested ${key}=${input.agent.reasoningEffort}, but this acpx/runtime version does not expose config control.`,
+    })
+    return events
+  }
+
+  try {
+    await runtime.setConfigOption({
+      handle,
+      key,
+      value: input.agent.reasoningEffort,
+    })
+  } catch (err) {
+    throw new Error(
+      `Failed to set ${key}=${input.agent.reasoningEffort}: ${
+        err instanceof Error ? err.message : String(err)
+      }`,
+    )
+  }
+  return events
 }
 
 function mapRuntimeEvent(event: AcpRuntimeEvent): AgentStreamEvent {

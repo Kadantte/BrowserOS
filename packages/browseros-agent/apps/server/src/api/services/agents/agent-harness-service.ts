@@ -5,90 +5,141 @@
  */
 
 import { AcpxRuntime } from '../../../lib/agents/acpx-runtime'
-import { InMemoryAgentHistoryStore } from '../../../lib/agents/in-memory-history-store'
+import type { AgentDefinition } from '../../../lib/agents/agent-types'
 import {
-  AgentProfileRegistry,
-  DEFAULT_AGENT_PROFILES,
-} from '../../../lib/agents/profiles'
+  type CreateAgentInput,
+  FileAgentStore,
+} from '../../../lib/agents/file-agent-store'
+import { FileTranscriptStore } from '../../../lib/agents/file-transcript-store'
 import type {
   AgentHistoryPage,
-  AgentHistoryStore,
-  AgentProfile,
-  AgentPromptInput,
   AgentRuntime,
-  AgentSession,
-  AgentStatus,
   AgentStreamEvent,
 } from '../../../lib/agents/types'
 
 export class AgentHarnessService {
-  private readonly registry: AgentProfileRegistry
-  readonly historyStore: AgentHistoryStore
+  private readonly agentStore: FileAgentStore
+  private readonly transcriptStore: FileTranscriptStore
   private readonly runtime: AgentRuntime
 
   constructor(
     deps: {
-      profiles?: AgentProfile[]
+      agentStore?: FileAgentStore
+      transcriptStore?: FileTranscriptStore
       runtime?: AgentRuntime
-      historyStore?: AgentHistoryStore
     } = {},
   ) {
-    this.registry = new AgentProfileRegistry(
-      deps.profiles ?? DEFAULT_AGENT_PROFILES,
-    )
-    this.historyStore = deps.historyStore ?? new InMemoryAgentHistoryStore()
+    this.agentStore = deps.agentStore ?? new FileAgentStore()
+    this.transcriptStore = deps.transcriptStore ?? new FileTranscriptStore()
     this.runtime = deps.runtime ?? new AcpxRuntime()
   }
 
-  listProfiles(): AgentProfile[] {
-    return this.registry.list()
+  listAgents(): Promise<AgentDefinition[]> {
+    return this.agentStore.list()
   }
 
-  getProfile(profileId: string): AgentProfile | null {
-    return this.registry.get(profileId)
+  createAgent(input: CreateAgentInput): Promise<AgentDefinition> {
+    return this.agentStore.create(input)
   }
 
-  async status(profileId: string): Promise<AgentStatus> {
-    const profile = this.requireProfile(profileId)
-    return this.runtime.status(profile)
+  deleteAgent(agentId: string): Promise<boolean> {
+    return this.agentStore.delete(agentId)
   }
 
-  async listSessions(profileId: string): Promise<AgentSession[]> {
-    this.requireProfile(profileId)
-    return this.historyStore.listSessions(profileId)
+  getAgent(agentId: string): Promise<AgentDefinition | null> {
+    return this.agentStore.get(agentId)
   }
 
-  async getHistory(input: {
-    profileId: string
-    sessionKey: string
-  }): Promise<AgentHistoryPage> {
-    this.requireProfile(input.profileId)
+  async getHistory(agentId: string): Promise<AgentHistoryPage> {
+    const agent = await this.requireAgent(agentId)
     return {
-      ...input,
-      items: await this.historyStore.list(input),
+      agentId: agent.id,
+      sessionId: 'main',
+      items: await this.transcriptStore.list({
+        agentId: agent.id,
+        sessionId: 'main',
+      }),
     }
   }
 
-  async send(
-    input: AgentPromptInput,
-  ): Promise<ReadableStream<AgentStreamEvent>> {
-    const profile = this.requireProfile(input.profileId)
-    return this.runtime.send({ ...input, profile })
+  async send(input: {
+    agentId: string
+    message: string
+    signal?: AbortSignal
+  }): Promise<ReadableStream<AgentStreamEvent>> {
+    const agent = await this.requireAgent(input.agentId)
+    await this.transcriptStore.append({
+      agentId: agent.id,
+      sessionId: 'main',
+      role: 'user',
+      text: input.message,
+    })
+    const runtimeStream = await this.runtime.send({
+      agent,
+      sessionId: 'main',
+      sessionKey: agent.sessionKey,
+      message: input.message,
+      permissionMode: agent.permissionMode,
+      signal: input.signal,
+    })
+    return this.persistAssistantTranscript(agent, runtimeStream)
   }
 
-  private requireProfile(profileId: string): AgentProfile {
-    const profile = this.registry.get(profileId)
-    if (!profile) {
-      throw new UnknownAgentProfileError(profileId)
+  private async requireAgent(agentId: string): Promise<AgentDefinition> {
+    const agent = await this.agentStore.get(agentId)
+    if (!agent) {
+      throw new UnknownAgentError(agentId)
     }
-    return profile
+    return agent
+  }
+
+  private persistAssistantTranscript(
+    agent: AgentDefinition,
+    stream: ReadableStream<AgentStreamEvent>,
+  ): ReadableStream<AgentStreamEvent> {
+    let reader: ReadableStreamDefaultReader<AgentStreamEvent> | null = null
+    let assistantText = ''
+
+    return new ReadableStream<AgentStreamEvent>({
+      start: async (controller) => {
+        reader = stream.getReader()
+        try {
+          while (true) {
+            const { done, value } = await reader.read()
+            if (done) break
+            if (value.type === 'text_delta' && value.stream === 'output') {
+              assistantText += value.text
+            } else if (value.type === 'done' && !assistantText && value.text) {
+              assistantText = value.text
+            }
+            controller.enqueue(value)
+          }
+          if (assistantText.trim()) {
+            await this.transcriptStore.append({
+              agentId: agent.id,
+              sessionId: 'main',
+              role: 'assistant',
+              text: assistantText,
+            })
+          }
+          controller.close()
+        } catch (err) {
+          controller.error(err)
+        } finally {
+          reader?.releaseLock()
+        }
+      },
+      cancel: async () => {
+        await reader?.cancel('BrowserOS stream cancelled')
+      },
+    })
   }
 }
 
-export class UnknownAgentProfileError extends Error {
-  constructor(readonly profileId: string) {
-    super(`Unknown agent profile: ${profileId}`)
-    this.name = 'UnknownAgentProfileError'
+export class UnknownAgentError extends Error {
+  constructor(readonly agentId: string) {
+    super(`Unknown agent: ${agentId}`)
+    this.name = 'UnknownAgentError'
   }
 }
 

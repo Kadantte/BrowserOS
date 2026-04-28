@@ -4,20 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-export type AgentBackend = 'acpx'
-
-export type AgentPermissionMode = 'approve-all' | 'approve-reads' | 'deny-all'
-
-export type AgentNonInteractivePermissionPolicy = 'deny' | 'fail'
-
-export interface AgentProfile {
-  id: string
-  name: string
-  backend: AgentBackend
-  agent: string
-  cwd?: string
-  permissionMode?: AgentPermissionMode
-}
+import type {
+  AgentDefinition,
+  AgentPermissionMode,
+  AgentTranscriptEntry,
+} from './agent-types'
 
 export interface AgentStatus {
   state: 'ready' | 'unknown' | 'error'
@@ -25,28 +16,15 @@ export interface AgentStatus {
 }
 
 export interface AgentSession {
-  profileId: string
-  key: string
+  agentId: string
+  id: 'main'
   updatedAt: number
 }
 
-export interface AgentHistoryItem {
-  profileId: string
-  sessionKey: string
-  role: 'user' | 'assistant'
-  content: string
-  createdAt: number
-}
-
 export interface AgentHistoryPage {
-  profileId: string
-  sessionKey: string
-  items: AgentHistoryItem[]
-}
-
-export interface HistoryInput {
-  profileId: string
-  sessionKey: string
+  agentId: string
+  sessionId: 'main'
+  items: AgentTranscriptEntry[]
 }
 
 export type AgentStreamEvent =
@@ -81,40 +59,26 @@ export type AgentStreamEvent =
     }
 
 export interface AgentPromptInput {
-  profileId: string
+  agent: AgentDefinition
+  sessionId: 'main'
   sessionKey: string
   message: string
-  cwd?: string
-  permissionMode?: AgentPermissionMode
-  nonInteractivePermissions?: AgentNonInteractivePermissionPolicy
+  permissionMode: AgentPermissionMode
   timeoutMs?: number
   signal?: AbortSignal
 }
 
-export interface ResolvedAgentPromptInput extends AgentPromptInput {
-  profile: AgentProfile
-}
-
 export interface AgentRuntime {
-  status(profile: AgentProfile): Promise<AgentStatus>
-  listSessions(profile: AgentProfile): Promise<AgentSession[]>
-  getHistory(
-    input: HistoryInput & { profile: AgentProfile },
-  ): Promise<AgentHistoryPage>
-  send(
-    input: ResolvedAgentPromptInput,
-  ): Promise<ReadableStream<AgentStreamEvent>>
+  status(agent: AgentDefinition): Promise<AgentStatus>
+  listSessions(agent: AgentDefinition): Promise<AgentSession[]>
+  getHistory(input: {
+    agent: AgentDefinition
+    sessionId: 'main'
+  }): Promise<AgentHistoryPage>
+  send(input: AgentPromptInput): Promise<ReadableStream<AgentStreamEvent>>
   cancel?(input: {
-    profile: AgentProfile
-    sessionKey: string
+    agent: AgentDefinition
+    sessionId: 'main'
     reason?: string
   }): Promise<void>
-}
-
-export interface AgentHistoryStore {
-  append(
-    item: Omit<AgentHistoryItem, 'createdAt'> & { createdAt?: number },
-  ): Promise<void>
-  list(input: HistoryInput): Promise<AgentHistoryItem[]>
-  listSessions(profileId?: string): Promise<AgentSession[]>
 }

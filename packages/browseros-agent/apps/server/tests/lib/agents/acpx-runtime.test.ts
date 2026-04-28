@@ -14,6 +14,7 @@ import type {
   AcpRuntime as AcpxCoreRuntime,
 } from 'acpx/runtime'
 import { AcpxRuntime } from '../../../src/lib/agents/acpx-runtime'
+import type { AgentDefinition } from '../../../src/lib/agents/agent-types'
 import type { AgentStreamEvent } from '../../../src/lib/agents/types'
 
 describe('AcpxRuntime', () => {
@@ -37,16 +38,23 @@ describe('AcpxRuntime', () => {
     }
 
     const runtime = new AcpxRuntime({ cwd, stateDir, runtimeFactory })
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
     const stream = await runtime.send({
-      profileId: 'claude',
-      profile: {
-        id: 'claude',
-        name: 'Claude Code',
-        backend: 'acpx',
-        agent: 'claude',
-      },
-      sessionKey: 'spike-session',
+      agent,
+      sessionId: 'main',
+      sessionKey: agent.sessionKey,
       message: 'say hello',
+      permissionMode: 'approve-all',
     })
 
     const events = await collectStream(stream)
@@ -54,24 +62,33 @@ describe('AcpxRuntime', () => {
     expect(calls.map((call) => call.method)).toEqual([
       'createRuntime',
       'ensureSession',
+      'setConfigOption',
       'startTurn',
     ])
     expect(calls[0]?.input).toMatchObject({
       cwd,
-      permissionMode: 'approve-reads',
+      permissionMode: 'approve-all',
       nonInteractivePermissions: 'fail',
     })
     expect(calls[1]?.input).toEqual({
-      sessionKey: 'spike-session',
-      agent: 'claude',
+      sessionKey: 'agent:agent-1:main',
+      agent: 'codex',
       mode: 'persistent',
       cwd,
     })
     expect(calls[2]?.input).toMatchObject({
+      key: 'reasoning_effort',
+      value: 'medium',
+    })
+    expect(calls[3]?.input).toMatchObject({
       text: 'say hello',
       mode: 'prompt',
     })
     expect(events).toEqual([
+      {
+        type: 'status',
+        text: 'Requested model is stored on the BrowserOS agent, but this acpx/runtime version does not expose public model control. Using adapter default.',
+      },
       {
         type: 'text_delta',
         text: 'Hello from fake runtime',
@@ -137,6 +154,9 @@ function createFakeAcpRuntime(
       }
     },
     async *runTurn() {},
+    async setConfigOption(input) {
+      calls.push({ method: 'setConfigOption', input })
+    },
     async cancel() {},
     async close() {},
   }
