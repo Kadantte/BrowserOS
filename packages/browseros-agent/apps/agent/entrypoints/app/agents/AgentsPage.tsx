@@ -819,14 +819,29 @@ export const AgentsPage: FC = () => {
   }, [setupOpen, setupProviderId, selectableCreateProviders, defaultProviderId])
 
   // Default the image model to the first recommended vision model for
-  // whichever chat provider the user just picked. Stop overriding once
-  // the user has touched the field manually.
+  // whichever chat provider the user just picked. The catalog entry's
+  // own `supportsImages` flag wins — the user already declared this
+  // model handles vision in /settings/ai, and for custom providers
+  // (`openai-compatible`, etc.) the static recommended-vision list has
+  // no entry to fall back to. Stop overriding once the user has
+  // touched the field manually.
   useEffect(() => {
     if (!setupOpen || setupImageModelDirty) return
-    const providerType = selectedSetupOption?.type as ProviderType | undefined
-    const recommended = getDefaultVisionModelId(providerType) ?? ''
-    setSetupImageModelId(recommended)
-  }, [setupOpen, setupImageModelDirty, selectedSetupOption?.type])
+    const isCli = !!selectedSetupCliProvider
+    if (isCli) return
+    const llmOption = selectedSetupOption as LlmProviderConfig | undefined
+    if (llmOption?.supportsImages && llmOption.modelId) {
+      setSetupImageModelId(llmOption.modelId)
+      return
+    }
+    const providerType = llmOption?.type as ProviderType | undefined
+    setSetupImageModelId(getDefaultVisionModelId(providerType) ?? '')
+  }, [
+    setupOpen,
+    setupImageModelDirty,
+    selectedSetupCliProvider,
+    selectedSetupOption,
+  ])
 
   // Reset the dirty flag whenever the dialog closes so the next open
   // re-syncs the picker with the chosen provider.
@@ -1102,6 +1117,17 @@ export const AgentsPage: FC = () => {
                 providerType={
                   selectedSetupOption?.type as ProviderType | undefined
                 }
+                pickedModel={(() => {
+                  const llmOption = selectedSetupOption as
+                    | LlmProviderConfig
+                    | undefined
+                  return llmOption
+                    ? {
+                        modelId: llmOption.modelId,
+                        supportsImages: !!llmOption.supportsImages,
+                      }
+                    : undefined
+                })()}
                 value={setupImageModelId}
                 onChange={(value) => {
                   setSetupImageModelDirty(true)

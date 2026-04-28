@@ -1,4 +1,4 @@
-import type { FC } from 'react'
+import { type FC, useMemo } from 'react'
 import { Input } from '@/components/ui/input'
 import {
   Select,
@@ -13,8 +13,21 @@ import { getRecommendedVisionModels } from './vision-models'
 const NONE_VALUE = '__none__'
 const CUSTOM_VALUE = '__custom__'
 
+interface PickedModelHint {
+  modelId: string
+  supportsImages: boolean
+}
+
 interface SetupImageModelFieldProps {
   providerType: ProviderType | undefined
+  /**
+   * The chat-model the user just picked from `/settings/ai`. When the
+   * catalog entry says `supportsImages`, surface its modelId as a
+   * recommended option — that's the most reliable signal we have for
+   * custom providers (`openai-compatible` and friends), where the
+   * static recommended-vision-model registry has no entry.
+   */
+  pickedModel?: PickedModelHint
   value: string
   onChange: (value: string) => void
 }
@@ -27,11 +40,30 @@ interface SetupImageModelFieldProps {
  */
 export const SetupImageModelField: FC<SetupImageModelFieldProps> = ({
   providerType,
+  pickedModel,
   value,
   onChange,
 }) => {
-  const recommended = getRecommendedVisionModels(providerType)
-  const isCustom = value !== '' && !recommended.includes(value)
+  const options = useMemo(() => {
+    const seen = new Set<string>()
+    const merged: string[] = []
+    // Catalog-derived hint first — for custom providers
+    // (openai-compatible, etc.) it's the only signal we have, and
+    // for known providers it usually matches the chat model the
+    // user already trusts.
+    if (pickedModel?.supportsImages && pickedModel.modelId.trim()) {
+      seen.add(pickedModel.modelId)
+      merged.push(pickedModel.modelId)
+    }
+    for (const m of getRecommendedVisionModels(providerType)) {
+      if (seen.has(m)) continue
+      seen.add(m)
+      merged.push(m)
+    }
+    return merged
+  }, [providerType, pickedModel?.modelId, pickedModel?.supportsImages])
+
+  const isCustom = value !== '' && !options.includes(value)
   const selectValue = !value ? NONE_VALUE : isCustom ? CUSTOM_VALUE : value
 
   return (
@@ -59,7 +91,7 @@ export const SetupImageModelField: FC<SetupImageModelFieldProps> = ({
           <SelectValue placeholder="Select an image model" />
         </SelectTrigger>
         <SelectContent>
-          {recommended.map((model, index) => (
+          {options.map((model, index) => (
             <SelectItem key={model} value={model}>
               {model}
               {index === 0 ? ' (recommended)' : ''}
