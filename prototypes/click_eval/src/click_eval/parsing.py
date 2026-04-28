@@ -11,13 +11,20 @@ from .contracts import ParsedPoint, Point
 _NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 _POINT_KEY_PATTERN = (
     r"['\"]?(?:click_point|point_2d|POINT_2D|POINT|bbox_2d|coordinates|"
-    r"coordinate|start_box|position|bbox|box|point|center)['\"]?"
+    r"coordinate|screen_point|click_position|start_box|position|bbox|box|"
+    r"point|center|location)['\"]?"
 )
 
 
 def parse_point_value(value: Any) -> Point | None:
     if isinstance(value, Point):
         return value
+
+    if isinstance(value, str):
+        point = _point_from_keyed_text(value)
+        if point is not None:
+            return point
+        return _point_from_standalone_numeric_text(value)
 
     if isinstance(value, (list, tuple)):
         if len(value) == 1:
@@ -149,6 +156,10 @@ def _point_from_keyed_text(text: str) -> Point | None:
     if click_call:
         return _point_from_numbers(click_call.group(1), click_call.group(2))
 
+    keyed_numbers = _point_from_keyed_numeric_tail(text)
+    if keyed_numbers is not None:
+        return keyed_numbers
+
     keyed_sequence = re.search(
         rf"(?<![A-Za-z0-9_]){_POINT_KEY_PATTERN}"
         rf"(?![A-Za-z0-9_])\s*(?::|=)?\s*['\"]?[\[(]\s*"
@@ -197,6 +208,78 @@ def _point_from_keyed_text(text: str) -> Point | None:
     if malformed_x_pair:
         return _point_from_numbers(malformed_x_pair.group(1), malformed_x_pair.group(2))
 
+    action_pair = re.search(
+        rf"(?:left_click|double_click|right_click|mouse_move|click|tap)"
+        rf"\s*(?:at|to|\(|coordinate|coordinates)\s*[^0-9+\-.]{{0,80}}"
+        rf"({_NUMBER_PATTERN})\s*[, ]\s*({_NUMBER_PATTERN})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if action_pair:
+        return _point_from_numbers(action_pair.group(1), action_pair.group(2))
+
+    return None
+
+
+def _point_from_keyed_numeric_tail(text: str) -> Point | None:
+    for match in re.finditer(
+        rf"(?<![A-Za-z0-9_]){_POINT_KEY_PATTERN}(?![A-Za-z0-9_])",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        tail = text[match.end() : match.end() + 220]
+        assigned = re.match(r"\s*(?::|=|\()\s*", tail)
+        if assigned is None:
+            continue
+        point = _point_from_numeric_text(tail[assigned.end() :])
+        if point is not None:
+            return point
+    return None
+
+
+def _point_from_standalone_numeric_text(text: str) -> Point | None:
+    stripped = text.strip().strip("`")
+    if not re.fullmatch(r"[\s\[\]\(\)\{\},;:'\"xXyY=.+\-0-9]+", stripped):
+        return None
+    return _point_from_numeric_text(stripped)
+
+
+def _point_from_numeric_text(text: str) -> Point | None:
+    segment = text[:220]
+    xy_point = _point_from_xy_text(segment)
+    if xy_point is not None:
+        return xy_point
+    sequence = re.search(
+        rf"[\[(]\s*({_NUMBER_PATTERN}(?:\s*[, ]\s*{_NUMBER_PATTERN}){{1,3}})",
+        segment,
+    )
+    numbers = (
+        re.findall(_NUMBER_PATTERN, sequence.group(1))
+        if sequence
+        else re.findall(_NUMBER_PATTERN, segment)
+    )
+    if len(numbers) >= 4:
+        return parse_point_value(numbers[:4])
+    if len(numbers) >= 2:
+        return parse_point_value(numbers[:2])
+    return None
+
+
+def _point_from_xy_text(text: str) -> Point | None:
+    x_match = re.search(
+        rf"(?<![A-Za-z0-9_])['\"]?x['\"]?(?![A-Za-z0-9_])"
+        rf"\s*(?::|=)\s*({_NUMBER_PATTERN})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    y_match = re.search(
+        rf"(?<![A-Za-z0-9_])['\"]?y['\"]?(?![A-Za-z0-9_])"
+        rf"\s*(?::|=)\s*({_NUMBER_PATTERN})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if x_match and y_match:
+        return _point_from_numbers(x_match.group(1), y_match.group(1))
     return None
 
 

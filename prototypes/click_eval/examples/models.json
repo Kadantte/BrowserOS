@@ -286,9 +286,13 @@
       "name": "fara-7b-local",
       "provider": "local_hf",
       "model": "microsoft/Fara-7B",
+      "adapter": "qwen25_tool_absolute",
       "dtype": "fp16",
       "allow_cpu_offload": true,
-      "estimated_vram_gb": 20
+      "estimated_vram_gb": 20,
+      "min_pixels": 3136,
+      "max_pixels": 1003520,
+      "max_new_tokens": 512
     },
     {
       "name": "groundnext-7b-local",
@@ -298,7 +302,8 @@
       "dtype": "fp16",
       "allow_cpu_offload": true,
       "estimated_vram_gb": 24,
-      "max_pixels": 1003520
+      "max_pixels": 1003520,
+      "max_new_tokens": 128
     },
     {
       "name": "uground-v1-7b-local",
@@ -398,9 +403,9 @@
       "dtype": "fp16",
       "allow_cpu_offload": true,
       "estimated_vram_gb": 24,
-      "min_pixels": 3136,
-      "max_pixels": 1003520,
-      "max_new_tokens": 256
+      "min_pixels": 12544,
+      "max_pixels": 2116800,
+      "max_new_tokens": 1024
     },
     {
       "name": "os-atlas-base-4b-local",

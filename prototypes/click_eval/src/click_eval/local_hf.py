@@ -138,7 +138,15 @@ class LocalHFClient:
         torch, processor, hf_model = self._load_processor_model(model)
         image = _open_rgb_image(image_path)
         width, height = image.size
-        prompt = _point_prompt(instruction, width, height, purpose)
+        prompt = _point_prompt(
+            instruction,
+            width,
+            height,
+            purpose,
+            original_width=width,
+            original_height=height,
+            resized=False,
+        )
         inputs = _build_inputs(processor, image, prompt)
         text = self._generate_text(torch, processor, hf_model, inputs, model)
         return self._reply(model, text, raw={"adapter": "generic"})
@@ -1113,6 +1121,10 @@ def _build_qwen3_vl_inputs(processor, image, prompt: str, model: ModelSpec):
         }
         if _is_thinking_model(model):
             try:
+                return apply_chat_template(messages, enable_thinking=False, **kwargs)
+            except TypeError:
+                pass
+            try:
                 return apply_chat_template(messages, thinking=False, **kwargs)
             except TypeError:
                 pass
@@ -1283,7 +1295,8 @@ def _relative_1000_prompt(instruction: str) -> str:
         "Locate the single point to click for this instruction.\n\n"
         f"Instruction: {instruction}\n\n"
         "Return only one JSON object, no markdown:\n"
-        '{"point_2d":[x,y],"label":"click"}\n\n'
+        '{"point_2d":[500,500],"label":"click"}\n\n'
+        "Replace 500,500 with the target point; do not copy the example.\n"
         "Use relative image coordinates: x and y are integers from 0 to 1000, "
         "where [0,0] is top-left and [1000,1000] is bottom-right."
     )
@@ -1303,8 +1316,9 @@ def _groundnext_system_prompt(width: int, height: int) -> str:
         "You are a GUI grounding assistant. The screen resolution is "
         f"{width}x{height}. Return exactly one tool call in this form:\n"
         '<tool_call>{"name":"computer_use","arguments":{"action":"left_click",'
-        '"coordinate":[x,y]}}</tool_call>\n'
-        "Use pixel coordinates in the current screen resolution."
+        '"coordinate":[123,456]}}</tool_call>\n'
+        "Replace 123,456 with the target point. Use pixel coordinates in the "
+        "current screen resolution."
     )
 
 
@@ -1347,7 +1361,8 @@ def _qwen25_absolute_messages(
                             f"Grounding instruction is: {instruction}\n"
                             "Locate the target UI element and return only this "
                             "JSON shape:\n"
-                            '[{"point_2d": [x, y], "label": "target"}]\n'
+                            '[{"point_2d": [500, 500], "label": "target"}]\n'
+                            "Replace 500,500 with the target point.\n"
                             "Use relative image coordinates where x and y are "
                             "integers from 0 to 1000."
                         ),
@@ -1396,7 +1411,8 @@ def _qwen25_absolute_messages(
                             f"The screen's resolution is {width}x{height}.\n"
                             f'Locate the UI element(s) for "{instruction}", '
                             "output the coordinates using JSON format: "
-                            '[{"point_2d": [x, y]}]'
+                            '[{"point_2d": [123, 456]}]. Replace 123,456 with '
+                            "the target point."
                         ),
                     },
                 ],
@@ -1500,8 +1516,9 @@ def _computer_use_tool_system_prompt(width: int, height: int) -> str:
         "screen. The screen resolution is "
         f"{width}x{height}. Return exactly one tool call in this form:\n"
         '<tool_call>{"name":"computer_use","arguments":{"action":"left_click",'
-        '"coordinate":[x,y]}}</tool_call>\n'
-        "Use pixel coordinates in the current screen resolution."
+        '"coordinate":[123,456]}}</tool_call>\n'
+        "Replace 123,456 with the target point. Use pixel coordinates in the "
+        "current screen resolution."
     )
 
 
@@ -1842,6 +1859,8 @@ def _adapter_for(model: ModelSpec) -> str:
         return "showui"
     if "groundnext" in model_id:
         return "groundnext"
+    if "fara" in model_id:
+        return "qwen25_tool_absolute"
     if "opencua" in model_id:
         return "opencua"
     if "gta1" in model_id:

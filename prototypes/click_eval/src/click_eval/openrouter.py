@@ -207,6 +207,8 @@ def _reasoning_for_point_call(model_id: str) -> dict[str, object] | None:
 
 def _force_json_response_format(model_id: str) -> bool:
     lowered = model_id.lower()
+    if lowered.startswith("z-ai/glm-5v"):
+        return False
     return lowered.startswith("z-ai/glm-") or lowered.startswith("openai/")
 
 
