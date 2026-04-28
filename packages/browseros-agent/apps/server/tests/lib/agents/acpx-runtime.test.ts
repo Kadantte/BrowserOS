@@ -81,9 +81,11 @@ describe('AcpxRuntime', () => {
       value: 'medium',
     })
     expect(calls[3]?.input).toMatchObject({
-      text: 'say hello',
       mode: 'prompt',
     })
+    expect((calls[3]?.input as { text?: string }).text).toContain(
+      '<user_request>\nsay hello\n</user_request>',
+    )
     expect(events).toEqual([
       {
         type: 'status',
@@ -150,6 +152,57 @@ describe('AcpxRuntime', () => {
       type: 'status',
       text: expect.stringContaining('Could not apply effort=medium'),
     })
+  })
+
+  it('configures BrowserOS MCP and wraps turns with browser instructions', async () => {
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      cwd: '/tmp/browseros-acpx-runtime',
+      stateDir: '/tmp/browseros-acpx-state',
+      browserosServerPort: 9321,
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Browser bot',
+      adapter: 'codex',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'open example.com',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    expect(calls[0]?.input).toMatchObject({
+      mcpServers: [
+        {
+          type: 'http',
+          name: 'browseros',
+          url: 'http://127.0.0.1:9321/mcp',
+          headers: [],
+        },
+      ],
+    })
+    const startTurnInput = calls.find((call) => call.method === 'startTurn')
+      ?.input as { text?: string } | undefined
+    expect(startTurnInput?.text).toContain(
+      'Use the BrowserOS MCP server for all browser tasks',
+    )
+    expect(startTurnInput?.text).toContain(
+      '<user_request>\nopen example.com\n</user_request>',
+    )
   })
 
   it('reuses cached runtime instances across per-turn timeouts', async () => {

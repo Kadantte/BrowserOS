@@ -5,6 +5,7 @@
  */
 
 import { join } from 'node:path'
+import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
 import {
   type AcpRuntimeEvent,
   type AcpRuntimeHandle,
@@ -30,12 +31,20 @@ import type {
 type AcpxRuntimeOptions = {
   cwd?: string
   stateDir?: string
+  browserosServerPort?: number
   runtimeFactory?: (options: AcpRuntimeOptions) => AcpxCoreRuntime
 }
+
+const BROWSEROS_ACP_AGENT_INSTRUCTIONS = `<role>
+You are BrowserOS - a browser agent with full control of a Chromium browser through the BrowserOS MCP server.
+
+Use the BrowserOS MCP server for all browser tasks, including browsing the web, interacting with pages, inspecting browser state, and managing tabs, windows, bookmarks, and history.
+</role>`
 
 export class AcpxRuntime implements AgentRuntime {
   private readonly cwd: string
   private readonly stateDir: string
+  private readonly browserosServerPort: number
   private readonly runtimeFactory: (
     options: AcpRuntimeOptions,
   ) => AcpxCoreRuntime
@@ -47,6 +56,8 @@ export class AcpxRuntime implements AgentRuntime {
       options.stateDir ??
       process.env.BROWSEROS_ACPX_STATE_DIR ??
       join(getBrowserosDir(), 'agents', 'acpx')
+    this.browserosServerPort =
+      options.browserosServerPort ?? DEFAULT_PORTS.server
     this.runtimeFactory = options.runtimeFactory ?? createAcpRuntime
   }
 
@@ -104,6 +115,7 @@ export class AcpxRuntime implements AgentRuntime {
       cwd: input.cwd,
       sessionStore: createRuntimeStore({ stateDir: this.stateDir }),
       agentRegistry: createAgentRegistry(),
+      mcpServers: createBrowserosMcpServers(this.browserosServerPort),
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
     })
@@ -113,6 +125,7 @@ export class AcpxRuntime implements AgentRuntime {
       stateDir: this.stateDir,
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
+      browserosServerPort: this.browserosServerPort,
     })
     return runtime
   }
@@ -154,7 +167,7 @@ function createAcpxEventStream(
 
         const turn = runtime.startTurn({
           handle,
-          text: input.message,
+          text: buildBrowserosAcpPrompt(input.message),
           mode: 'prompt',
           requestId: crypto.randomUUID(),
           timeoutMs: input.timeoutMs,
@@ -191,6 +204,27 @@ function createAcpxEventStream(
       void activeTurn?.cancel({ reason: 'BrowserOS stream cancelled' })
     },
   })
+}
+
+function createBrowserosMcpServers(
+  browserosServerPort: number,
+): NonNullable<AcpRuntimeOptions['mcpServers']> {
+  return [
+    {
+      type: 'http',
+      name: 'browseros',
+      url: `http://127.0.0.1:${browserosServerPort}/mcp`,
+      headers: [],
+    },
+  ]
+}
+
+function buildBrowserosAcpPrompt(message: string): string {
+  return `${BROWSEROS_ACP_AGENT_INSTRUCTIONS}
+
+<user_request>
+${message}
+</user_request>`
 }
 
 async function applyRuntimeControls(
