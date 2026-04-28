@@ -16,10 +16,12 @@
 import {
   existsSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from 'node:fs'
+import { readFile } from 'node:fs/promises'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { type Subprocess, spawn, spawnSync } from 'bun'
@@ -53,6 +55,7 @@ export class BrowserOSAppManager {
   private ports: EvalPorts
   private chromeProc: Subprocess | null = null
   private serverProc: Subprocess | null = null
+  private serverLogPath: string | null = null
   private tempDir: string | null = null
   private readonly workerIndex: number
   private readonly loadExtensions: boolean
@@ -183,22 +186,45 @@ export class BrowserOSAppManager {
       VITE_BROWSEROS_SERVER_PORT: String(server),
     }
 
+    this.serverLogPath = join(this.tempDir, 'server.log')
+    const serverLogFd = openSync(this.serverLogPath, 'w')
     this.serverProc = spawn({
       cmd: ['bun', 'run', '--filter', '@browseros/server', 'start'],
       cwd: MONOREPO_ROOT,
-      stdout: 'ignore',
-      stderr: 'ignore',
+      stdout: serverLogFd,
+      stderr: serverLogFd,
       env: serverEnv,
     })
     console.log(
-      `  [W${this.workerIndex}] Server started (PID: ${this.serverProc.pid})`,
+      `  [W${this.workerIndex}] Server started (PID: ${this.serverProc.pid}) — log: ${this.serverLogPath}`,
     )
 
     // --- Wait for Server Health ---
     if (!(await this.waitForServerHealth())) {
+      await this.dumpServerLog()
       throw new Error('Server health check timed out')
     }
     console.log(`  [W${this.workerIndex}] Server healthy`)
+  }
+
+  private async dumpServerLog(): Promise<void> {
+    if (!this.serverLogPath) return
+    try {
+      const contents = await readFile(this.serverLogPath, 'utf-8')
+      const lines = contents.split('\n').filter((l) => l.length > 0)
+      const tail = lines.slice(-40)
+      console.warn(
+        `  [W${this.workerIndex}] --- last ${tail.length} server log lines ---`,
+      )
+      for (const line of tail) {
+        console.warn(`  [W${this.workerIndex}] | ${line}`)
+      }
+      console.warn(`  [W${this.workerIndex}] --- end server log ---`)
+    } catch (err) {
+      console.warn(
+        `  [W${this.workerIndex}] Could not read server log: ${err instanceof Error ? err.message : String(err)}`,
+      )
+    }
   }
 
   private async waitForCdp(): Promise<boolean> {
