@@ -57,19 +57,27 @@ export interface RegisteredModelInput {
 }
 
 /**
- * Build a deterministic id for a `(providerType, modelId)` pair so the
- * UI can refer to a registered entry without exposing the API key or
- * the catalog id from /settings/ai.
+ * Build a deterministic id for a registered entry. Prefers the canonical
+ * `modelRef` (the same string OpenClaw writes into `agents.defaults.*`)
+ * so two registrations that resolve to the same gateway-side model
+ * collapse to one entry — even if the user picked them through
+ * different `/settings/ai` rows that derive the same custom-provider
+ * id at resolution time. Falls back to `(providerType, modelId)` for
+ * legacy entries written before `modelRef` existed.
  */
-export function buildRegisteredModelId(
-  providerType: string,
-  modelId: string,
-): string {
-  const slug = `${providerType}-${modelId}`
+export function buildRegisteredModelId(input: {
+  modelRef?: string
+  providerType: string
+  modelId: string
+}): string {
+  const seed = input.modelRef?.trim()
+    ? input.modelRef
+    : `${input.providerType}-${input.modelId}`
+  const slug = seed
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-|-$/g, '')
-  return slug || `${providerType}-${modelId}`
+  return slug || seed
 }
 
 export class RegisteredModelsStore {
@@ -96,7 +104,11 @@ export class RegisteredModelsStore {
   }
 
   async upsert(input: RegisteredModelInput): Promise<RegisteredModelEntry> {
-    const id = buildRegisteredModelId(input.providerType, input.modelId)
+    const id = buildRegisteredModelId({
+      modelRef: input.modelRef,
+      providerType: input.providerType,
+      modelId: input.modelId,
+    })
     const existing = await this.list()
     const next = existing.filter((entry) => entry.id !== id)
     const entry: RegisteredModelEntry = {
@@ -112,6 +124,16 @@ export class RegisteredModelsStore {
     next.push(entry)
     await this.write(next)
     return entry
+  }
+
+  /**
+   * Replace the entire registry with the given entries — used by the
+   * service's migration path to write back a fully-migrated list in
+   * one shot. Skips id derivation; the caller is expected to have set
+   * each `entry.id` correctly.
+   */
+  async replaceAll(entries: RegisteredModelEntry[]): Promise<void> {
+    await this.write(entries)
   }
 
   async remove(id: string): Promise<{

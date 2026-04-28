@@ -79,6 +79,7 @@ import {
 } from './openclaw-provider-map'
 import type { OpenClawStreamEvent } from './openclaw-types'
 import {
+  buildRegisteredModelId,
   type RegisteredModelEntry,
   RegisteredModelsStore,
 } from './registered-models'
@@ -1431,9 +1432,94 @@ export class OpenClawService {
    */
   async listRegisteredModels(): Promise<RegisteredModelEntry[]> {
     const existing = await this.registeredModelsStore.list()
-    if (existing.length > 0) return existing
-    const backfilled = await this.backfillRegisteredModelsFromConfig()
-    return backfilled
+    if (existing.length === 0) {
+      return this.backfillRegisteredModelsFromConfig()
+    }
+    return this.migrateRegisteredEntries(existing)
+  }
+
+  /**
+   * One-pass migration for entries written before `modelRef` existed.
+   * Resolves each entry through the same provider path `registerModel`
+   * uses to recover the canonical ref OpenClaw writes into
+   * `agents.defaults.*`, re-derives the id from that ref, and dedupes
+   * — two entries that differ only in their /settings/ai-side
+   * `providerType` (e.g. `openai-compatible` vs the slugged
+   * custom-provider id from a backfill) collapse to one row keyed on
+   * the gateway-side ref. Idempotent: entries that already have
+   * `modelRef` round-trip unchanged.
+   */
+  private async migrateRegisteredEntries(
+    entries: RegisteredModelEntry[],
+  ): Promise<RegisteredModelEntry[]> {
+    let dirty = false
+    const byId = new Map<string, RegisteredModelEntry>()
+    for (const entry of entries) {
+      const modelRef = entry.modelRef?.trim()
+        ? entry.modelRef
+        : this.recoverModelRefForLegacyEntry(entry)
+      const id = buildRegisteredModelId({
+        modelRef,
+        providerType: entry.providerType,
+        modelId: entry.modelId,
+      })
+      const migrated: RegisteredModelEntry = {
+        ...entry,
+        id,
+        modelRef,
+      }
+      if (migrated.id !== entry.id || migrated.modelRef !== entry.modelRef) {
+        dirty = true
+      }
+      const prior = byId.get(id)
+      if (!prior) {
+        byId.set(id, migrated)
+        continue
+      }
+      // Duplicate canonical id — keep the one with the strongest
+      // signal: vision-capable wins (so the image dropdown isn't
+      // accidentally hidden), then most-recent `addedAt`.
+      const winner =
+        prior.supportsImages !== migrated.supportsImages
+          ? migrated.supportsImages
+            ? migrated
+            : prior
+          : (migrated.addedAt ?? 0) >= (prior.addedAt ?? 0)
+            ? migrated
+            : prior
+      byId.set(id, winner)
+      dirty = true
+    }
+    const next = Array.from(byId.values())
+    if (dirty) {
+      await this.registeredModelsStore.replaceAll(next)
+      logger.info('Migrated registered-models registry', {
+        before: entries.length,
+        after: next.length,
+      })
+    }
+    return next
+  }
+
+  /**
+   * Best-effort recovery of `modelRef` for entries whose disk record
+   * pre-dates the field. Tries the same provider-resolution path
+   * `registerModel` uses; if that fails (e.g. a backfilled entry with
+   * no `baseUrl`), constructs the prefix-style ref directly.
+   */
+  private recoverModelRefForLegacyEntry(entry: RegisteredModelEntry): string {
+    try {
+      const provider = this.resolveProviderForAgent({
+        providerType: entry.providerType,
+        providerName: entry.providerName,
+        baseUrl: entry.baseUrl,
+        modelId: entry.modelId,
+      })
+      if (provider.model) return provider.model
+    } catch {
+      // Fall through to the literal builder below.
+    }
+    return `${entry.providerType}/${entry.modelId}`
   }
 
   /**
