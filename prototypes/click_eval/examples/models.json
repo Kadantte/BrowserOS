@@ -399,7 +399,7 @@
       "name": "gui-drag-7b-local",
       "provider": "local_hf",
       "model": "osunlp/GUI-Drag-7B",
-      "adapter": "qwen25_tool_absolute",
+      "adapter": "gui_drag",
       "dtype": "fp16",
       "allow_cpu_offload": true,
       "estimated_vram_gb": 24,

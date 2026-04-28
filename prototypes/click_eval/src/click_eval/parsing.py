@@ -11,8 +11,13 @@ from .contracts import ParsedPoint, Point
 _NUMBER_PATTERN = r"[-+]?(?:\d+(?:\.\d*)?|\.\d+)"
 _POINT_KEY_PATTERN = (
     r"['\"]?(?:click_point|point_2d|POINT_2D|POINT|bbox_2d|coordinates|"
-    r"coordinate|screen_point|click_position|start_box|position|bbox|box|"
+    r"coordinate|coords|xy|screen_point|click_position|click_coordinates|"
+    r"cursor_position|target_position|start_box|position|bbox|box|target|"
     r"point|center|location)['\"]?"
+)
+_ACTION_CONTEXT_PATTERN = (
+    r"(?:tool_call|computer_use|pyautogui|left_click|right_click|double_click|"
+    r"middle_click|mouse_move|tap|click|Action\.[A-Za-z_]+)"
 )
 
 
@@ -121,6 +126,10 @@ def parse_point_response(text: str) -> ParsedPoint:
     if point is not None:
         return ParsedPoint(point=point)
 
+    point = _point_from_action_context(text)
+    if point is not None:
+        return ParsedPoint(point=point)
+
     return ParsedPoint(
         point=None,
         error=fallback_error or "response did not contain a point value",
@@ -221,6 +230,69 @@ def _point_from_keyed_text(text: str) -> Point | None:
     return None
 
 
+def _point_from_action_context(text: str) -> Point | None:
+    if not re.search(_ACTION_CONTEXT_PATTERN, text, flags=re.IGNORECASE):
+        return None
+
+    action_window = _point_from_action_windows(text)
+    if action_window is not None:
+        return action_window
+
+    tagged_window = _point_from_tagged_tool_calls(text)
+    if tagged_window is not None:
+        return tagged_window
+
+    return _point_from_bracketed_pairs(text)
+
+
+def _point_from_action_windows(text: str) -> Point | None:
+    patterns = (
+        r"(?:left_click|right_click|double_click|middle_click|tap|click|"
+        r"Action\.[A-Za-z_]*CLICK[A-Za-z_]*)",
+        _ACTION_CONTEXT_PATTERN,
+    )
+    for pattern in patterns:
+        for match in re.finditer(pattern, text, flags=re.IGNORECASE):
+            window = text[match.start() : match.end() + 260]
+            point = _point_from_keyed_numeric_tail(window)
+            if point is not None:
+                return point
+            point = _point_from_bracketed_pairs(window)
+            if point is not None:
+                return point
+            point = _point_from_xy_text(window)
+            if point is not None:
+                return point
+    return None
+
+
+def _point_from_tagged_tool_calls(text: str) -> Point | None:
+    for tagged in re.finditer(
+        r"<tool_call>\s*(.*?)\s*</tool_call>",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    ):
+        content = tagged.group(1)
+        point = _point_from_keyed_numeric_tail(content)
+        if point is not None:
+            return point
+        point = _point_from_bracketed_pairs(content)
+        if point is not None:
+            return point
+    return None
+
+
+def _point_from_bracketed_pairs(text: str) -> Point | None:
+    for match in re.finditer(
+        rf"[\[(]\s*({_NUMBER_PATTERN}(?:\s*[, ]\s*{_NUMBER_PATTERN}){{1,3}})",
+        text,
+    ):
+        point = parse_point_value(re.findall(_NUMBER_PATTERN, match.group(1))[:4])
+        if point is not None:
+            return point
+    return None
+
+
 def _point_from_keyed_numeric_tail(text: str) -> Point | None:
     for match in re.finditer(
         rf"(?<![A-Za-z0-9_]){_POINT_KEY_PATTERN}(?![A-Za-z0-9_])",
@@ -311,6 +383,20 @@ def _structured_value_candidates(text: str) -> list[str]:
 
     for fenced in re.finditer(r"```(?:json)?\s*(.*?)\s*```", text, flags=re.DOTALL):
         add(fenced.group(1))
+
+    for tagged in re.finditer(
+        r"<tool_call>\s*(.*?)\s*</tool_call>",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    ):
+        add(tagged.group(1))
+
+    for tagged in re.finditer(
+        r"<(?:answer|final|json)[^>]*>\s*(.*?)\s*</(?:answer|final|json)>",
+        text,
+        flags=re.DOTALL | re.IGNORECASE,
+    ):
+        add(tagged.group(1))
 
     for tagged in re.finditer(
         r"<\|(?:point|box)_start\|>\s*(.*?)\s*<\|(?:point|box)_end\|>",

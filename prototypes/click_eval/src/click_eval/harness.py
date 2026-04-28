@@ -674,6 +674,8 @@ def _build_result_rows(score_rows: list[dict[str, object]]) -> list[dict[str, ob
 def _result_status(total: int, scored: int, errors: int, skipped: int) -> str:
     if scored == total and errors == 0 and skipped == 0:
         return "ok"
+    if scored > 0 and (errors or skipped):
+        return "partial"
     if errors:
         return "error"
     if skipped:
@@ -686,6 +688,8 @@ def _result_status(total: int, scored: int, errors: int, skipped: int) -> str:
 def _result_reason(rows: list[dict[str, object]], status: str) -> str:
     if status == "ok":
         return ""
+    if status == "partial":
+        return _partial_result_reason(rows)
     for row in rows:
         if status == "skipped" and row.get("skipped") is not True:
             continue
@@ -693,6 +697,22 @@ def _result_reason(rows: list[dict[str, object]], status: str) -> str:
         if reason:
             return str(reason)
     return "no score"
+
+
+def _partial_result_reason(rows: list[dict[str, object]]) -> str:
+    errors = [
+        str(row.get("error"))
+        for row in rows
+        if row.get("error") and row.get("skipped") is not True
+    ]
+    skipped = [row for row in rows if row.get("skipped") is True]
+    parts: list[str] = []
+    if errors:
+        parts.append(f"{len(errors)} error(s)")
+    if skipped:
+        parts.append(f"{len(skipped)} skipped")
+    prefix = ", ".join(parts) if parts else "partial"
+    return f"{prefix}; first: {errors[0]}" if errors else prefix
 
 
 def _result_sort_key(row: dict[str, object]) -> tuple[int, float, str]:

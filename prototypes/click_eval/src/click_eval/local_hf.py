@@ -77,6 +77,7 @@ class LocalHFClient:
                 return self._predict_opencua(model, image_path, instruction)
             if adapter in {
                 "gta1",
+                "gui_drag",
                 "infigui",
                 "qwen25_point_1000",
                 "qwen25_tool_absolute",
@@ -1390,6 +1391,25 @@ def _qwen25_absolute_messages(
             },
         ]
 
+    if mode == "gui_drag":
+        return [
+            {"role": "system", "content": _gui_drag_tool_system_prompt(width, height)},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "image", "image": image},
+                    {
+                        "type": "text",
+                        "text": (
+                            f"Instruction: {instruction}\n"
+                            "Return exactly one computer_use tool call with "
+                            'action "left_click" and a pixel coordinate.'
+                        ),
+                    },
+                ],
+            },
+        ]
+
     if mode == "infigui":
         return [
             {
@@ -1434,7 +1454,7 @@ def _qwen25_absolute_messages(
 def _qwen25_absolute_prompt_text(
     tokenizer, messages: list[dict[str, Any]], mode: str
 ) -> str:
-    if mode in {"qwen25_point_1000", "qwen25_tool_absolute", "zonui"}:
+    if mode in {"gui_drag", "qwen25_point_1000", "qwen25_tool_absolute", "zonui"}:
         return _qwen25_manual_prompt_text(messages)
 
     input_text = tokenizer.apply_chat_template(
@@ -1519,6 +1539,35 @@ def _computer_use_tool_system_prompt(width: int, height: int) -> str:
         '"coordinate":[123,456]}}</tool_call>\n'
         "Replace 123,456 with the target point. Use pixel coordinates in the "
         "current screen resolution."
+    )
+
+
+def _gui_drag_tool_system_prompt(width: int, height: int) -> str:
+    return (
+        "You are a helpful assistant.\n"
+        "# Tools\n"
+        "You may call one function to assist with the user query. You are "
+        "provided with function signatures within <tools></tools> XML tags:\n"
+        "<tools>\n"
+        '{"type":"function","function":{"name":"computer_use","description":'
+        '"Use a mouse and keyboard to interact with a computer, and take '
+        f"screenshots. The screen's resolution is {width}x{height}. Make sure "
+        'to click buttons, links, icons, etc. with the cursor tip in the center '
+        'of the element.","parameters":{"properties":{"action":{"description":'
+        '"The action to perform.","enum":["left_click","mouse_move",'
+        '"left_click_drag","right_click","middle_click","double_click","scroll",'
+        '"wait","terminate"],"type":"string"},"coordinate":{"description":'
+        '"(x, y): The x pixel from the left edge and y pixel from the top edge. '
+        'Required for click/move actions.","type":"array"}},"required":'
+        '["action"],"type":"object"}}}\n'
+        "</tools>\n"
+        "Return a json object with function name and arguments within "
+        "<tool_call></tool_call> XML tags:\n"
+        "<tool_call>\n"
+        '{"name":"computer_use","arguments":{"action":"left_click",'
+        '"coordinate":[123,456]}}\n'
+        "</tool_call>\n"
+        "Replace 123,456 with the target point."
     )
 
 
@@ -1861,6 +1910,8 @@ def _adapter_for(model: ModelSpec) -> str:
         return "groundnext"
     if "fara" in model_id:
         return "qwen25_tool_absolute"
+    if "gui-drag" in model_id:
+        return "gui_drag"
     if "opencua" in model_id:
         return "opencua"
     if "gta1" in model_id:
