@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Label } from '@/components/ui/label'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Select,
   SelectContent,
@@ -310,10 +311,10 @@ const AddModelDialog: FC<AddModelDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add a model</DialogTitle>
+          <DialogTitle>Add a model OpenClaw can use</DialogTitle>
           <DialogDescription>
-            Pick from your AI providers. OpenClaw will use this entry's API key
-            and model id.
+            Pick a model from /settings/ai. After adding, choose it as the
+            default text or image model in the Models dialog.
           </DialogDescription>
         </DialogHeader>
 
@@ -338,23 +339,40 @@ const AddModelDialog: FC<AddModelDialogProps> = ({
             </AlertDescription>
           </Alert>
         ) : (
-          <div className="space-y-2">
-            <Label htmlFor="add-model-select">
-              Pick from your AI providers
-            </Label>
-            <Select value={selectedId} onValueChange={setSelectedId}>
-              <SelectTrigger id="add-model-select">
-                <SelectValue placeholder="Select a provider" />
-              </SelectTrigger>
-              <SelectContent>
-                {choices.map((choice) => (
-                  <SelectItem key={choice.id} value={choice.id}>
-                    {formatLabel(choice)}
-                    {choice.supportsImages ? ' · vision-capable' : ''}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+          <div className="space-y-3">
+            <Label className="text-sm">Available models</Label>
+            <RadioGroup
+              value={selectedId}
+              onValueChange={setSelectedId}
+              className="max-h-72 space-y-0 divide-y overflow-y-auto rounded-lg border"
+            >
+              {choices.map((choice) => (
+                <Label
+                  key={choice.id}
+                  htmlFor={`add-model-${choice.id}`}
+                  className="flex cursor-pointer items-center gap-3 px-3 py-2.5 hover:bg-muted/40 has-[:checked]:bg-muted/60"
+                >
+                  <RadioGroupItem
+                    id={`add-model-${choice.id}`}
+                    value={choice.id}
+                  />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate font-medium text-sm">
+                      {choice.name ?? capitalize(choice.type)}
+                    </div>
+                    <div className="truncate font-mono text-muted-foreground text-xs">
+                      {choice.modelId}
+                    </div>
+                  </div>
+                  {choice.supportsImages && (
+                    <Badge variant="secondary" className="shrink-0 gap-1">
+                      <ImageIcon className="size-3" />
+                      vision
+                    </Badge>
+                  )}
+                </Label>
+              ))}
+            </RadioGroup>
             <p className="text-muted-foreground text-xs">
               Don't see what you want?{' '}
               <button
@@ -385,7 +403,7 @@ const AddModelDialog: FC<AddModelDialogProps> = ({
                 Adding...
               </>
             ) : (
-              'Add'
+              'Add to pool'
             )}
           </Button>
         </DialogFooter>
