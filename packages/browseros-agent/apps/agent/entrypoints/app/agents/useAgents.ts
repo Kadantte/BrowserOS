@@ -89,6 +89,10 @@ export function useHarnessAgents(enabled = true) {
   }
 }
 
+export function useAgentProfiles(enabled = true) {
+  return useHarnessAgents(enabled)
+}
+
 export function useCreateHarnessAgent() {
   const { baseUrl, isLoading: urlLoading } = useAgentServerUrl()
   const queryClient = useQueryClient()

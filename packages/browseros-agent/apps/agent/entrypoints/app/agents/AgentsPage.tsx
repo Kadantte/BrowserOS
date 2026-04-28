@@ -1,30 +1,27 @@
 import {
   AlertCircle,
-  Cpu,
+  Bot,
   Loader2,
   MessageSquare,
   Plus,
   RefreshCw,
-  ShieldAlert,
-  Square,
-  TerminalSquare,
   Trash2,
-  WifiOff,
-  Wrench,
 } from 'lucide-react'
 import { type FC, useEffect, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+import { Card, CardContent } from '@/components/ui/card'
 import {
   Dialog,
   DialogContent,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
 import {
   Select,
   SelectContent,
@@ -32,511 +29,142 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select'
-import type { LlmProviderConfig } from '@/lib/llm-providers/types'
-import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
-import { AgentTerminal } from './AgentTerminal'
+import type {
+  HarnessAdapterDescriptor,
+  HarnessAgent,
+  HarnessAgentAdapter,
+} from './agent-harness-types'
 import {
-  buildOpenClawCliProviderOptions,
-  findOpenClawCliProviderById,
-  OpenClawCliProviderStatusPanel,
-  useOpenClawCliProviderAuthStatus,
-} from './openclaw-cli-providers'
-import { getOpenClawSupportedProviders } from './openclaw-supported-providers'
-import {
-  type AgentEntry,
-  type GatewayLifecycleAction,
-  type OpenClawStatus,
-  useOpenClawAgents,
-  useOpenClawMutations,
-  useOpenClawStatus,
-} from './useOpenClaw'
+  useAgentAdapters,
+  useCreateHarnessAgent,
+  useDeleteHarnessAgent,
+  useHarnessAgents,
+} from './useAgents'
 
-const LIFECYCLE_BANNER_COPY: Record<GatewayLifecycleAction, string> = {
-  setup: 'Setting up OpenClaw...',
-  start: 'Starting gateway...',
-  stop: 'Stopping gateway...',
-  restart: 'Restarting gateway...',
-  reconnect: 'Restoring gateway connection...',
-}
+const DEFAULT_ADAPTER: HarnessAgentAdapter = 'claude'
 
-const CONTROL_PLANE_COPY: Record<
-  OpenClawStatus['controlPlaneStatus'],
-  {
-    badgeVariant: 'default' | 'secondary' | 'outline' | 'destructive'
-    badgeLabel: string
-    title: string
-    description: string
-  }
-> = {
-  connected: {
-    badgeVariant: 'default',
-    badgeLabel: 'Control Plane Ready',
-    title: 'Gateway Connected',
-    description: 'OpenClaw can create, manage, and chat with agents normally.',
-  },
-  connecting: {
-    badgeVariant: 'secondary',
-    badgeLabel: 'Connecting',
-    title: 'Connecting to Gateway',
-    description:
-      'BrowserOS is establishing the OpenClaw control channel for agent operations.',
-  },
-  reconnecting: {
-    badgeVariant: 'secondary',
-    badgeLabel: 'Reconnecting',
-    title: 'Reconnecting Control Plane',
-    description:
-      'The gateway process is up, but BrowserOS is restoring the control channel.',
-  },
-  recovering: {
-    badgeVariant: 'secondary',
-    badgeLabel: 'Recovering',
-    title: 'Recovering Gateway Connection',
-    description:
-      'BrowserOS detected a control-plane fault and is trying a safe recovery path.',
-  },
-  disconnected: {
-    badgeVariant: 'outline',
-    badgeLabel: 'Disconnected',
-    title: 'Gateway Disconnected',
-    description: 'The gateway process is not available to BrowserOS right now.',
-  },
-  failed: {
-    badgeVariant: 'destructive',
-    badgeLabel: 'Needs Attention',
-    title: 'Gateway Recovery Failed',
-    description:
-      'BrowserOS could not restore the OpenClaw control channel automatically.',
-  },
-}
+export const AgentsPage: FC = () => {
+  const navigate = useNavigate()
+  const {
+    adapters,
+    loading: adaptersLoading,
+    error: adaptersError,
+  } = useAgentAdapters()
+  const {
+    harnessAgents,
+    loading: agentsLoading,
+    error: agentsError,
+    refetch,
+  } = useHarnessAgents()
+  const createAgent = useCreateHarnessAgent()
+  const deleteAgent = useDeleteHarnessAgent()
+  const [createOpen, setCreateOpen] = useState(false)
 
-const FALLBACK_CONTROL_PLANE_COPY = {
-  badgeVariant: 'outline' as const,
-  badgeLabel: 'Unknown',
-  title: 'Gateway State Unknown',
-  description:
-    'BrowserOS received a gateway status it does not recognize yet. Refreshing or reconnecting should restore a known state.',
-}
+  const sortedAgents = useMemo(
+    () => [...harnessAgents].sort((a, b) => b.updatedAt - a.updatedAt),
+    [harnessAgents],
+  )
 
-const RECOVERY_REASON_COPY: Record<
-  NonNullable<OpenClawStatus['lastRecoveryReason']>,
-  string
-> = {
-  transient_disconnect:
-    'The control channel dropped briefly and BrowserOS is retrying it.',
-  signature_expired:
-    'The gateway rejected the signed device handshake because its clock drifted.',
-  pairing_required:
-    'The gateway asked BrowserOS to approve its local device identity again.',
-  token_mismatch:
-    'BrowserOS had to reload the gateway token before reconnecting.',
-  container_not_ready:
-    'The OpenClaw gateway process is not ready yet, so control-plane recovery cannot start.',
-  unknown:
-    'BrowserOS hit an unexpected gateway error and could not classify it cleanly.',
-}
-
-const StatusBadge: FC<{ status: OpenClawStatus['status'] }> = ({ status }) => {
-  const variants: Record<
-    OpenClawStatus['status'],
-    {
-      variant: 'default' | 'secondary' | 'outline' | 'destructive'
-      label: string
-    }
-  > = {
-    running: { variant: 'default', label: 'Running' },
-    starting: { variant: 'secondary', label: 'Starting...' },
-    stopped: { variant: 'outline', label: 'Stopped' },
-    error: { variant: 'destructive', label: 'Error' },
-    uninitialized: { variant: 'outline', label: 'Not Set Up' },
-  }
-  const current = variants[status] ?? {
-    variant: 'outline' as const,
-    label: 'Unknown',
-  }
-  return <Badge variant={current.variant}>{current.label}</Badge>
-}
-
-const ControlPlaneBadge: FC<{
-  status: OpenClawStatus['controlPlaneStatus']
-}> = ({ status }) => {
-  const current = CONTROL_PLANE_COPY[status] ?? FALLBACK_CONTROL_PLANE_COPY
-  return <Badge variant={current.badgeVariant}>{current.badgeLabel}</Badge>
-}
-
-function getControlPlaneCopy(status: OpenClawStatus['controlPlaneStatus']) {
-  return CONTROL_PLANE_COPY[status] ?? FALLBACK_CONTROL_PLANE_COPY
-}
-
-function getRecoveryDetail(status: OpenClawStatus): string | null {
-  if (!status.lastRecoveryReason && !status.lastGatewayError) return null
-
-  const detail = status.lastRecoveryReason
-    ? RECOVERY_REASON_COPY[status.lastRecoveryReason]
-    : null
-
-  if (status.lastGatewayError && detail) {
-    return `${detail} Latest gateway error: ${status.lastGatewayError}`
-  }
-
-  return status.lastGatewayError ?? detail
-}
-
-interface ProviderSelectorProps {
-  providers: Array<{
-    id: string
-    type: string
-    name: string
-    modelId: string
-    baseUrl?: string
-  }>
-  defaultProviderId: string
-  selectedId: string
-  onSelect: (id: string) => void
-  // When the selection is a CLI-backed provider, the "uses your API key"
-  // hint is misleading — hide it and let the status panel speak instead.
-  hideApiKeyHint?: boolean
-}
-
-const ProviderSelector: FC<ProviderSelectorProps> = ({
-  providers,
-  defaultProviderId,
-  selectedId,
-  onSelect,
-  hideApiKeyHint,
-}) => {
-  if (providers.length === 0) {
-    return (
-      <div className="space-y-2">
-        <p className="font-medium text-sm">LLM Provider</p>
-        <p className="text-muted-foreground text-sm">
-          No compatible LLM providers configured.{' '}
-          <a href="#/settings/ai" className="underline">
-            Add one in AI settings
-          </a>{' '}
-          first.
-        </p>
-      </div>
-    )
-  }
+  const loading = adaptersLoading || agentsLoading
+  const error = adaptersError ?? agentsError ?? null
 
   return (
-    <div className="space-y-2">
-      <label className="font-medium text-sm" htmlFor="provider-select">
-        LLM Provider
-      </label>
-      <Select value={selectedId} onValueChange={onSelect}>
-        <SelectTrigger id="provider-select">
-          <SelectValue placeholder="Select a provider" />
-        </SelectTrigger>
-        <SelectContent>
-          {providers.map((provider) => (
-            <SelectItem key={provider.id} value={provider.id}>
-              {provider.name} — {provider.modelId}
-              {provider.id === defaultProviderId ? ' (default)' : ''}
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
-      {!hideApiKeyHint && (
-        <p className="text-muted-foreground text-xs">
-          Uses your existing API key from BrowserOS settings. The key is passed
-          to the container and never leaves your machine.
-        </p>
-      )}
+    <div className="min-h-full bg-background px-6 py-8">
+      <div className="mx-auto flex w-full max-w-5xl flex-col gap-6">
+        <AgentHarnessPageHeader
+          loading={loading}
+          onCreateAgent={() => setCreateOpen(true)}
+          onRefresh={() => void refetch()}
+        />
+
+        {error ? (
+          <Alert variant="destructive">
+            <AlertCircle className="size-4" />
+            <AlertTitle>Agent request failed</AlertTitle>
+            <AlertDescription>{error.message}</AlertDescription>
+          </Alert>
+        ) : null}
+
+        <HarnessAgentList
+          agents={sortedAgents}
+          deletingAgentId={
+            typeof deleteAgent.variables === 'string'
+              ? deleteAgent.variables
+              : null
+          }
+          loading={loading}
+          onChatAgent={(agentId) => navigate(`/agents/${agentId}`)}
+          onCreateAgent={() => setCreateOpen(true)}
+          onDeleteAgent={(agentId) => void deleteAgent.mutateAsync(agentId)}
+        />
+
+        <NewHarnessAgentDialog
+          adapters={adapters}
+          creating={createAgent.isPending}
+          error={createAgent.error ?? null}
+          open={createOpen}
+          onOpenChange={setCreateOpen}
+          onCreate={async (input) => {
+            const agent = await createAgent.mutateAsync(input)
+            setCreateOpen(false)
+            navigate(`/agents/${agent.id}`)
+          }}
+        />
+      </div>
     </div>
   )
 }
 
-interface AgentsPageHeaderProps {
-  actionInProgress: boolean
-  canManageAgents: boolean
-  controlPlaneBusy: boolean
-  reconnecting: boolean
-  status: OpenClawStatus | null
-  onCreateAgent: () => void
-  onOpenTerminal: () => void
-  onReconnect: () => void
-  onRestart: () => void
-  onStop: () => void
-}
-
-const AgentsPageHeader: FC<AgentsPageHeaderProps> = ({
-  actionInProgress,
-  canManageAgents,
-  controlPlaneBusy,
-  reconnecting,
-  status,
+function AgentHarnessPageHeader({
+  loading,
   onCreateAgent,
-  onOpenTerminal,
-  onReconnect,
-  onRestart,
-  onStop,
-}) => (
-  <div className="flex items-center justify-between">
-    <div>
-      <h1 className="font-bold text-2xl">Agents</h1>
-      <p className="text-muted-foreground text-sm">
-        OpenClaw agents running in a local container
-      </p>
-    </div>
-
-    {status && (
-      <div className="flex items-center gap-2">
-        <StatusBadge status={status.status} />
-        {status.status !== 'uninitialized' && (
-          <ControlPlaneBadge status={status.controlPlaneStatus} />
-        )}
-
-        {status.status === 'running' && (
-          <>
-            {status.controlPlaneStatus !== 'connected' && (
-              <Button
-                variant="outline"
-                onClick={onReconnect}
-                disabled={actionInProgress || controlPlaneBusy}
-              >
-                {reconnecting ? (
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                ) : (
-                  <RefreshCw className="mr-2 size-4" />
-                )}
-                Retry Connection
-              </Button>
-            )}
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onRestart}
-              disabled={actionInProgress}
-              title="Restart gateway"
-            >
-              <RefreshCw className="size-4" />
-            </Button>
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={onStop}
-              disabled={actionInProgress}
-              title="Stop gateway"
-            >
-              <Square className="size-4" />
-            </Button>
-            <Button variant="outline" onClick={onOpenTerminal}>
-              <TerminalSquare className="mr-1 size-4" />
-              Terminal
-            </Button>
-            <Button onClick={onCreateAgent} disabled={!canManageAgents}>
-              <Plus className="mr-1 size-4" />
-              New Agent
-            </Button>
-          </>
-        )}
-      </div>
-    )}
-  </div>
-)
-
-function LifecycleAlert({ message }: { message: string }) {
-  return (
-    <Alert>
-      <Loader2 className="animate-spin" />
-      <AlertTitle>{message}</AlertTitle>
-    </Alert>
-  )
-}
-
-function InlineErrorAlert({
-  message,
-  onDismiss,
+  onRefresh,
 }: {
-  message: string
-  onDismiss: () => void
+  loading: boolean
+  onCreateAgent: () => void
+  onRefresh: () => void
 }) {
   return (
-    <Alert variant="destructive">
-      <AlertCircle />
-      <AlertTitle>OpenClaw action failed</AlertTitle>
-      <AlertDescription>
-        <p>{message}</p>
-        <div className="mt-2">
-          <Button variant="outline" size="sm" onClick={onDismiss}>
-            Dismiss
-          </Button>
-        </div>
-      </AlertDescription>
-    </Alert>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 className="font-semibold text-2xl tracking-normal">Agents</h1>
+        <p className="text-muted-foreground text-sm">Claude and Codex agents</p>
+      </div>
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={onRefresh} title="Refresh">
+          {loading ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <RefreshCw className="size-4" />
+          )}
+        </Button>
+        <Button onClick={onCreateAgent}>
+          <Plus className="mr-2 size-4" />
+          New Agent
+        </Button>
+      </div>
+    </div>
   )
 }
 
-interface ControlPlaneAlertProps {
-  actionInProgress: boolean
-  controlPlaneBusy: boolean
-  controlPlaneCopy: ReturnType<typeof getControlPlaneCopy>
-  reconnecting: boolean
-  recoveryDetail: string | null
-  status: OpenClawStatus
-  onReconnect: () => void
-  onRestart: () => void
-}
-
-const ControlPlaneAlert: FC<ControlPlaneAlertProps> = ({
-  actionInProgress,
-  controlPlaneBusy,
-  controlPlaneCopy,
-  reconnecting,
-  recoveryDetail,
-  status,
-  onReconnect,
-  onRestart,
-}) => (
-  <Alert
-    variant={status.controlPlaneStatus === 'failed' ? 'destructive' : 'default'}
-  >
-    {status.controlPlaneStatus === 'failed' ? (
-      <ShieldAlert />
-    ) : status.controlPlaneStatus === 'recovering' ? (
-      <Wrench />
-    ) : (
-      <WifiOff />
-    )}
-    <AlertTitle>{controlPlaneCopy.title}</AlertTitle>
-    <AlertDescription>
-      <p>{controlPlaneCopy.description}</p>
-      {recoveryDetail && <p>{recoveryDetail}</p>}
-      <div className="mt-2 flex flex-wrap gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onReconnect}
-          disabled={actionInProgress || controlPlaneBusy}
-        >
-          {reconnecting ? (
-            <Loader2 className="mr-2 size-4 animate-spin" />
-          ) : (
-            <RefreshCw className="mr-2 size-4" />
-          )}
-          Retry Connection
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={onRestart}
-          disabled={actionInProgress}
-        >
-          Restart Gateway
-        </Button>
-      </div>
-    </AlertDescription>
-  </Alert>
-)
-
-interface GatewayStateCardsProps {
-  actionInProgress: boolean
-  status: OpenClawStatus | null
-  onOpenSetup: () => void
-  onRestart: () => void
-  onStart: () => void
-}
-
-const GatewayStateCards: FC<GatewayStateCardsProps> = ({
-  actionInProgress,
-  status,
-  onOpenSetup,
-  onRestart,
-  onStart,
-}) => (
-  <>
-    {status?.status === 'uninitialized' && (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-4 py-12">
-          <Cpu className="size-12 text-muted-foreground" />
-          <div className="text-center">
-            <h3 className="font-semibold text-lg">Set Up OpenClaw</h3>
-            <p className="text-muted-foreground text-sm">
-              {status.podmanAvailable
-                ? 'Create a local BrowserOS VM to run autonomous agents with full tool access.'
-                : 'BrowserOS VM runtime is unavailable on this system.'}
-            </p>
-          </div>
-          {status.podmanAvailable && (
-            <Button onClick={onOpenSetup}>Set Up Now</Button>
-          )}
-        </CardContent>
-      </Card>
-    )}
-
-    {status?.status === 'stopped' && (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-4 py-12">
-          <Cpu className="size-12 text-muted-foreground" />
-          <div className="text-center">
-            <h3 className="font-semibold text-lg">Gateway Stopped</h3>
-            <p className="text-muted-foreground text-sm">
-              The OpenClaw gateway is not running.
-            </p>
-          </div>
-          <Button onClick={onStart} disabled={actionInProgress}>
-            Start Gateway
-          </Button>
-        </CardContent>
-      </Card>
-    )}
-
-    {status?.status === 'error' && (
-      <Card className="border-destructive">
-        <CardContent className="flex flex-col items-center gap-4 py-12">
-          <AlertCircle className="size-12 text-destructive" />
-          <div className="text-center">
-            <h3 className="font-semibold text-lg">Gateway Error</h3>
-            <p className="text-muted-foreground text-sm">
-              {status.error ?? status.lastGatewayError}
-            </p>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={onStart} disabled={actionInProgress}>
-              Start Gateway
-            </Button>
-            <Button
-              variant="outline"
-              onClick={onRestart}
-              disabled={actionInProgress}
-            >
-              Restart Gateway
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    )}
-  </>
-)
-
-interface RunningAgentsSectionProps {
-  agents: AgentEntry[]
-  agentsLoading: boolean
-  canManageAgents: boolean
-  deleting: boolean
-  status: OpenClawStatus | null
-  onChatAgent: (agentId: string) => void
-  onCreateAgent: () => void
-  onDeleteAgent: (agentId: string) => void
-}
-
-const RunningAgentsSection: FC<RunningAgentsSectionProps> = ({
+function HarnessAgentList({
   agents,
-  agentsLoading,
-  canManageAgents,
-  deleting,
-  status,
+  deletingAgentId,
+  loading,
   onChatAgent,
   onCreateAgent,
   onDeleteAgent,
-}) => {
-  if (status?.status !== 'running') return null
-
-  if (agentsLoading) {
+}: {
+  agents: HarnessAgent[]
+  deletingAgentId: string | null
+  loading: boolean
+  onChatAgent: (agentId: string) => void
+  onCreateAgent: () => void
+  onDeleteAgent: (agentId: string) => void
+}) {
+  if (loading && agents.length === 0) {
     return (
-      <div className="flex justify-center py-8">
+      <div className="flex h-36 items-center justify-center rounded-lg border border-border/70">
         <Loader2 className="size-5 animate-spin text-muted-foreground" />
       </div>
     )
@@ -544,511 +172,217 @@ const RunningAgentsSection: FC<RunningAgentsSectionProps> = ({
 
   if (agents.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center gap-3 py-8">
+      <div className="flex h-48 flex-col items-center justify-center gap-4 rounded-lg border border-border/70 text-center">
+        <div className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+          <Bot className="size-5" />
+        </div>
+        <div className="space-y-1">
+          <h2 className="font-medium text-base">No agents</h2>
           <p className="text-muted-foreground text-sm">
-            No agents yet. Create one to get started.
+            Create a Claude or Codex agent.
           </p>
-          <Button
-            variant="outline"
-            onClick={onCreateAgent}
-            disabled={!canManageAgents}
-          >
-            <Plus className="mr-1 size-4" />
-            Create Agent
-          </Button>
-        </CardContent>
-      </Card>
+        </div>
+        <Button variant="outline" onClick={onCreateAgent}>
+          <Plus className="mr-2 size-4" />
+          New Agent
+        </Button>
+      </div>
     )
   }
 
   return (
-    <div className="space-y-3">
+    <div className="grid gap-3">
       {agents.map((agent) => (
-        <Card key={agent.agentId}>
-          <CardHeader className="flex flex-row items-center justify-between py-3">
-            <div className="flex items-center gap-3">
-              <Cpu className="size-5 text-muted-foreground" />
-              <div>
-                <div className="flex items-center gap-2">
-                  <CardTitle className="text-base">{agent.name}</CardTitle>
+        <Card key={agent.id} className="rounded-lg border-border/70">
+          <CardContent className="flex flex-wrap items-center justify-between gap-4 p-4">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
+                <Bot className="size-5" />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate font-medium text-sm">{agent.name}</div>
+                <div className="mt-1 flex flex-wrap items-center gap-2 text-muted-foreground text-xs">
+                  <span className="capitalize">{agent.adapter}</span>
+                  <span>{agent.modelId ?? 'default'}</span>
+                  <Badge variant="outline" className="rounded-md">
+                    main
+                  </Badge>
                 </div>
-                <p className="font-mono text-muted-foreground text-xs">
-                  {agent.workspace}
-                </p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => onChatAgent(agent.agentId)}
-                disabled={!canManageAgents}
-              >
-                <MessageSquare className="mr-1 size-4" />
+            <div className="flex items-center gap-2">
+              <Button variant="outline" onClick={() => onChatAgent(agent.id)}>
+                <MessageSquare className="mr-2 size-4" />
                 Chat
               </Button>
-              {agent.agentId !== 'main' && (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={() => onDeleteAgent(agent.agentId)}
-                  disabled={!canManageAgents || deleting}
-                >
-                  <Trash2 className="size-4 text-destructive" />
-                </Button>
-              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                title="Delete agent"
+                onClick={() => onDeleteAgent(agent.id)}
+                disabled={deletingAgentId === agent.id}
+              >
+                {deletingAgentId === agent.id ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Trash2 className="size-4" />
+                )}
+              </Button>
             </div>
-          </CardHeader>
+          </CardContent>
         </Card>
       ))}
     </div>
   )
 }
 
-export const AgentsPage: FC = () => {
-  const navigate = useNavigate()
-  const {
-    status,
-    loading: statusLoading,
-    error: statusError,
-  } = useOpenClawStatus()
-  const { providers, defaultProviderId } = useLlmProviders()
-  const agentsQueryEnabled =
-    status?.status === 'running' && status.controlPlaneStatus === 'connected'
-  const {
-    agents,
-    loading: agentsLoading,
-    error: agentsError,
-  } = useOpenClawAgents(agentsQueryEnabled)
-  const {
-    setupOpenClaw,
-    createAgent,
-    deleteAgent,
-    startOpenClaw,
-    stopOpenClaw,
-    restartOpenClaw,
-    reconnectOpenClaw,
-    actionInProgress,
-    settingUp,
-    creating,
-    deleting,
-    reconnecting,
-    pendingGatewayAction,
-  } = useOpenClawMutations()
-
-  const [setupOpen, setSetupOpen] = useState(false)
-  const [setupProviderId, setSetupProviderId] = useState('')
-  const [createOpen, setCreateOpen] = useState(false)
-  const [newName, setNewName] = useState('')
-  const [createProviderId, setCreateProviderId] = useState('')
-
-  const [showTerminal, setShowTerminal] = useState(false)
-  const [cliAuthModalOpen, setCliAuthModalOpen] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-
-  const compatibleProviders = getOpenClawSupportedProviders(providers)
-  const cliProviderOptions = useMemo(
-    () => buildOpenClawCliProviderOptions(),
-    [],
-  )
-  const selectableCreateProviders = useMemo(
-    () => [...compatibleProviders, ...cliProviderOptions],
-    [compatibleProviders, cliProviderOptions],
-  )
-
-  const selectedCreateOption = selectableCreateProviders.find(
-    (provider) => provider.id === createProviderId,
-  )
-  const selectedCliProvider = selectedCreateOption
-    ? findOpenClawCliProviderById(selectedCreateOption.type)
-    : undefined
-
-  const selectedSetupOption = selectableCreateProviders.find(
-    (provider) => provider.id === setupProviderId,
-  )
-  const selectedSetupCliProvider = selectedSetupOption
-    ? findOpenClawCliProviderById(selectedSetupOption.type)
-    : undefined
-
-  // Whichever dialog is currently open drives the auth status poll and the
-  // auth-terminal handoff. Only one dialog is open at a time.
-  const activeCliProvider =
-    (setupOpen && selectedSetupCliProvider) ||
-    (createOpen && selectedCliProvider) ||
-    undefined
-  const {
-    data: cliAuthStatus,
-    isLoading: cliAuthLoading,
-    error: cliAuthError,
-  } = useOpenClawCliProviderAuthStatus(
-    activeCliProvider?.id ?? '',
-    !!activeCliProvider,
-  )
+function NewHarnessAgentDialog({
+  adapters,
+  creating,
+  error,
+  open,
+  onCreate,
+  onOpenChange,
+}: {
+  adapters: HarnessAdapterDescriptor[]
+  creating: boolean
+  error: Error | null
+  open: boolean
+  onCreate: (input: {
+    name: string
+    adapter: HarnessAgentAdapter
+    modelId?: string
+    reasoningEffort?: string
+  }) => Promise<void>
+  onOpenChange: (open: boolean) => void
+}) {
+  const [name, setName] = useState('')
+  const [adapterId, setAdapterId] =
+    useState<HarnessAgentAdapter>(DEFAULT_ADAPTER)
+  const selectedAdapter =
+    adapters.find((adapter) => adapter.id === adapterId) ?? adapters[0]
+  const [modelId, setModelId] = useState('')
+  const [reasoningEffort, setReasoningEffort] = useState('')
 
   useEffect(() => {
-    if (selectableCreateProviders.length === 0) return
-    const fallbackId =
-      selectableCreateProviders.find(
-        (provider) => provider.id === defaultProviderId,
-      )?.id ?? selectableCreateProviders[0].id
+    if (!open) return
+    const adapter =
+      adapters.find((entry) => entry.id === adapterId) ?? adapters[0]
+    if (!adapter) return
+    setModelId((current) => current || adapter.defaultModelId)
+    setReasoningEffort((current) => current || adapter.defaultReasoningEffort)
+  }, [adapterId, adapters, open])
 
-    if (createOpen && !createProviderId) setCreateProviderId(fallbackId)
-  }, [
-    createOpen,
-    createProviderId,
-    selectableCreateProviders,
-    defaultProviderId,
-  ])
-
-  useEffect(() => {
-    if (selectableCreateProviders.length === 0) return
-    const fallbackId =
-      selectableCreateProviders.find(
-        (provider) => provider.id === defaultProviderId,
-      )?.id ?? selectableCreateProviders[0].id
-
-    if (setupOpen && !setupProviderId) setSetupProviderId(fallbackId)
-  }, [setupOpen, setupProviderId, selectableCreateProviders, defaultProviderId])
-
-  // Auto-close the auth modal once login succeeds.
-  useEffect(() => {
-    if (cliAuthModalOpen && cliAuthStatus?.loggedIn) {
-      setCliAuthModalOpen(false)
-    }
-  }, [cliAuthModalOpen, cliAuthStatus?.loggedIn])
-
-  useEffect(() => {
-    if (!createOpen) return
-    setNewName((current) => current || 'agent')
-  }, [createOpen])
-
-  const lifecyclePending = pendingGatewayAction !== null
-  const inlineError = lifecyclePending
-    ? null
-    : (error ?? statusError?.message ?? agentsError?.message ?? null)
-  const lifecycleBanner = pendingGatewayAction
-    ? LIFECYCLE_BANNER_COPY[pendingGatewayAction]
-    : null
-
-  const gatewayUiState = useMemo(() => {
-    if (!status) {
-      return {
-        canManageAgents: false,
-        controlPlaneDegraded: false,
-        controlPlaneBusy: false,
-      }
-    }
-
-    const controlPlaneBusy =
-      status.controlPlaneStatus === 'connecting' ||
-      status.controlPlaneStatus === 'reconnecting' ||
-      status.controlPlaneStatus === 'recovering'
-
-    const canManageAgents =
-      status.status === 'running' && status.controlPlaneStatus === 'connected'
-
-    const controlPlaneDegraded =
-      status.status === 'running' && status.controlPlaneStatus !== 'connected'
-
-    return {
-      canManageAgents,
-      controlPlaneBusy,
-      controlPlaneDegraded,
-    }
-  }, [status])
-
-  const canManageAgents = gatewayUiState.canManageAgents && !lifecyclePending
-  const showControlPlaneDegraded =
-    !lifecyclePending && gatewayUiState.controlPlaneDegraded
-
-  const recoveryDetail = status ? getRecoveryDetail(status) : null
-  const controlPlaneCopy = status
-    ? getControlPlaneCopy(status.controlPlaneStatus)
-    : FALLBACK_CONTROL_PLANE_COPY
-
-  const runWithErrorHandling = async (fn: () => Promise<unknown>) => {
-    setError(null)
-    try {
-      await fn()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err))
-    }
+  const handleAdapterChange = (value: string) => {
+    if (value !== 'claude' && value !== 'codex') return
+    const adapter = adapters.find((entry) => entry.id === value)
+    setAdapterId(value)
+    setModelId(adapter?.defaultModelId ?? '')
+    setReasoningEffort(adapter?.defaultReasoningEffort ?? '')
   }
 
-  const handleSetup = async () => {
-    const option = selectableCreateProviders.find(
-      (item) => item.id === setupProviderId,
-    )
-    const isCli = !!option && !!findOpenClawCliProviderById(option.type)
-    // CLI-backed providers have no apiKey/baseUrl — the gateway boots
-    // bare-bones and we hop straight into the auth terminal. The Create
-    // Agent flow uses the post-setup status panel instead.
-    const llmOption =
-      !isCli && option ? (option as LlmProviderConfig) : undefined
-
-    await runWithErrorHandling(async () => {
-      await setupOpenClaw({
-        providerType: option?.type,
-        providerName: isCli ? undefined : option?.name,
-        baseUrl: llmOption?.baseUrl,
-        apiKey: llmOption?.apiKey,
-        modelId: option?.modelId,
-      })
-      setSetupOpen(false)
-      if (isCli) setCliAuthModalOpen(true)
-    })
-  }
-
-  const handleCreate = async () => {
-    if (!newName.trim()) return
-    const option = selectableCreateProviders.find(
-      (item) => item.id === createProviderId,
-    )
-    const normalizedName = newName.trim().toLowerCase().replace(/\s+/g, '-')
-    const isCli = !!option && !!findOpenClawCliProviderById(option.type)
-    // LlmProviderConfig carries apiKey/baseUrl; CLI synthetic options don't —
-    // once we know isCli=false, narrow to the config type for property access.
-    const llmOption =
-      !isCli && option ? (option as LlmProviderConfig) : undefined
-
-    await runWithErrorHandling(async () => {
-      await createAgent({
-        name: normalizedName,
-        providerType: option?.type,
-        providerName: isCli ? undefined : option?.name,
-        baseUrl: llmOption?.baseUrl,
-        apiKey: llmOption?.apiKey,
-        modelId: option?.modelId,
-      })
-      setCreateOpen(false)
-      setNewName('')
-    })
-  }
-
-  const handleDelete = async (id: string) => {
-    await runWithErrorHandling(async () => {
-      await deleteAgent(id)
-    })
-  }
-
-  const handleStop = async () => {
-    await runWithErrorHandling(async () => {
-      await stopOpenClaw()
-    })
-  }
-
-  const handleStart = async () => {
-    await runWithErrorHandling(async () => {
-      await startOpenClaw()
-    })
-  }
-
-  const handleRestart = async () => {
-    await runWithErrorHandling(async () => {
-      await restartOpenClaw()
-    })
-  }
-
-  const handleReconnect = async () => {
-    await runWithErrorHandling(async () => {
-      await reconnectOpenClaw()
-    })
-  }
-
-  if (showTerminal) {
-    return <AgentTerminal onBack={() => setShowTerminal(false)} />
-  }
-
-  // Auth terminal is driven by whichever dialog triggered it — Setup or
-  // Create. Prefer the setup selection when the setup dialog is open, so
-  // clicking "Connect" from Setup doesn't accidentally launch for a
-  // different provider picked earlier in Create.
-  const authTerminalProvider = selectedSetupCliProvider ?? selectedCliProvider
-  if (cliAuthModalOpen && authTerminalProvider) {
-    return (
-      <AgentTerminal
-        onBack={() => setCliAuthModalOpen(false)}
-        initialCommand={authTerminalProvider.authLoginCommand}
-        onSessionExit={() => setCliAuthModalOpen(false)}
-      />
-    )
-  }
-
-  if (statusLoading && !status) {
-    return (
-      <div className="flex items-center justify-center py-20">
-        <Loader2 className="size-6 animate-spin text-muted-foreground" />
-      </div>
-    )
-  }
+  const canCreate =
+    Boolean(name.trim()) && Boolean(selectedAdapter) && !creating
 
   return (
-    <div className="fade-in slide-in-from-bottom-5 animate-in space-y-6 duration-500">
-      <AgentsPageHeader
-        actionInProgress={actionInProgress}
-        canManageAgents={canManageAgents}
-        controlPlaneBusy={gatewayUiState.controlPlaneBusy}
-        reconnecting={reconnecting}
-        status={status}
-        onCreateAgent={() => setCreateOpen(true)}
-        onOpenTerminal={() => setShowTerminal(true)}
-        onReconnect={handleReconnect}
-        onRestart={handleRestart}
-        onStop={handleStop}
-      />
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>New Agent</DialogTitle>
+        </DialogHeader>
 
-      {lifecycleBanner && <LifecycleAlert message={lifecycleBanner} />}
+        <div className="grid gap-4 py-2">
+          {error ? (
+            <Alert variant="destructive">
+              <AlertCircle className="size-4" />
+              <AlertTitle>Create failed</AlertTitle>
+              <AlertDescription>{error.message}</AlertDescription>
+            </Alert>
+          ) : null}
 
-      {inlineError && (
-        <InlineErrorAlert
-          message={inlineError}
-          onDismiss={() => setError(null)}
-        />
-      )}
-
-      {status && showControlPlaneDegraded && (
-        <ControlPlaneAlert
-          actionInProgress={actionInProgress}
-          controlPlaneBusy={gatewayUiState.controlPlaneBusy}
-          controlPlaneCopy={controlPlaneCopy}
-          reconnecting={reconnecting}
-          recoveryDetail={recoveryDetail}
-          status={status}
-          onReconnect={handleReconnect}
-          onRestart={handleRestart}
-        />
-      )}
-
-      <GatewayStateCards
-        actionInProgress={actionInProgress}
-        status={status}
-        onOpenSetup={() => setSetupOpen(true)}
-        onRestart={handleRestart}
-        onStart={handleStart}
-      />
-
-      <RunningAgentsSection
-        agents={agents}
-        agentsLoading={agentsLoading}
-        canManageAgents={canManageAgents}
-        deleting={deleting}
-        status={status}
-        onChatAgent={(agentId) => navigate(`/agents/${agentId}`)}
-        onCreateAgent={() => setCreateOpen(true)}
-        onDeleteAgent={(agentId) => {
-          void handleDelete(agentId)
-        }}
-      />
-
-      <Dialog open={setupOpen} onOpenChange={setSetupOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Set Up OpenClaw</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <ProviderSelector
-              providers={selectableCreateProviders}
-              defaultProviderId={defaultProviderId}
-              selectedId={setupProviderId}
-              onSelect={setSetupProviderId}
-              hideApiKeyHint={!!selectedSetupCliProvider}
+          <div className="grid gap-2">
+            <Label htmlFor="agent-name">Name</Label>
+            <Input
+              id="agent-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Review bot"
             />
-
-            {selectedSetupCliProvider && (
-              <p className="rounded-md border border-border bg-muted/30 px-3 py-2 text-muted-foreground text-xs">
-                {selectedSetupCliProvider.description}. Clicking{' '}
-                <span className="font-medium">Set Up &amp; Start</span> starts
-                the gateway and opens a terminal to sign in.
-              </p>
-            )}
-
-            <Button
-              onClick={handleSetup}
-              disabled={settingUp || selectableCreateProviders.length === 0}
-              className="w-full"
-            >
-              {settingUp ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Setting up...
-                </>
-              ) : (
-                'Set Up & Start'
-              )}
-            </Button>
           </div>
-        </DialogContent>
-      </Dialog>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Agent</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div>
-              <label
-                htmlFor="agent-name"
-                className="mb-1 block font-medium text-sm"
-              >
-                Agent Name
-              </label>
-              <Input
-                id="agent-name"
-                value={newName}
-                onChange={(event) => setNewName(event.target.value)}
-                placeholder="research-agent"
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') void handleCreate()
-                }}
-              />
-              <p className="mt-1 text-muted-foreground text-xs">
-                Lowercase letters, numbers, and hyphens only.
-              </p>
-            </div>
-
-            <ProviderSelector
-              providers={selectableCreateProviders}
-              defaultProviderId={defaultProviderId}
-              selectedId={createProviderId}
-              onSelect={setCreateProviderId}
-              hideApiKeyHint={!!selectedCliProvider}
-            />
-
-            {selectedCliProvider && (
-              <OpenClawCliProviderStatusPanel
-                provider={selectedCliProvider}
-                status={cliAuthStatus}
-                loading={cliAuthLoading}
-                fetchError={cliAuthError ?? null}
-                onConnect={() => setCliAuthModalOpen(true)}
-              />
-            )}
-
-            <Button
-              onClick={handleCreate}
-              disabled={
-                !newName.trim() ||
-                creating ||
-                !canManageAgents ||
-                selectableCreateProviders.length === 0 ||
-                (!!selectedCliProvider && !cliAuthStatus?.loggedIn)
-              }
-              className="w-full"
-            >
-              {creating ? (
-                <>
-                  <Loader2 className="mr-2 size-4 animate-spin" />
-                  Creating...
-                </>
-              ) : (
-                'Create Agent'
-              )}
-            </Button>
+          <div className="grid gap-2">
+            <Label htmlFor="agent-adapter">Adapter</Label>
+            <Select value={adapterId} onValueChange={handleAdapterChange}>
+              <SelectTrigger id="agent-adapter">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {adapters.map((adapter) => (
+                  <SelectItem key={adapter.id} value={adapter.id}>
+                    {adapter.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-        </DialogContent>
-      </Dialog>
-    </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="agent-model">Model</Label>
+            <Select value={modelId} onValueChange={setModelId}>
+              <SelectTrigger id="agent-model">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(selectedAdapter?.models ?? []).map((model) => (
+                  <SelectItem key={model.id} value={model.id}>
+                    {model.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="grid gap-2">
+            <Label htmlFor="agent-effort">Reasoning</Label>
+            <Select value={reasoningEffort} onValueChange={setReasoningEffort}>
+              <SelectTrigger id="agent-effort">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {(selectedAdapter?.reasoningEfforts ?? []).map((effort) => (
+                  <SelectItem key={effort.id} value={effort.id}>
+                    {effort.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            disabled={creating}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={!canCreate}
+            onClick={() =>
+              void onCreate({
+                name: name.trim(),
+                adapter: adapterId,
+                modelId: modelId || undefined,
+                reasoningEffort: reasoningEffort || undefined,
+              })
+            }
+          >
+            {creating ? <Loader2 className="mr-2 size-4 animate-spin" /> : null}
+            Create
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
