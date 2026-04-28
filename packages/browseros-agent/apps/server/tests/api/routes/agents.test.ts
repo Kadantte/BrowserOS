@@ -4,106 +4,124 @@
  */
 
 import { describe, expect, it } from 'bun:test'
+import { Hono } from 'hono'
 import { createAgentRoutes } from '../../../src/api/routes/agents'
-import type {
-  AgentHistoryStore,
-  AgentRuntime,
-  AgentStreamEvent,
-} from '../../../src/lib/agents/types'
+import type { AgentDefinition } from '../../../src/lib/agents/agent-types'
+import type { AgentStreamEvent } from '../../../src/lib/agents/types'
 
 describe('createAgentRoutes', () => {
-  it('streams chat events as BrowserOS SSE and records history', async () => {
-    const history: Array<{
-      profileId: string
-      sessionKey: string
-      role: 'user' | 'assistant'
-      content: string
-    }> = []
-    const runtime: AgentRuntime = {
-      async status() {
-        return { state: 'ready' }
-      },
-      async listSessions() {
-        return []
-      },
-      async getHistory({ profileId, sessionKey }) {
-        return {
-          profileId,
-          sessionKey,
-          items: history,
-        }
-      },
-      async send() {
-        return new ReadableStream<AgentStreamEvent>({
-          start(controller) {
-            controller.enqueue({
-              type: 'text_delta',
-              text: 'Hello',
-              stream: 'output',
-            })
-            controller.enqueue({
-              type: 'done',
-              text: 'Hello',
-              stopReason: 'end_turn',
-            })
-            controller.close()
-          },
-        })
-      },
-    }
-    const store: AgentHistoryStore = {
-      async append(item) {
-        history.push(item)
-      },
-      async list({ profileId, sessionKey }) {
-        return history.filter(
-          (item) =>
-            item.profileId === profileId && item.sessionKey === sessionKey,
-        )
-      },
-      async listSessions() {
-        return [
-          {
-            profileId: 'claude',
-            key: 'session-1',
-            updatedAt: history[history.length - 1]?.createdAt ?? Date.now(),
-          },
-        ]
-      },
-    }
-    const route = createAgentRoutes({
-      runtime,
-      historyStore: store,
-      profiles: [
-        {
-          id: 'claude',
-          name: 'Claude Code',
-          backend: 'acpx',
-          agent: 'claude',
-        },
-      ],
-    })
-
-    const response = await route.request('/claude/chat', {
+  it('creates and lists harness agents', async () => {
+    const agents: AgentDefinition[] = []
+    const route = createMountedRoutes(agents)
+    const created = await route.request('/agents', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        message: 'hi',
-        sessionKey: 'session-1',
+        name: 'Review bot',
+        adapter: 'codex',
+        modelId: 'gpt-5.5',
+        reasoningEffort: 'medium',
       }),
     })
 
-    expect(response.status).toBe(200)
-    expect(response.headers.get('Content-Type')).toContain('text/event-stream')
-    expect(response.headers.get('X-Session-Key')).toBe('session-1')
-    expect(await response.text()).toBe(
-      'data: {"type":"text_delta","text":"Hello","stream":"output"}\n\n' +
-        'data: {"type":"done","text":"Hello","stopReason":"end_turn"}\n\n' +
-        'data: [DONE]\n\n',
-    )
-    expect(history.map(({ role, content }) => ({ role, content }))).toEqual([
-      { role: 'user', content: 'hi' },
-      { role: 'assistant', content: 'Hello' },
+    expect(created.status).toBe(200)
+    expect(await created.json()).toMatchObject({
+      agent: { name: 'Review bot', adapter: 'codex' },
+    })
+
+    const list = await route.request('/agents')
+    expect(await list.json()).toMatchObject({
+      agents: [{ name: 'Review bot', adapter: 'codex' }],
+    })
+  })
+
+  it('streams chat for an agent main session', async () => {
+    const route = createMountedRoutes([
+      {
+        id: 'agent-1',
+        name: 'Review bot',
+        adapter: 'codex',
+        modelId: 'gpt-5.5',
+        reasoningEffort: 'medium',
+        permissionMode: 'approve-all',
+        sessionKey: 'agent:agent-1:main',
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
     ])
+
+    const response = await route.request('/agents/agent-1/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: 'hi' }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('X-Session-Id')).toBe('main')
+    expect(await response.text()).toContain('data: [DONE]')
   })
 })
+
+function createMountedRoutes(agents: AgentDefinition[]) {
+  return new Hono().route(
+    '/agents',
+    createAgentRoutes({ service: createFakeService(agents) }),
+  )
+}
+
+function createFakeService(agents: AgentDefinition[]) {
+  return {
+    async listAgents() {
+      return agents
+    },
+    async createAgent(input: {
+      name: string
+      adapter: 'claude' | 'codex'
+      modelId?: string
+      reasoningEffort?: string
+    }) {
+      const agent: AgentDefinition = {
+        id: `agent-${agents.length + 1}`,
+        name: input.name,
+        adapter: input.adapter,
+        modelId: input.modelId,
+        reasoningEffort: input.reasoningEffort,
+        permissionMode: 'approve-all',
+        sessionKey: `agent:agent-${agents.length + 1}:main`,
+        createdAt: 1000,
+        updatedAt: 1000,
+      }
+      agents.push(agent)
+      return agent
+    },
+    async getAgent(agentId: string) {
+      return agents.find((agent) => agent.id === agentId) ?? null
+    },
+    async deleteAgent(agentId: string) {
+      const index = agents.findIndex((agent) => agent.id === agentId)
+      if (index < 0) return false
+      agents.splice(index, 1)
+      return true
+    },
+    async getHistory(agentId: string) {
+      return {
+        agentId,
+        sessionId: 'main' as const,
+        items: [],
+      }
+    },
+    async send() {
+      return new ReadableStream<AgentStreamEvent>({
+        start(controller) {
+          controller.enqueue({
+            type: 'text_delta',
+            text: 'Hello',
+            stream: 'output',
+          })
+          controller.enqueue({ type: 'done', stopReason: 'end_turn' })
+          controller.close()
+        },
+      })
+    },
+  }
+}
