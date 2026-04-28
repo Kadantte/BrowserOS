@@ -1,3 +1,7 @@
 {"task_id":"hn_second_comments","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the comments link under the second item.","gt_point":[442.8,101.5]}
 {"task_id":"hn_7th_title_link","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the title link of the 7th post.","gt_point":[359.2,261.5]}
 {"task_id":"hn_19th_hide","image_path":"screenshots/hacker_news_browser.png","instruction":"Click the hide link on the 19th post.","gt_point":[354.9,696.5]}
+{"task_id":"temu_feedback","image_path":"screenshots/temu_feedback.png","instruction":"Click the Feedback button on the bottom right.","gt_point":[1888.0,1044.0]}
+{"task_id":"f1_2026_drivers_fia_logo","image_path":"screenshots/f1_2026_drivers_fia_logo.png","instruction":"Click the FIA logo on the top right.","gt_point":[1729.914,80.0]}
+{"task_id":"reddit_pics_leave_button","image_path":"screenshots/reddit_pics_leave_permalink.png","instruction":"Click the leave button near the top of the right sidebar.","gt_point":[1626.9,316.0]}
+{"task_id":"reddit_pics_6th_comment_permalink","image_path":"screenshots/reddit_pics_leave_permalink.png","instruction":"Click the permalink button for the 6th comment.","gt_point":[195.3,1131.3]}

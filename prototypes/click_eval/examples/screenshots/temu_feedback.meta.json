@@ -1,0 +1,26 @@
+{
+  "url": "https://www.temu.com/",
+  "screenshot": "prototypes/click_eval/examples/screenshots/temu_feedback.png",
+  "image_size": {
+    "width": 1920,
+    "height": 1152
+  },
+  "device_scale_factor": 1,
+  "target": {
+    "label": "Feedback",
+    "selector": "#mainToolbar [role=\"button\"]",
+    "rect": {
+      "x": 1860,
+      "y": 1016,
+      "width": 56,
+      "height": 56
+    },
+    "center": {
+      "x": 1888,
+      "y": 1044
+    }
+  },
+  "caveats": [
+    "Temu displayed a privacy/cookie settings dialog that dims the page; the bottom-right Feedback button remains visible in the screenshot."
+  ]
+}

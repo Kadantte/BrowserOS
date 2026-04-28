@@ -1,0 +1,44 @@
+{
+  "url": "https://www.formula1.com/en/results/2026/drivers",
+  "screenshot": "prototypes/click_eval/examples/screenshots/f1_2026_drivers_fia_logo.png",
+  "image_size": {
+    "width": 1920,
+    "height": 1152
+  },
+  "target": {
+    "selector": "a[href=\"https://www.fia.com/\"] svg[role=\"img\"]",
+    "label": "FIA",
+    "href": "https://www.fia.com/",
+    "rect": {
+      "x": 1707.328125,
+      "y": 64,
+      "width": 45.171875,
+      "height": 32
+    },
+    "center": {
+      "x": 1729.9140625,
+      "y": 80
+    },
+    "occludingElement": {
+      "tag": "path",
+      "text": "",
+      "id": null,
+      "class": null
+    },
+    "viewport": {
+      "width": 1920,
+      "height": 1152,
+      "dpr": 1,
+      "scrollX": 0,
+      "scrollY": 0,
+      "url": "https://www.formula1.com/en/results/2026/drivers",
+      "title": "2026 DRIVERS' STANDINGS"
+    }
+  },
+  "consent_dismissed": true,
+  "captured_at_utc": "2026-04-28T11:22:17.556Z",
+  "caveats": [
+    "Live Formula 1 page; content can change upstream.",
+    "Animations/transitions were reduced before capture for determinism."
+  ]
+}

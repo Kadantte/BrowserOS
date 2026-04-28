@@ -1,0 +1,45 @@
+{
+  "leave": {
+    "text": "leave",
+    "selector": ".subscribe-button .option.remove.active",
+    "rect": {
+      "x": 1605,
+      "y": 308,
+      "width": 43.890625,
+      "height": 16
+    }
+  },
+  "sixthPermalink": {
+    "text": "permalink",
+    "href": "https://old.reddit.com/r/pics/comments/1sx21hf/someone_paid_8700_dollars_for_this_in_1995_i_paid/oimt6n0/",
+    "selector": ".comment:nth-of-type(6) a:has-text(\"permalink\")",
+    "commentId": "thing_t1_oimt6n0",
+    "author": "DizzyTelevision09",
+    "bodyPreview": "You've been paying off student loans for the past 30 years? That's crazy.",
+    "rect": {
+      "x": 166,
+      "y": 1125.265625,
+      "width": 58.546875,
+      "height": 12
+    }
+  },
+  "title": "Someone paid $8700 dollars for this in 1995. I paid $15 today. : pics",
+  "pageUrl": "https://old.reddit.com/r/pics/comments/1sx21hf/someone_paid_8700_dollars_for_this_in_1995_i_paid/",
+  "scrollHeight": 17771,
+  "imageSize": {
+    "width": 1920,
+    "height": 1600
+  },
+  "deviceScaleFactor": 1,
+  "targets": {
+    "reddit_pics_leave_button": [
+      1626.9,
+      316
+    ],
+    "reddit_pics_6th_comment_permalink": [
+      195.3,
+      1131.3
+    ]
+  },
+  "caveat": "Fresh Old Reddit session is logged out, so the real visible button is join. The hidden leave link exists in the DOM; screenshot flips the subscribe widget into its subscribed/leave visual state for this requested target."
+}
