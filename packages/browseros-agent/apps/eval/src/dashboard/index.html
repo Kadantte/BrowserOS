@@ -153,6 +153,13 @@
   .btn-stop:hover { background: #f85149; }
   .btn-stop:disabled { background: #6e2b2b; cursor: default; }
 
+  /* Test Run button (highlighted secondary) */
+  .btn-test { background: #1f6feb; color: #fff; border: none; padding: 6px 14px; border-radius: 4px; font-size: 13px; font-weight: 600; cursor: pointer; }
+  .btn-test:hover { background: #388bfd; }
+  .btn-test:disabled { background: #21262d; color: #484f58; cursor: default; }
+  .loaded-config-label { font-size: 11px; color: #8b949e; margin-left: 8px; font-style: italic; }
+  .config-success { color: #3fb950; font-size: 12px; flex: 1; text-align: center; }
+
   /* Empty states */
   .empty-state { display: flex; align-items: center; justify-content: center; height: 100%; color: #484f58; font-size: 13px; }
 </style>
@@ -447,10 +454,13 @@
             <option value="">-- select --</option>
           </select>
         </div>
+        <span class="loaded-config-label" id="loaded-config-label"></span>
         <input type="file" id="cfg-file-input" accept=".json" style="display:none" onchange="loadConfigFromFile(this)">
         <button class="btn-secondary" onclick="document.getElementById('cfg-file-input').click()">Load File</button>
         <button class="btn-secondary" onclick="saveConfigToFile()">Save Config</button>
+        <button class="btn-secondary" id="btn-save-ref" onclick="saveToReferenceConfig()" style="display:none">Save to Reference</button>
         <span class="config-error" id="config-error"></span>
+        <button class="btn-test" id="btn-test-run" onclick="submitConfig({ testRun: true })" title="Run 1 worker on 1 task to verify setup (API key, model, dataset)">Test Run</button>
         <button class="btn-run" id="btn-run" onclick="submitConfig()">Run Eval</button>
       </div>
 
@@ -558,6 +568,7 @@ async function init() {
 
   renderTaskList();
   updateProgress();
+  updateLoadedConfigUI();
   connectSSE();
 }
 
@@ -716,14 +727,68 @@ async function loadPreviousRun() {
 }
 
 async function loadSavedConfig(name) {
-  if (!name) return;
+  if (!name) {
+    loadedConfigName = null;
+    updateLoadedConfigUI();
+    return;
+  }
   try {
     const res = await fetch(`/api/config/${encodeURIComponent(name)}`);
     if (!res.ok) return;
     const cfg = await res.json();
     loadedConfigName = name;
     fillForm(cfg);
+    updateLoadedConfigUI();
   } catch {}
+}
+
+function updateLoadedConfigUI() {
+  const btn = document.getElementById('btn-save-ref');
+  const lbl = document.getElementById('loaded-config-label');
+  if (loadedConfigName) {
+    btn.style.display = '';
+    lbl.textContent = `Loaded: ${loadedConfigName}`;
+  } else {
+    btn.style.display = 'none';
+    lbl.textContent = '';
+  }
+}
+
+async function saveToReferenceConfig() {
+  if (!loadedConfigName) return;
+  const errEl = document.getElementById('config-error');
+  errEl.style.color = '';
+  errEl.textContent = '';
+  // build current form state and PUT it back to the loaded config file
+  const config = buildConfigFromForm();
+  const btn = document.getElementById('btn-save-ref');
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+  try {
+    const res = await fetch(`/api/config/${encodeURIComponent(loadedConfigName)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(config),
+    });
+    const result = await res.json();
+    if (!res.ok) {
+      const details = result.details ? `\n${result.details.join('\n')}` : '';
+      errEl.textContent = (result.error || 'Failed to save config') + details;
+      return;
+    }
+    // success — show inline confirmation that auto-clears
+    errEl.style.color = '#3fb950';
+    errEl.textContent = `Saved to ${loadedConfigName}`;
+    setTimeout(() => {
+      errEl.style.color = '';
+      errEl.textContent = '';
+    }, 2500);
+  } catch (e) {
+    errEl.textContent = `Network error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Save to Reference';
+  }
 }
 
 // Fill form fields from a config object
@@ -908,8 +973,10 @@ function buildConfigFromForm() {
   return config;
 }
 
-async function submitConfig() {
+async function submitConfig(opts = {}) {
+  const isTestRun = opts.testRun === true;
   const errEl = document.getElementById('config-error');
+  errEl.style.color = '';
   errEl.textContent = '';
 
   const config = buildConfigFromForm();
@@ -920,29 +987,38 @@ async function submitConfig() {
     return;
   }
 
-  const btn = document.getElementById('btn-run');
-  btn.disabled = true;
-  btn.textContent = 'Starting...';
+  // disable both buttons during submit; show appropriate loading text
+  const runBtn = document.getElementById('btn-run');
+  const testBtn = document.getElementById('btn-test-run');
+  runBtn.disabled = true;
+  testBtn.disabled = true;
+  if (isTestRun) testBtn.textContent = 'Starting...';
+  else runBtn.textContent = 'Starting...';
 
   try {
     const res = await fetch('/api/run', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ config, configName: loadedConfigName }),
+      body: JSON.stringify({ config, configName: loadedConfigName, testRun: isTestRun }),
     });
     const result = await res.json();
 
     if (!res.ok) {
       const details = result.details ? `\n${result.details.join('\n')}` : '';
       errEl.textContent = (result.error || 'Failed to start eval') + details;
-      btn.disabled = false;
-      btn.textContent = 'Run Eval';
+      runBtn.disabled = false;
+      runBtn.textContent = 'Run Eval';
+      testBtn.disabled = false;
+      testBtn.textContent = 'Test Run';
       return;
     }
 
     // Eval started — collapse panel, refresh state
     setConfigPanelOpen(false);
-    updateConfigSummary(loadedConfigName || 'dashboard', config.agent.type);
+    const summaryLabel = isTestRun
+      ? `${loadedConfigName || 'dashboard'} (test run)`
+      : (loadedConfigName || 'dashboard');
+    updateConfigSummary(summaryLabel, config.agent.type);
 
     // Re-fetch state to get the loaded tasks
     const stateRes = await fetch('/api/state');
@@ -957,8 +1033,10 @@ async function submitConfig() {
     setEvalRunningUI(true);
   } catch (e) {
     errEl.textContent = `Network error: ${e.message}`;
-    btn.disabled = false;
-    btn.textContent = 'Run Eval';
+    runBtn.disabled = false;
+    runBtn.textContent = 'Run Eval';
+    testBtn.disabled = false;
+    testBtn.textContent = 'Test Run';
   }
 }
 
@@ -981,16 +1059,20 @@ async function stopEval() {
 function setEvalRunningUI(running) {
   const stopBtn = document.getElementById('btn-stop');
   const runBtn = document.getElementById('btn-run');
+  const testBtn = document.getElementById('btn-test-run');
   if (running) {
     stopBtn.style.display = '';
     stopBtn.disabled = false;
     stopBtn.textContent = 'Stop';
     runBtn.disabled = true;
     runBtn.textContent = 'Running...';
+    testBtn.disabled = true;
   } else {
     stopBtn.style.display = 'none';
     runBtn.disabled = false;
     runBtn.textContent = 'Run Eval';
+    testBtn.disabled = false;
+    testBtn.textContent = 'Test Run';
   }
 }
 
@@ -1524,6 +1606,11 @@ function loadConfigFromFile(input) {
       // Parse and populate form fields
       const cfg = JSON.parse(e.target.result);
       fillForm(cfg);
+      // file-picker loads a config from arbitrary path — not a "reference" config,
+      // so disable Save-to-Reference until user picks a saved config from the dropdown
+      loadedConfigName = null;
+      document.getElementById('cfg-load-select').value = '';
+      updateLoadedConfigUI();
       document.getElementById('config-error').textContent = '';
     } catch (err) {
       document.getElementById('config-error').textContent = `Invalid JSON file: ${err.message}`;

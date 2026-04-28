@@ -361,11 +361,53 @@ app.get('/api/config/:name', async (c) => {
   }
 })
 
+// Overwrite an existing config file (used by "Save to Reference" in the UI)
+app.put('/api/config/:name', async (c) => {
+  if (evalRunning) {
+    return c.json({ error: 'Cannot save config while eval is running' }, 409)
+  }
+  // validate filename
+  const name = c.req.param('name')
+  if (
+    !name ||
+    name.includes('/') ||
+    name.includes('..') ||
+    !name.endsWith('.json')
+  ) {
+    return c.json({ error: 'Invalid config name' }, 400)
+  }
+  const filepath = join(configsDir, name)
+  if (!resolve(filepath).startsWith(resolve(configsDir))) {
+    return c.json({ error: 'Invalid config name' }, 400)
+  }
+  // overwrite-only — file must already exist
+  const existing = await stat(filepath).catch(() => null)
+  if (!existing?.isFile()) {
+    return c.json({ error: 'Config not found' }, 404)
+  }
+  // parse + validate body against the same schema as /api/run
+  let body: unknown
+  try {
+    body = await c.req.json()
+  } catch {
+    return c.json({ error: 'Invalid JSON body' }, 400)
+  }
+  const parseResult = EvalConfigSchema.safeParse(body)
+  if (!parseResult.success) {
+    const errors = parseResult.error.errors.map(
+      (e) => `${e.path.join('.')}: ${e.message}`,
+    )
+    return c.json({ error: 'Config validation failed', details: errors }, 400)
+  }
+  await Bun.write(filepath, `${JSON.stringify(parseResult.data, null, 2)}\n`)
+  return c.json({ status: 'saved', name })
+})
+
 // Start an eval run from the dashboard
 app.post('/api/run', async (c) => {
   if (evalRunning) return c.json({ error: 'Eval already running' }, 409)
 
-  let body: { config: unknown; configName?: string }
+  let body: { config: unknown; configName?: string; testRun?: boolean }
   try {
     body = await c.req.json()
   } catch {
@@ -382,6 +424,7 @@ app.post('/api/run', async (c) => {
   }
 
   const config = parseResult.data
+  const isTestRun = body.testRun === true
 
   // Resolve relative paths from configs/ dir (dataset dropdown values are relative to it)
   const baseDir = configsDir
@@ -425,17 +468,26 @@ app.post('/api/run', async (c) => {
     return c.json({ error: `Failed to load tasks: ${msg}` }, 400)
   }
 
+  // Test run mode: 1 worker + first task only, to verify setup before a full run
+  if (isTestRun) {
+    if (tasks.length === 0) {
+      return c.json({ error: 'Dataset is empty — nothing to test' }, 400)
+    }
+    tasks = tasks.slice(0, 1)
+  }
+
   await mkdir(outputDir, { recursive: true })
 
   // Re-init dashboard state with loaded tasks
   const configLabel = body.configName || 'dashboard'
-  dashboardState.init(tasks, configLabel, config.agent.type, outputDir)
+  const stateLabel = isTestRun ? `${configLabel} (test run)` : configLabel
+  dashboardState.init(tasks, stateLabel, config.agent.type, outputDir)
 
   const graderOptions = resolveGraderOptions(config)
 
   // Run eval in background — don't await
   const executor = new ParallelExecutor({
-    numWorkers: config.num_workers || 1,
+    numWorkers: isTestRun ? 1 : config.num_workers || 1,
     config,
     outputDir,
     graderOptions,
@@ -467,7 +519,12 @@ app.post('/api/run', async (c) => {
       console.log('\nEval run complete.')
     })
 
-  return c.json({ status: 'started', taskCount: tasks.length, outputDir })
+  return c.json({
+    status: 'started',
+    taskCount: tasks.length,
+    outputDir,
+    testRun: isTestRun,
+  })
 })
 
 // Stop a running eval
