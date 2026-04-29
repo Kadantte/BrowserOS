@@ -1,4 +1,4 @@
-import { join } from 'node:path'
+import { publishPathToR2 } from '../../publishing/r2-publisher'
 import type { PublishCliArgs, PublishTarget } from '../args'
 
 export interface PublishRunOptions {
@@ -6,26 +6,17 @@ export interface PublishRunOptions {
   target: PublishTarget
 }
 
-/** Publishes run artifacts through the current upload script until the R2 module owns this path. */
+/** Publishes run artifacts through the R2 viewer upload path. */
 export async function publishRun(options: PublishRunOptions): Promise<void> {
   if (options.target !== 'r2') {
     throw new Error(`Unsupported publish target: ${options.target}`)
   }
-  const scriptPath = join(
-    import.meta.dir,
-    '..',
-    '..',
-    '..',
-    'scripts',
-    'upload-run.ts',
-  )
-  const proc = Bun.spawn(['bun', scriptPath, options.runDir], {
-    stdout: 'inherit',
-    stderr: 'inherit',
-  })
-  const exitCode = await proc.exited
-  if (exitCode !== 0) {
-    throw new Error(`R2 upload failed with exit code ${exitCode}`)
+  const result = await publishPathToR2(options.runDir)
+  for (const run of result.uploadedRuns) {
+    console.log(run.viewerUrl)
+  }
+  for (const runId of result.skippedRuns) {
+    console.log(`${runId}: already uploaded, skipping`)
   }
 }
 
