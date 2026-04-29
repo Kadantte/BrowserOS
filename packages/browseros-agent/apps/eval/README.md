@@ -50,6 +50,22 @@ EVAL_AGENT_BASE_URL=https://api.fireworks.ai/inference/v1 \
 bun run eval suite --suite suites/agisdk-daily-10.json --publish r2
 ```
 
+### Suites and variants
+
+A **suite** is what we run: the task dataset, graders, worker count, timeout, and browser settings. For example, `agisdk-daily-10` means "run these 10 AGI SDK tasks and grade them with `agisdk_state_diff`."
+
+A **variant** is the model setup we are testing on that suite. `EVAL_VARIANT` is just the human-readable name for that setup. The actual model connection still comes from `EVAL_AGENT_PROVIDER`, `EVAL_AGENT_MODEL`, `EVAL_AGENT_API_KEY`, and `EVAL_AGENT_BASE_URL`.
+
+This lets us run the same suite against multiple model setups without copying the benchmark config:
+
+```txt
+agisdk-daily-10 + kimi-fireworks
+agisdk-daily-10 + claude-sonnet
+agisdk-daily-10 + clado-action-000159
+```
+
+For `orchestrator-executor` suites, there can also be an executor model/backend. The `EVAL_AGENT_*` vars describe the main agent or orchestrator. The optional `EVAL_EXECUTOR_*` or `CLADO_ACTION_*` vars describe the delegated executor.
+
 ## Agent types
 
 | Type | Description |
