@@ -184,7 +184,7 @@ export class BrowserOSAppManager {
     }
 
     this.serverProc = spawn({
-      cmd: ['bun', 'run', '--filter', '@browseros/server', 'start'],
+      cmd: [process.execPath, 'run', '--filter', '@browseros/server', 'start'],
       cwd: MONOREPO_ROOT,
       stdout: 'ignore',
       stderr: 'ignore',
