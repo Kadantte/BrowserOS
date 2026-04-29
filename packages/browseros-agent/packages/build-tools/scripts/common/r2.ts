@@ -74,14 +74,18 @@ export async function putFile(
     return
   }
 
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: createReadStream(filePath),
-      ContentLength: size,
-      ContentType: contentType,
-    }),
+  await sendWithRetry(
+    () =>
+      client.send(
+        new PutObjectCommand({
+          Bucket: bucket,
+          Key: key,
+          Body: createReadStream(filePath),
+          ContentLength: size,
+          ContentType: contentType,
+        }),
+      ),
+    opts,
   )
 }
 

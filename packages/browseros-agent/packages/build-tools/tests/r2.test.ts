@@ -8,10 +8,15 @@ import { putFile } from '../scripts/common/r2'
 class FakeS3Client {
   commands: Array<{ name: string; input: Record<string, unknown> }> = []
   failedFirstPart = false
+  failedPutObject = false
 
   async send(command: { input: Record<string, unknown> }): Promise<unknown> {
     const name = command.constructor.name
     this.commands.push({ name, input: command.input })
+    if (name === 'PutObjectCommand' && !this.failedPutObject) {
+      this.failedPutObject = true
+      throw new Error('socket reset')
+    }
     if (name === 'CreateMultipartUploadCommand') return { UploadId: 'upload-1' }
     if (name === 'UploadPartCommand') {
       const partNumber = command.input.PartNumber
@@ -68,5 +73,27 @@ describe('putFile', () => {
         { ETag: 'etag-2', PartNumber: 2 },
       ],
     })
+  })
+
+  it('retries failed put-object uploads with a fresh file stream', async () => {
+    dir = await mkdtemp(path.join(tmpdir(), 'browseros-r2-upload-'))
+    const filePath = path.join(dir, 'small.tar.gz')
+    await writeFile(filePath, 'small tarball')
+    const client = new FakeS3Client()
+
+    await putFile(
+      client as unknown as S3Client,
+      'bucket',
+      'vm/images/small.tar.gz',
+      filePath,
+      'application/gzip',
+      { retryDelayMs: 0 },
+    )
+
+    const putObjects = client.commands.filter(
+      ({ name }) => name === 'PutObjectCommand',
+    )
+    expect(putObjects).toHaveLength(2)
+    expect(putObjects[0].input.Body).not.toBe(putObjects[1].input.Body)
   })
 })
