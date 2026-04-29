@@ -101,6 +101,7 @@ jobs:
       - working-directory: packages/browseros-agent
         run: bun install --frozen-lockfile
       - name: Smoke test tarball
+        timeout-minutes: 10
         working-directory: ${{ env.PKG_DIR }}
         env:
           AGENT: ${{ inputs.agent || 'openclaw' }}
@@ -111,7 +112,10 @@ jobs:
             echo "missing ${{ matrix.arch }} tarball artifact for ${AGENT}" >&2
             exit 1
           fi
-          bun run smoke:tarball -- --agent "$AGENT" --arch "${{ matrix.arch }}" --tarball "$tarball"
+          echo "smoke-testing $tarball"
+          ls -lh "$tarball" "${tarball}.sha256"
+          (cd "$(dirname "$tarball")" && sha256sum -c "$(basename "$tarball").sha256")
+          timeout --verbose --kill-after=30s 8m bun run smoke:tarball -- --agent "$AGENT" --arch "${{ matrix.arch }}" --tarball "$tarball"
 
   publish:
     needs: [build, smoke]
