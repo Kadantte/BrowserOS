@@ -134,7 +134,7 @@ def parse_point_response(text: str) -> ParsedPoint:
 
     return ParsedPoint(
         point=None,
-        error=fallback_error or "response did not contain a point value",
+        error=_parse_failure_message(text, fallback_error),
     )
 
 
@@ -384,6 +384,20 @@ def _parse_structured_value(text: str) -> tuple[Any | None, str | None]:
                 None,
                 f"invalid JSON/Python literal: {json_error.msg}; {literal_error}",
             )
+
+
+def _parse_failure_message(text: str, structured_error: str | None) -> str:
+    message = "response did not contain a numeric point value"
+    if structured_error:
+        message += "; structured JSON/Python parse failed"
+    return f"{message}; raw preview: {_raw_preview(text)}"
+
+
+def _raw_preview(text: str, max_chars: int = 240) -> str:
+    compact = " ".join(text.strip().split())
+    if len(compact) <= max_chars:
+        return compact
+    return f"{compact[: max_chars - 1]}..."
 
 
 def _structured_value_candidates(text: str) -> list[str]:
