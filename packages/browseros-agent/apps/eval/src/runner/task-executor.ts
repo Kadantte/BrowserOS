@@ -272,6 +272,7 @@ export class TaskExecutor {
         finalAnswer: agentResult.finalAnswer,
         expectedAnswer: (task.metadata?.additional as Record<string, unknown>)
           ?.answer as string | undefined,
+        taskArtifactDir: join(this.outputDir, task.query_id),
         outputDir: join(this.outputDir, task.query_id),
         mcpUrl: `${this.config.browseros.server_url}/mcp`,
         infinityAppUrl,
