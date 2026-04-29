@@ -107,7 +107,8 @@ function toAcpTargetForAgent(
 function formatAdapterName(adapter: HarnessAgentAdapter): string {
   if (adapter === 'claude') return 'Claude Code'
   if (adapter === 'codex') return 'Codex'
-  return 'OpenClaw'
+  if (adapter === 'openclaw') return 'OpenClaw'
+  return adapter
 }
 
 export function resolveSidepanelChatTarget({

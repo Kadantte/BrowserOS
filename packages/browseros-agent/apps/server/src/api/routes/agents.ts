@@ -333,14 +333,28 @@ function turnFramesToAgentEvents(
       reader = frames.getReader()
     },
     async pull(controller) {
-      const result = await reader?.read()
-      if (!result || result.done) {
+      const activeReader = reader
+      if (!activeReader) {
         controller.close()
-        reader?.releaseLock()
-        reader = undefined
         return
       }
-      controller.enqueue(result.value.event)
+      let result: Awaited<ReturnType<typeof activeReader.read>>
+      try {
+        result = await activeReader.read()
+      } catch (err) {
+        try {
+          activeReader.releaseLock()
+        } catch {}
+        if (reader === activeReader) reader = undefined
+        throw err
+      }
+      if (result?.done === false) {
+        controller.enqueue(result.value.event)
+      } else {
+        controller.close()
+        activeReader.releaseLock()
+        if (reader === activeReader) reader = undefined
+      }
     },
     async cancel(reason) {
       try {
