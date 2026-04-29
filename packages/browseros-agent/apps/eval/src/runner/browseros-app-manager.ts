@@ -194,17 +194,17 @@ export class BrowserOSAppManager {
       VITE_BROWSEROS_SERVER_PORT: String(server),
     }
 
-    // Capture stderr to a per-worker file so we can post-mortem startup hangs
-    // (eval-weekly workflow uploads the directory as an artifact on failure).
-    const stderrLogPath = join(
-      SERVER_LOG_DIR,
-      `server-W${this.workerIndex}.log`,
-    )
+    // Capture both stdout and stderr to a per-worker file so we can
+    // post-mortem startup hangs. The server uses pino which writes logs to
+    // stdout by default — capturing stderr alone misses everything. The
+    // eval-weekly workflow uploads /tmp/browseros-server-logs/ as a workflow
+    // artifact on failure.
+    const logPath = join(SERVER_LOG_DIR, `server-W${this.workerIndex}.log`)
     try {
       const { mkdirSync } = await import('node:fs')
       mkdirSync(SERVER_LOG_DIR, { recursive: true })
     } catch {}
-    const stderrFd = openSync(stderrLogPath, 'a')
+    const logFd = openSync(logPath, 'a')
 
     // `start:ci` skips `--watch` (no file-watcher overhead in CI). Falls back
     // to the regular `start` script outside CI for the dev-watch experience.
@@ -212,12 +212,12 @@ export class BrowserOSAppManager {
     this.serverProc = spawn({
       cmd: ['bun', 'run', '--filter', '@browseros/server', startScript],
       cwd: MONOREPO_ROOT,
-      stdout: 'ignore',
-      stderr: stderrFd,
+      stdout: logFd,
+      stderr: logFd,
       env: serverEnv,
     })
     console.log(
-      `  [W${this.workerIndex}] Server started (PID: ${this.serverProc.pid}, stderr → ${stderrLogPath})`,
+      `  [W${this.workerIndex}] Server started (PID: ${this.serverProc.pid}, logs → ${logPath})`,
     )
 
     // --- Wait for Server Health ---
