@@ -71,6 +71,9 @@ jobs:
           NOPECHA_API_KEY: ${{ secrets.NOPECHA_API_KEY }}
           BROWSEROS_BINARY: /usr/bin/browseros
           WEBARENA_INFINITY_DIR: /tmp/webarena-infinity
+          # OpenClaw container runtime is macOS-only; opt the Linux runner
+          # into the no-op stub so the server can boot and the eval can run.
+          BROWSEROS_SKIP_OPENCLAW: '1'
           EVAL_CONFIG: ${{ github.event.inputs.config || 'configs/browseros-agent-weekly.json' }}
         run: |
           echo "Running eval with config: $EVAL_CONFIG"
