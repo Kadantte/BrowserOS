@@ -75,6 +75,7 @@ type AgentRouteService = {
     agentId: string
     message: string
     attachments?: ReadonlyArray<{ mediaType: string; data: string }>
+    cwd?: string
   }): Promise<{ turnId: string; frames: ReadableStream<TurnFrame> }>
   attachTurn(input: {
     turnId: string
@@ -95,6 +96,7 @@ type AgentRouteService = {
     agentId: string
     message: string
     attachments?: ReadonlyArray<{ mediaType: string; data: string }>
+    cwd?: string
     signal?: AbortSignal
   }): Promise<ReadableStream<AgentStreamEvent>>
 }
@@ -129,6 +131,16 @@ type SidepanelAcpChatRequest = {
   adapter: AgentAdapter
   modelId: string
   reasoningEffort: string
+  message: string
+  browserContext?: BrowserContext
+  selectedText?: string
+  selectedTextSource?: { url: string; title: string }
+  userSystemPrompt?: string
+  userWorkingDir?: string
+}
+
+type SidepanelAgentChatRequest = {
+  conversationId: string
   message: string
   browserContext?: BrowserContext
   selectedText?: string
@@ -208,6 +220,86 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
           signal: c.req.raw.signal,
         })
         return createAcpUIMessageStreamResponse(eventStream)
+      } catch (err) {
+        return handleAgentRouteError(c, err)
+      }
+    })
+    .post('/:agentId/sidepanel/chat', async (c) => {
+      const agentId = c.req.param('agentId')
+      const parsed = await parseSidepanelAgentChatBody(c)
+      if ('error' in parsed) return c.json({ error: parsed.error }, 400)
+
+      try {
+        const agent = await service.getAgent(agentId)
+        if (!agent) return c.json({ error: 'Unknown agent' }, 404)
+
+        let browserContext = parsed.browserContext
+        if (deps.browser) {
+          browserContext = await resolveBrowserContextPageIds(
+            deps.browser,
+            browserContext,
+          )
+        }
+
+        const userContent = formatUserMessage(
+          parsed.message,
+          browserContext,
+          parsed.selectedText,
+          parsed.selectedTextSource,
+        )
+        const message = parsed.userSystemPrompt?.trim()
+          ? `${parsed.userSystemPrompt.trim()}\n\n${userContent}`
+          : userContent
+
+        let started: { turnId: string; frames: ReadableStream<TurnFrame> }
+        try {
+          started = await service.startTurn({
+            agentId: agent.id,
+            message,
+            cwd: parsed.userWorkingDir,
+          })
+        } catch (err) {
+          if (err instanceof TurnAlreadyActiveError) {
+            return c.json(
+              {
+                error: 'Turn already active',
+                turnId: err.turnId,
+                attachUrl: `/agents/${agent.id}/chat/stream?turnId=${err.turnId}`,
+              },
+              409,
+            )
+          }
+          throw err
+        }
+
+        let didRequestCancel = false
+        const cancelStartedTurn = () => {
+          if (didRequestCancel) return
+          didRequestCancel = true
+          service.cancelTurn({
+            agentId: agent.id,
+            turnId: started.turnId,
+            reason: 'sidepanel stream cancelled',
+          })
+        }
+        if (c.req.raw.signal.aborted) {
+          cancelStartedTurn()
+        } else {
+          c.req.raw.signal.addEventListener('abort', cancelStartedTurn, {
+            once: true,
+          })
+        }
+
+        const events = turnFramesToAgentEvents(started.frames, {
+          onCancel: cancelStartedTurn,
+        })
+
+        return createAcpUIMessageStreamResponse(events, {
+          headers: {
+            'X-Session-Id': 'main',
+            'X-Turn-Id': started.turnId,
+          },
+        })
       } catch (err) {
         return handleAgentRouteError(c, err)
       }
@@ -307,6 +399,37 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
       const cancelled = service.cancelTurn({ agentId, turnId, reason })
       return c.json({ cancelled })
     })
+}
+
+function turnFramesToAgentEvents(
+  frames: ReadableStream<TurnFrame>,
+  options: { onCancel(): void | Promise<void> },
+): ReadableStream<AgentStreamEvent> {
+  let reader: ReadableStreamDefaultReader<TurnFrame> | undefined
+
+  return new ReadableStream<AgentStreamEvent>({
+    start() {
+      reader = frames.getReader()
+    },
+    async pull(controller) {
+      const result = await reader?.read()
+      if (!result || result.done) {
+        controller.close()
+        reader?.releaseLock()
+        reader = undefined
+        return
+      }
+      controller.enqueue(result.value.event)
+    },
+    async cancel(reason) {
+      try {
+        await options.onCancel()
+      } finally {
+        await reader?.cancel(reason).catch(() => {})
+        reader = undefined
+      }
+    },
+  })
 }
 
 /**
@@ -559,6 +682,39 @@ async function parseSidepanelAcpChatBody(
     adapter: record.adapter,
     modelId,
     reasoningEffort,
+    message,
+    browserContext: browserContext.value,
+    selectedText,
+    selectedTextSource: selectedTextSource.value,
+    userSystemPrompt: readOptionalString(record, 'userSystemPrompt'),
+    userWorkingDir: readOptionalTrimmedString(record, 'userWorkingDir'),
+  }
+}
+
+async function parseSidepanelAgentChatBody(
+  c: Context<Env>,
+): Promise<SidepanelAgentChatRequest | { error: string }> {
+  const body = await readJsonBody(c)
+  if ('error' in body) return body
+  const record = body.value
+
+  const conversationId = readOptionalTrimmedString(record, 'conversationId')
+  if (!conversationId || !isUuid(conversationId)) {
+    return { error: 'conversationId must be a UUID' }
+  }
+
+  const message = readOptionalTrimmedString(record, 'message')
+  if (!message) return { error: 'Message is required' }
+
+  const browserContext = parseBrowserContext(record.browserContext)
+  if ('error' in browserContext) return browserContext
+
+  const selectedText = readOptionalString(record, 'selectedText')
+  const selectedTextSource = parseSelectedTextSource(record.selectedTextSource)
+  if ('error' in selectedTextSource) return selectedTextSource
+
+  return {
+    conversationId,
     message,
     browserContext: browserContext.value,
     selectedText,

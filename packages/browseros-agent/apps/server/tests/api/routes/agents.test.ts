@@ -292,6 +292,210 @@ describe('createAgentRoutes', () => {
     expect(await list.json()).toEqual({ agents: [], gateway: null })
   })
 
+  it('streams created-agent sidepanel chat through the persisted agent', async () => {
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const service = createFakeService([agent])
+    const route = new Hono().route(
+      '/agents',
+      createAgentRoutes({
+        service,
+        browser: {
+          async resolveTabIds(tabIds: number[]) {
+            return new Map(tabIds.map((tabId) => [tabId, tabId + 100]))
+          },
+        },
+      }),
+    )
+
+    const response = await route.request('/agents/agent-1/sidepanel/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        ...validCreatedAgentSidepanelBody(),
+        adapter: 'openclaw',
+        modelId: 'ignored-client-model',
+        reasoningEffort: 'ignored-client-effort',
+        userSystemPrompt: 'Always be concise.',
+        userWorkingDir: '/tmp/work',
+        browserContext: {
+          activeTab: { id: 1, url: 'https://example.com', title: 'Example' },
+        },
+        selectedText: 'selected text',
+        selectedTextSource: {
+          url: 'https://example.com',
+          title: 'Example',
+        },
+      }),
+    })
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Content-Type')).toContain('text/event-stream')
+    expect(response.headers.get('x-vercel-ai-ui-message-stream')).toBe('v1')
+    expect(await response.text()).toContain('"type":"text-delta"')
+    expect(service._lastStartTurnInput).toMatchObject({
+      agentId: 'agent-1',
+      cwd: '/tmp/work',
+    })
+    expect(service._lastStartTurnInput?.message).toContain('Always be concise.')
+    expect(service._lastStartTurnInput?.message).toContain(
+      'Tab 1 (Page ID: 101) - "Example" (https://example.com)',
+    )
+    expect(service._lastStartTurnInput?.message).toContain(
+      '<selected_text (from "Example"',
+    )
+    expect(service._lastStartTurnInput?.message).toContain(
+      'selected text\n</selected_text>',
+    )
+    expect(service._lastStartTurnInput?.message).toContain(
+      '<USER_QUERY>\nhi\n</USER_QUERY>',
+    )
+
+    const list = await route.request('/agents')
+    expect(await list.json()).toMatchObject({
+      agents: [{ id: 'agent-1', adapter: 'codex', modelId: 'gpt-5.5' }],
+    })
+  })
+
+  it('rejects invalid created-agent sidepanel chat requests', async () => {
+    const route = createMountedRoutes([
+      {
+        id: 'agent-1',
+        name: 'Review bot',
+        adapter: 'codex',
+        modelId: 'gpt-5.5',
+        reasoningEffort: 'medium',
+        permissionMode: 'approve-all',
+        sessionKey: 'agent:agent-1:main',
+        createdAt: 1000,
+        updatedAt: 1000,
+      },
+    ])
+
+    const unknown = await route.request('/agents/missing/sidepanel/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validCreatedAgentSidepanelBody()),
+    })
+    expect(unknown.status).toBe(404)
+
+    for (const { patch, error } of [
+      {
+        patch: { conversationId: 'not-a-uuid' },
+        error: 'conversationId must be a UUID',
+      },
+      { patch: { message: '   ' }, error: 'Message is required' },
+      {
+        patch: { browserContext: { activeTab: { id: 'bad' } } },
+        error: 'Invalid browserContext',
+      },
+      {
+        patch: { selectedTextSource: { url: 123, title: 'Example' } },
+        error: 'Invalid selectedTextSource',
+      },
+    ]) {
+      const response = await route.request('/agents/agent-1/sidepanel/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...validCreatedAgentSidepanelBody(),
+          ...patch,
+        }),
+      })
+
+      expect(response.status).toBe(400)
+      expect(await response.json()).toEqual({ error })
+    }
+  })
+
+  it('cancels the created-agent sidepanel turn when the request is aborted', async () => {
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const blocking = createBlockingFakeService([agent])
+    const route = new Hono().route(
+      '/agents',
+      createAgentRoutes({ service: blocking }),
+    )
+    const abortController = new AbortController()
+
+    const response = await route.request('/agents/agent-1/sidepanel/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: abortController.signal,
+      body: JSON.stringify(validCreatedAgentSidepanelBody()),
+    })
+
+    expect(response.status).toBe(200)
+    abortController.abort('sidepanel closed')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(blocking._cancelCalls).toEqual([
+      {
+        agentId: 'agent-1',
+        reason: 'sidepanel stream cancelled',
+      },
+    ])
+    blocking._unblock()
+  })
+
+  it('returns 409 when a created-agent sidepanel turn is already active', async () => {
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const blocking = createBlockingFakeService([agent])
+    const route = new Hono().route(
+      '/agents',
+      createAgentRoutes({ service: blocking }),
+    )
+
+    const first = route.request('/agents/agent-1/sidepanel/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validCreatedAgentSidepanelBody()),
+    })
+    await new Promise((r) => setTimeout(r, 5))
+
+    const second = await route.request('/agents/agent-1/sidepanel/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(validCreatedAgentSidepanelBody()),
+    })
+
+    expect(second.status).toBe(409)
+    const body = await second.json()
+    expect(body).toMatchObject({ error: 'Turn already active' })
+    expect(typeof body.turnId).toBe('string')
+    expect(body.attachUrl).toContain(`turnId=${body.turnId}`)
+
+    blocking._unblock()
+    await (await first).text()
+  })
+
   it('rejects invalid sidepanel ACP chat requests', async () => {
     const route = createMountedRoutes([])
 
@@ -364,8 +568,14 @@ function createFakeService(agents: AgentDefinition[]) {
     { type: 'text_delta', text: 'Hello', stream: 'output' },
     { type: 'done', stopReason: 'end_turn' },
   ]
+  let lastStartTurnInput:
+    | { agentId: string; message?: string; cwd?: string }
+    | undefined
 
   return {
+    get _lastStartTurnInput() {
+      return lastStartTurnInput
+    },
     async listAgents() {
       return agents
     },
@@ -419,7 +629,12 @@ function createFakeService(agents: AgentDefinition[]) {
         items: [],
       }
     },
-    async startTurn(input: { agentId: string }) {
+    async startTurn(input: {
+      agentId: string
+      message?: string
+      cwd?: string
+    }) {
+      lastStartTurnInput = input
       const turn = registry.register(input.agentId, 'main')
       const frames = registry.subscribe(turn.turnId, { fromSeq: -1 })!
       // Push the canned events asynchronously so subscribers actually
@@ -458,6 +673,13 @@ function validSidepanelAcpBody() {
     adapter: 'codex',
     modelId: 'gpt-5.5',
     reasoningEffort: 'medium',
+    message: 'hi',
+  }
+}
+
+function validCreatedAgentSidepanelBody() {
+  return {
+    conversationId: '00000000-0000-4000-8000-000000000001',
     message: 'hi',
   }
 }
@@ -505,6 +727,7 @@ function createBlockingFakeService(agents: AgentDefinition[]) {
     { type: 'done', stopReason: 'end_turn' },
   ]
   let unblock: () => void = () => {}
+  const cancelCalls: Array<{ agentId: string; reason?: string }> = []
   const gate = new Promise<void>((resolve) => {
     unblock = resolve
   })
@@ -559,6 +782,7 @@ function createBlockingFakeService(agents: AgentDefinition[]) {
       return t ? registry.describe(t.turnId) : null
     },
     cancelTurn(input: { agentId: string; turnId?: string; reason?: string }) {
+      cancelCalls.push({ agentId: input.agentId, reason: input.reason })
       const turnId =
         input.turnId ?? registry.getActiveFor(input.agentId, 'main')?.turnId
       if (!turnId) return false
@@ -568,5 +792,6 @@ function createBlockingFakeService(agents: AgentDefinition[]) {
       return createAgentStream(events)
     },
     _unblock: () => unblock(),
+    _cancelCalls: cancelCalls,
   }
 }
