@@ -14,6 +14,7 @@ import {
 import type {
   BatchSummary,
   RunEvalOptions,
+  RunEvalResult,
   TaskResult,
   TaskResultSummary,
   TaskSource,
@@ -30,9 +31,10 @@ import { TaskWorkerPool } from './task-worker-pool'
 // Main Entry Point
 // ============================================================================
 
-export async function runEval(options: RunEvalOptions): Promise<void> {
+export async function runEval(options: RunEvalOptions): Promise<RunEvalResult> {
   // Step 1: Validate configuration
-  const config = await loadAndValidateConfig(options.configPath)
+  const config =
+    options.config ?? (await loadAndValidateConfig(options.configPath))
 
   // Step 2: Resolve paths relative to config location
   const configDir = dirname(resolve(options.configPath))
@@ -72,6 +74,7 @@ export async function runEval(options: RunEvalOptions): Promise<void> {
   console.log(`\nResults saved to: ${resolvedPaths.outputDir}`)
 
   stopDashboard()
+  return { outputDir: resolvedPaths.outputDir, summary }
 }
 
 // ============================================================================
@@ -120,7 +123,8 @@ function resolvePaths(
       ? config.output_dir
       : resolve(configDir, config.output_dir)
     : resolve(configDir, '..', 'results')
-  const outputDir = join(resultsBase, configName, timestamp)
+  const outputDir =
+    options.outputDir ?? join(resultsBase, configName, timestamp)
 
   return { dataPath, outputDir }
 }
