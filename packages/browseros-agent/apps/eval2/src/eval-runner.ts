@@ -206,7 +206,22 @@ export async function runEval(configPath: string): Promise<void> {
 
       const agentResult = await withTaskTrace(task, config, () =>
         activeAgent.runTask(task),
-      )
+      ).catch((error: unknown) => {
+        console.warn(
+          `[${index + 1}/${tasks.length}] ${task.queryId}: agent crashed - ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+        )
+        return null
+      })
+
+      if (!agentResult) {
+        results.push(
+          buildFailedTaskResult(task, taskStart, 'Agent crashed before result'),
+        )
+        await activeAgent.cleanup()
+        continue
+      }
 
       let graderResult: GraderResult
       try {
@@ -243,18 +258,6 @@ export async function runEval(configPath: string): Promise<void> {
       results.push({ task, agentResult, graderResult, durationMs, status })
       await agent.cleanup()
     }
-  } catch (error) {
-    const currentTask = tasks[results.length]
-    if (currentTask) {
-      results.push(
-        buildFailedTaskResult(
-          currentTask,
-          Date.now(),
-          `Runner crashed: ${error instanceof Error ? error.message : String(error)}`,
-        ),
-      )
-    }
-    throw error
   } finally {
     process.off('SIGINT', onSignal)
     process.off('SIGTERM', onSignal)

@@ -86,7 +86,7 @@ export class McpClient {
   private client!: Client
   private transport!: StreamableHTTPClientTransport
   private connected = false
-  private serverUrl: string
+  private readonly serverUrl: string
 
   constructor(serverUrl: string) {
     this.serverUrl = serverUrl

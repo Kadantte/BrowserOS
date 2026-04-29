@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process'
 import { join } from 'node:path'
+import { z } from 'zod'
 import type { Grader, GraderInput, GraderResult } from './types'
 import { callMcpTool } from './utils/mcp-client'
 
@@ -10,8 +11,17 @@ const EVAL_SCRIPT = join(
   'agisdk-evaluate.py',
 )
 
+const PythonEvaluatorResultSchema = z.object({
+  reward: z.number(),
+  pass: z.boolean(),
+  message: z.string(),
+  per_criterion: z.array(z.unknown()),
+})
+
+type PythonEvaluatorResult = z.infer<typeof PythonEvaluatorResultSchema>
+
 export class AgisdkStateDiffGrader implements Grader {
-  name = 'agisdk_state_diff'
+  readonly name = 'agisdk_state_diff'
 
   async grade(input: GraderInput): Promise<GraderResult> {
     const taskId = this.extractTaskId(input.task.query_id)
@@ -144,12 +154,7 @@ export class AgisdkStateDiffGrader implements Grader {
     taskId: string,
     envState: Record<string, unknown>,
     modelResponse: string,
-  ): Promise<{
-    reward: number
-    pass: boolean
-    message: string
-    per_criterion: unknown[]
-  }> {
+  ): Promise<PythonEvaluatorResult> {
     return new Promise((resolve, reject) => {
       const proc = spawn('python3', [EVAL_SCRIPT], {
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -181,10 +186,16 @@ export class AgisdkStateDiffGrader implements Grader {
         }
 
         try {
-          const result = JSON.parse(stdout.trim())
+          const result = PythonEvaluatorResultSchema.parse(
+            JSON.parse(stdout.trim()),
+          )
           resolve(result)
-        } catch {
-          reject(new Error(`Failed to parse evaluator output: ${stdout}`))
+        } catch (error) {
+          reject(
+            new Error(
+              `Failed to parse evaluator output: ${error instanceof Error ? error.message : String(error)}: ${stdout}`,
+            ),
+          )
         }
       })
 

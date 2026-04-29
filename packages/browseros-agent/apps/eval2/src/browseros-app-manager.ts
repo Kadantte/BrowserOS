@@ -46,7 +46,7 @@ const CAPTCHA_EXT_DIR = join(
 )
 
 export class BrowserOSAppManager {
-  private ports: EvalPorts
+  private readonly ports: EvalPorts
   private chromeProc: Subprocess | null = null
   private serverProc: Subprocess | null = null
   private tempDir: string | null = null
