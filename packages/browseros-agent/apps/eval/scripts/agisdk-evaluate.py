@@ -117,34 +117,44 @@ def main():
         if all_pass and reward_val != 1.0:
             reward_val = 1.0
 
-        # Build a useful message: list the actually-failing criteria by name.
-        # This becomes the `reasoning` shown in the viewer's grader pill.
+        # Build a useful message: list every criterion with a pass/fail icon
+        # so the viewer's grader pill shows the full check-list, not just
+        # failures. This becomes the `reasoning` shown in the viewer.
         if not per_criterion:
-            # Defensive: agisdk returned no criteria — fall back to its own message.
+            # Defensive: agisdk returned no criteria — fall back to its message.
             out_message = str(message)
-        elif all_pass:
-            if softened_count:
-                out_message = (
-                    f"Task passed (with {softened_count} softened "
-                    "string criterion/criteria)."
-                )
-            else:
-                out_message = "All criteria passed."
         else:
             failures = [c for c in per_criterion if not c["passed"]]
-            failure_lines = []
-            for c in failures:
+            if all_pass:
+                header = (
+                    f"All {len(per_criterion)} criteria passed"
+                    + (
+                        f" ({softened_count} softened)."
+                        if softened_count
+                        else "."
+                    )
+                )
+            else:
+                header = (
+                    f"{len(failures)} of {len(per_criterion)} criteria failed:"
+                )
+
+            lines = []
+            for c in per_criterion:
+                icon = "✓" if c["passed"] else "✗"
                 desc = c["description"] or c["query"] or "<unknown>"
-                exp = c["expected_value"]
-                act = c["actual_value"]
-                # Truncate noisy long values so the summary stays one-line-ish
-                exp_s = repr(exp)[:60]
-                act_s = repr(act)[:60]
-                failure_lines.append(f"• {desc}: expected {exp_s}, got {act_s}")
-            out_message = (
-                f"{len(failures)} of {len(per_criterion)} criteria failed:\n"
-                + "\n".join(failure_lines)
-            )
+                soft = " (softened)" if c.get("softened") else ""
+                if c["passed"]:
+                    lines.append(f"{icon} {desc}{soft}")
+                else:
+                    # Truncate noisy long values so the line stays readable
+                    exp_s = repr(c["expected_value"])[:60]
+                    act_s = repr(c["actual_value"])[:60]
+                    lines.append(
+                        f"{icon} {desc}: expected {exp_s}, got {act_s}"
+                    )
+
+            out_message = header + "\n" + "\n".join(lines)
 
         print(
             json.dumps(
