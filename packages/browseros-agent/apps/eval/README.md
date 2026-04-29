@@ -14,6 +14,7 @@ Evaluation framework for BrowserOS browser automation agents. Runs tasks from st
 
 ```bash
 cd apps/eval
+cp .env.example .env.development
 # Edit .env.development with your keys, then:
 bun run eval
 ```
