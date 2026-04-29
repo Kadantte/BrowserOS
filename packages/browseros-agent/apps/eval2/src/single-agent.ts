@@ -10,7 +10,7 @@ import { registry } from '@browseros/server/tools/registry'
 import type { BrowserContext } from '@browseros/shared/schemas/browser-context'
 import { LLM_PROVIDERS } from '@browseros/shared/schemas/llm'
 import type { BenchmarkConfig } from './benchmark-config'
-import { getAiSdkTelemetry } from './tracing'
+import { getAiSdkTelemetry, recordScreenshotSpan } from './tracing'
 import type { AgentResult, Message, Task } from './types'
 import { callMcpTool } from './utils/mcp-client'
 
@@ -140,6 +140,24 @@ export class SingleAgent {
       const result = await agent.toolLoopAgent.generate({
         prompt,
         abortSignal: controller.signal,
+        experimental_onToolCallFinish: async ({ toolCall }) => {
+          if (!this.browser) {
+            return
+          }
+          try {
+            const shot = await this.browser.screenshot(this.activePageId, {
+              format: 'png',
+              fullPage: false,
+            })
+            await recordScreenshotSpan(
+              toolCall.toolCallId,
+              toolCall.toolName,
+              shot.data,
+            )
+          } catch {
+            // screenshot failures are non-fatal
+          }
+        },
         onStepFinish: ({ toolCalls, toolResults, text }) => {
           toolCallCount += toolCalls.length
           for (const toolCall of toolCalls) {

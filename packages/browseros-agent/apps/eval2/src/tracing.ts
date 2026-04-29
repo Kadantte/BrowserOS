@@ -112,6 +112,31 @@ export async function withTaskTrace<T>(
   )
 }
 
+export async function recordScreenshotSpan(
+  toolCallId: string,
+  toolName: string,
+  base64: string,
+): Promise<void> {
+  if (!initialized) {
+    return
+  }
+
+  try {
+    await observe(
+      {
+        name: 'eval.step.screenshot',
+        spanType: 'DEFAULT',
+        input: { toolCallId, toolName },
+      },
+      async () => ({ screenshot: `data:image/png;base64,${base64}` }),
+    )
+  } catch (error) {
+    console.warn(
+      `Screenshot span emit failed: ${error instanceof Error ? error.message : String(error)}`,
+    )
+  }
+}
+
 export async function flushTracing(): Promise<void> {
   if (!initialized) {
     return
