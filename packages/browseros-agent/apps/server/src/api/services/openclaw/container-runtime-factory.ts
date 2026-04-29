@@ -134,6 +134,21 @@ class DeferredImageLoader {
     await loader.ensureImageLoaded(ref, onLog)
   }
 
+  async ensureAgentImageLoaded(
+    name: string,
+    onLog?: (msg: string) => void,
+  ): Promise<string> {
+    await this.ensureCacheSynced()
+    const manifest = await readCachedManifest(this.browserosRoot)
+    const loader = new ImageLoader(
+      this.shell,
+      manifest,
+      detectArch(),
+      this.browserosRoot,
+    )
+    return loader.ensureAgentImageLoaded(name, onLog)
+  }
+
   private async ensureCacheSynced(): Promise<void> {
     if (this.vmCache?.ensureSynced) {
       await this.vmCache.ensureSynced()
@@ -151,7 +166,10 @@ class UnsupportedPlatformTestRuntime extends ContainerRuntime {
     super({
       vm: {} as VmRuntime,
       shell: {} as ContainerCli,
-      loader: { ensureImageLoaded: rejectUnsupportedPlatform },
+      loader: {
+        ensureImageLoaded: rejectUnsupportedPlatform,
+        ensureAgentImageLoaded: rejectUnsupportedPlatform,
+      },
       projectDir,
     })
   }

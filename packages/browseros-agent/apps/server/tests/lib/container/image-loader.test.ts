@@ -62,6 +62,23 @@ describe('ImageLoader', () => {
     ])
   })
 
+  it('loads an agent image by manifest name and returns its image ref', async () => {
+    const cli = new FakeContainerCli([false, true])
+    const loader = new ImageLoader(cli as never, manifest, 'arm64')
+
+    await expect(loader.ensureAgentImageLoaded('openclaw')).resolves.toBe(
+      'ghcr.io/openclaw/openclaw:2026.4.12',
+    )
+
+    expect(cli.loadCalls).toEqual([
+      '/mnt/browseros/cache/images/openclaw-2026.4.12-arm64.tar.gz',
+    ])
+    expect(cli.existsCalls).toEqual([
+      'ghcr.io/openclaw/openclaw:2026.4.12',
+      'ghcr.io/openclaw/openclaw:2026.4.12',
+    ])
+  })
+
   it('resolves image tarballs against the configured BrowserOS root', async () => {
     const cli = new FakeContainerCli([false, true])
     const browserosRoot = '/tmp/browseros-custom-root'

@@ -4,12 +4,14 @@
  */
 
 import { describe, expect, it, mock } from 'bun:test'
-import { OPENCLAW_GATEWAY_CONTAINER_NAME } from '@browseros/shared/constants/openclaw'
+import {
+  OPENCLAW_GATEWAY_CONTAINER_NAME,
+  OPENCLAW_GATEWAY_IMAGE,
+} from '@browseros/shared/constants/openclaw'
 import { ContainerRuntime } from '../../../../src/api/services/openclaw/container-runtime'
 
 const PROJECT_DIR = '/tmp/openclaw'
 const defaultSpec = {
-  image: 'ghcr.io/openclaw/openclaw:2026.4.12',
   hostPort: 18789,
   hostHome: '/Users/me/.browseros/vm/openclaw',
   envFilePath: '/Users/me/.browseros/vm/openclaw/.openclaw/.env',
@@ -34,14 +36,14 @@ describe('ContainerRuntime', () => {
       { force: true },
       undefined,
     )
-    expect(deps.loader.ensureImageLoaded).toHaveBeenCalledWith(
-      defaultSpec.image,
+    expect(deps.loader.ensureAgentImageLoaded).toHaveBeenCalledWith(
+      'openclaw',
       undefined,
     )
     expect(deps.shell.createContainer).toHaveBeenCalledWith(
       expect.objectContaining({
         name: OPENCLAW_GATEWAY_CONTAINER_NAME,
-        image: defaultSpec.image,
+        image: OPENCLAW_GATEWAY_IMAGE,
         restart: 'unless-stopped',
         ports: [
           {
@@ -63,6 +65,35 @@ describe('ContainerRuntime', () => {
     )
     expect(deps.shell.startContainer).toHaveBeenCalledWith(
       OPENCLAW_GATEWAY_CONTAINER_NAME,
+    )
+  })
+
+  it('uses OPENCLAW_IMAGE as a direct image override', async () => {
+    const previous = process.env.OPENCLAW_IMAGE
+    process.env.OPENCLAW_IMAGE = 'localhost/openclaw:test'
+    const deps = createDeps()
+    const runtime = new ContainerRuntime({
+      vm: deps.vm,
+      shell: deps.shell,
+      loader: deps.loader,
+      projectDir: PROJECT_DIR,
+    })
+
+    try {
+      await runtime.startGateway(defaultSpec)
+    } finally {
+      if (previous === undefined) delete process.env.OPENCLAW_IMAGE
+      else process.env.OPENCLAW_IMAGE = previous
+    }
+
+    expect(deps.loader.ensureImageLoaded).toHaveBeenCalledWith(
+      'localhost/openclaw:test',
+      undefined,
+    )
+    expect(deps.loader.ensureAgentImageLoaded).not.toHaveBeenCalled()
+    expect(deps.shell.createContainer).toHaveBeenCalledWith(
+      expect.objectContaining({ image: 'localhost/openclaw:test' }),
+      undefined,
     )
   })
 
@@ -108,6 +139,7 @@ describe('ContainerRuntime', () => {
         '/mnt/browseros/vm/openclaw:/home/node',
         '--add-host',
         'host.containers.internal:192.168.5.2',
+        OPENCLAW_GATEWAY_IMAGE,
       ]),
       undefined,
     )
@@ -171,6 +203,7 @@ function createDeps() {
     },
     loader: {
       ensureImageLoaded: mock(async () => {}),
+      ensureAgentImageLoaded: mock(async () => OPENCLAW_GATEWAY_IMAGE),
     },
   }
 }
