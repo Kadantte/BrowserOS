@@ -33,6 +33,7 @@ import type {
 import { track } from '@/lib/metrics/track'
 import { searchActionsStorage } from '@/lib/search-actions/searchActionsStorage'
 import { selectedTextStorage } from '@/lib/selected-text/selectedTextStorage'
+import { sentry } from '@/lib/sentry/sentry'
 import { stopAgentStorage } from '@/lib/stop-agent/stop-agent-storage'
 import {
   type ApprovalResponse,
@@ -752,8 +753,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   const handleSelectProvider = (provider: Provider) => {
     const target = chatTargets.find(
       (candidate) =>
-        candidate.id === provider.id &&
-        (provider.kind ? candidate.kind === provider.kind : true),
+        candidate.id === provider.id && candidate.kind === provider.kind,
     )
     if (!target) return
 
@@ -765,7 +765,15 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         target.kind === 'acp' ? target.modelId : target.provider.modelId,
     })
 
-    void selectChatTarget(target)
+    void selectChatTarget(target).catch((error) => {
+      sentry.captureException(error, {
+        extra: {
+          message: 'Failed to persist sidepanel chat target selection',
+          targetId: target.id,
+          targetKind: target.kind,
+        },
+      })
+    })
     if (target.kind === 'llm') setDefaultProvider(target.provider.id)
 
     if (

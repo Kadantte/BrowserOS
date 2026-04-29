@@ -46,6 +46,33 @@ describe('createAcpUIMessageStream', () => {
     ])
   })
 
+  it('closes and reopens text parts when ACP output and thoughts interleave', async () => {
+    const chunks = await collectChunks([
+      { type: 'text_delta', text: 'Thinking', stream: 'thought' },
+      { type: 'text_delta', text: 'Answer', stream: 'output' },
+      { type: 'text_delta', text: 'More thought', stream: 'thought' },
+      { type: 'done', stopReason: 'end_turn' },
+    ])
+
+    expect(chunks).toEqual([
+      { type: 'start' },
+      { type: 'reasoning-start', id: 'acp-reasoning' },
+      { type: 'reasoning-delta', id: 'acp-reasoning', delta: 'Thinking' },
+      { type: 'reasoning-end', id: 'acp-reasoning' },
+      { type: 'text-start', id: 'acp-text' },
+      { type: 'text-delta', id: 'acp-text', delta: 'Answer' },
+      { type: 'text-end', id: 'acp-text' },
+      { type: 'reasoning-start', id: 'acp-reasoning-2' },
+      {
+        type: 'reasoning-delta',
+        id: 'acp-reasoning-2',
+        delta: 'More thought',
+      },
+      { type: 'reasoning-end', id: 'acp-reasoning-2' },
+      { type: 'finish', finishReason: 'stop' },
+    ])
+  })
+
   it('maps ACP tool calls to AI SDK tool chunks', async () => {
     const chunks = await collectChunks([
       {
@@ -90,6 +117,26 @@ describe('createAcpUIMessageStream', () => {
       type: 'tool-output-error',
       toolCallId: 'tool-2',
       errorText: 'Tests failed',
+      dynamic: true,
+    })
+  })
+
+  it('uses a fallback error text for failed ACP tool calls without text', async () => {
+    const chunks = await collectChunks([
+      {
+        type: 'tool_call',
+        id: 'tool-1',
+        title: '',
+        text: '',
+        status: 'failed',
+      },
+      { type: 'done', stopReason: 'end_turn' },
+    ])
+
+    expect(chunks).toContainEqual({
+      type: 'tool-output-error',
+      toolCallId: 'tool-1',
+      errorText: 'Tool failed',
       dynamic: true,
     })
   })

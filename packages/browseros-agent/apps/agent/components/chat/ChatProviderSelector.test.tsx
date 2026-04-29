@@ -62,6 +62,6 @@ describe('getProviderSubtitle', () => {
   it('does not present best-effort ACP models as guaranteed routing', () => {
     expect(getProviderSubtitle(options[2])).toBe('ACP model · best effort')
     expect(getProviderSubtitle(options[3])).toBe('ACP model')
-    expect(getProviderSubtitle(options[0])).toBeNull()
+    expect(getProviderSubtitle(options[0])).toBeUndefined()
   })
 })

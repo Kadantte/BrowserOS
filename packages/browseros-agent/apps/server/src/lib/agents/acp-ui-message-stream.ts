@@ -25,6 +25,10 @@ interface AcpUIMessageStreamState {
   finished: boolean
   textOpen: boolean
   reasoningOpen: boolean
+  textPartCount: number
+  reasoningPartCount: number
+  textPartId: string
+  reasoningPartId: string
   toolCallCount: number
   toolNames: Map<string, string>
   toolInputs: Set<string>
@@ -39,6 +43,10 @@ export function createAcpUIMessageStream(
     finished: false,
     textOpen: false,
     reasoningOpen: false,
+    textPartCount: 0,
+    reasoningPartCount: 0,
+    textPartId: TEXT_PART_ID,
+    reasoningPartId: REASONING_PART_ID,
     toolCallCount: 0,
     toolNames: new Map(),
     toolInputs: new Set(),
@@ -165,25 +173,21 @@ function enqueueTextDelta(
   state: AcpUIMessageStreamState,
 ): void {
   if (event.stream === 'thought') {
-    if (!state.reasoningOpen) {
-      controller.enqueue({ type: 'reasoning-start', id: REASONING_PART_ID })
-      state.reasoningOpen = true
-    }
+    if (state.textOpen) closeTextPart(controller, state)
+    if (!state.reasoningOpen) startReasoningPart(controller, state)
     controller.enqueue({
       type: 'reasoning-delta',
-      id: REASONING_PART_ID,
+      id: state.reasoningPartId,
       delta: event.text,
     })
     return
   }
 
-  if (!state.textOpen) {
-    controller.enqueue({ type: 'text-start', id: TEXT_PART_ID })
-    state.textOpen = true
-  }
+  if (state.reasoningOpen) closeReasoningPart(controller, state)
+  if (!state.textOpen) startTextPart(controller, state)
   controller.enqueue({
     type: 'text-delta',
-    id: TEXT_PART_ID,
+    id: state.textPartId,
     delta: event.text,
   })
 }
@@ -223,7 +227,7 @@ function enqueueToolCall(
     controller.enqueue({
       type: 'tool-output-error',
       toolCallId,
-      errorText: event.text || event.title,
+      errorText: event.text || event.title || 'Tool failed',
       dynamic: true,
     })
   }
@@ -260,15 +264,50 @@ function closeOpenParts(
   controller: ReadableStreamDefaultController<UIMessageChunk>,
   state: AcpUIMessageStreamState,
 ): void {
-  if (state.reasoningOpen) {
-    controller.enqueue({ type: 'reasoning-end', id: REASONING_PART_ID })
-    state.reasoningOpen = false
-  }
+  if (state.reasoningOpen) closeReasoningPart(controller, state)
+  if (state.textOpen) closeTextPart(controller, state)
+}
 
-  if (state.textOpen) {
-    controller.enqueue({ type: 'text-end', id: TEXT_PART_ID })
-    state.textOpen = false
-  }
+function startReasoningPart(
+  controller: ReadableStreamDefaultController<UIMessageChunk>,
+  state: AcpUIMessageStreamState,
+): void {
+  state.reasoningPartCount += 1
+  state.reasoningPartId =
+    state.reasoningPartCount === 1
+      ? REASONING_PART_ID
+      : `${REASONING_PART_ID}-${state.reasoningPartCount}`
+  state.reasoningOpen = true
+  controller.enqueue({ type: 'reasoning-start', id: state.reasoningPartId })
+}
+
+function closeReasoningPart(
+  controller: ReadableStreamDefaultController<UIMessageChunk>,
+  state: AcpUIMessageStreamState,
+): void {
+  controller.enqueue({ type: 'reasoning-end', id: state.reasoningPartId })
+  state.reasoningOpen = false
+}
+
+function startTextPart(
+  controller: ReadableStreamDefaultController<UIMessageChunk>,
+  state: AcpUIMessageStreamState,
+): void {
+  state.textPartCount += 1
+  state.textPartId =
+    state.textPartCount === 1
+      ? TEXT_PART_ID
+      : `${TEXT_PART_ID}-${state.textPartCount}`
+  state.textOpen = true
+  controller.enqueue({ type: 'text-start', id: state.textPartId })
+}
+
+function closeTextPart(
+  controller: ReadableStreamDefaultController<UIMessageChunk>,
+  state: AcpUIMessageStreamState,
+): void {
+  controller.enqueue({ type: 'text-end', id: state.textPartId })
+  state.textOpen = false
 }
 
 function closeController(

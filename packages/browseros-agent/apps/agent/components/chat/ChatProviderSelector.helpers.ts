@@ -31,8 +31,8 @@ export function getProviderSearchValue(
     .join(' ')
 }
 
-export function getProviderSubtitle(provider: Provider): string | null {
-  if (provider.kind !== 'acp') return null
+export function getProviderSubtitle(provider: Provider): string | undefined {
+  if (provider.kind !== 'acp') return undefined
   return provider.modelControl === 'best-effort'
     ? 'ACP model · best effort'
     : 'ACP model'
