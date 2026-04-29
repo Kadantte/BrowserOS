@@ -1,5 +1,5 @@
 {
-  // Two-task subset for quick end-to-end Laminar smoke tests.
+  // Two-task subset for quick end-to-end Phoenix smoke tests.
   "name": "agisdk-mini",
 
   // Path to the JSONL dataset, relative to this config file.
@@ -27,9 +27,14 @@
   // Maximum wall-clock time per task, in milliseconds.
   "timeoutMs": 600000,
 
-  // Laminar API key comes from process.env.LMNR_PROJECT_API_KEY.
-  "laminar": {
+  // Phoenix tracing settings. enabled=false skips tracing entirely (eval still runs).
+  // Cloud endpoint shown; local Phoenix server is "http://localhost:6006".
+  // The auth bearer token comes from process.env[apiKeyEnv].
+  "phoenix": {
     "enabled": true,
+    "endpoint": "https://app.phoenix.arize.com/s/niffler92",
+    "apiKeyEnv": "PHOENIX_API_KEY",
+    "projectName": "browseros-eval2",
     "sessionPrefix": "agisdk"
   }
 }

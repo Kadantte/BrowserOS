@@ -16,8 +16,11 @@ export const BenchmarkConfigSchema = z.object({
   }),
   timeoutMs: z.number().int().positive().default(600_000),
   maxTasks: z.number().int().positive().optional(),
-  laminar: z.object({
+  phoenix: z.object({
     enabled: z.boolean(),
+    endpoint: z.string().url(),
+    apiKeyEnv: z.string().optional(),
+    projectName: z.string(),
     sessionPrefix: z.string(),
   }),
 })

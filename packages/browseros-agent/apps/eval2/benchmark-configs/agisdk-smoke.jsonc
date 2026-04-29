@@ -30,9 +30,14 @@
   // Cap the number of tasks run from the dataset. Remove for the full set.
   "maxTasks": 10,
 
-  // Laminar API key comes from process.env.LMNR_PROJECT_API_KEY.
-  "laminar": {
+  // Phoenix tracing settings. enabled=false skips tracing entirely (eval still runs).
+  // Cloud endpoint shown; local Phoenix server is "http://localhost:6006".
+  // The auth bearer token comes from process.env[apiKeyEnv].
+  "phoenix": {
     "enabled": true,
+    "endpoint": "https://app.phoenix.arize.com/s/niffler92",
+    "apiKeyEnv": "PHOENIX_API_KEY",
+    "projectName": "browseros-eval2",
     "sessionPrefix": "agisdk"
   }
 }

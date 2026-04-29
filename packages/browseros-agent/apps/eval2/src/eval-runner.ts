@@ -9,7 +9,7 @@ import {
   flushTracing,
   getTaskSessionId,
   initTracing,
-  withTaskTrace,
+  withTaskSession,
 } from './tracing'
 import {
   type GraderResult,
@@ -105,7 +105,7 @@ function buildSummary(
       status: result.status,
       durationMs: result.durationMs,
       graderReward: result.graderResult.score,
-      laminarSessionId: getTaskSessionId(result.task, config, runId),
+      phoenixSessionId: getTaskSessionId(result.task, config, runId),
     })),
   }
 }
@@ -204,7 +204,7 @@ export async function runEval(configPath: string): Promise<void> {
       const taskStart = Date.now()
       console.log(`\n[${index + 1}/${tasks.length}] ${task.queryId} starting`)
 
-      const agentResult = await withTaskTrace(task, config, runId, () =>
+      const agentResult = await withTaskSession(task, config, runId, () =>
         activeAgent.runTask(task),
       ).catch((error: unknown) => {
         console.warn(
@@ -271,7 +271,7 @@ export async function runEval(configPath: string): Promise<void> {
   await writeFile(summaryPath, JSON.stringify(summary, null, 2))
   printSummary(summary)
   console.log(`Summary: ${summaryPath}`)
-  if (summary.tasks.some((task) => task.laminarSessionId)) {
-    console.log('View traces: https://lmnr.ai/projects')
+  if (summary.tasks.some((task) => task.phoenixSessionId)) {
+    console.log(`View traces: ${config.phoenix.endpoint}`)
   }
 }
