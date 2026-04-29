@@ -7,4 +7,5 @@ export interface Provider {
   name: string
   type: ChatProviderType
   kind?: 'llm' | 'acp'
+  modelControl?: 'runtime-supported' | 'best-effort'
 }
