@@ -81,13 +81,30 @@ def main():
 
         reward_val = float(reward_val) if reward_val is not None else 0.0
         results = info.get("results", [])
+        # `info["results"]` aligns 1:1 with `tc.task.evals` — zip them so we can
+        # surface the human-readable description and JMESPath query alongside
+        # the pass/fail. Without this the only feedback was a stringified dict.
+        evals = list(getattr(tc.task, "evals", []))
 
         per_criterion = []
         softened_count = 0
-        for r in results:
+        for idx, r in enumerate(results):
             passed = bool(r[0])
-            detail = r[1] if len(r) > 1 else ""
-            entry: dict = {"passed": passed, "detail": str(detail)}
+            detail = r[1] if len(r) > 1 else {}
+            ev = evals[idx] if idx < len(evals) else None
+
+            actual_value = expected_value = None
+            if isinstance(detail, dict):
+                actual_value = detail.get("actual_value")
+                expected_value = detail.get("expected_value")
+
+            entry: dict = {
+                "passed": passed,
+                "description": getattr(ev, "description", "") or "",
+                "query": getattr(ev, "query", "") or "",
+                "expected_value": expected_value,
+                "actual_value": actual_value,
+            }
             if not _STRICT and not passed and _soft_string_match(detail):
                 entry["passed"] = True
                 entry["softened"] = True
@@ -100,9 +117,34 @@ def main():
         if all_pass and reward_val != 1.0:
             reward_val = 1.0
 
-        out_message = str(message)
-        if softened_count and all_pass:
-            out_message = f"Task passed (with {softened_count} softened string criterion/criteria)."
+        # Build a useful message: list the actually-failing criteria by name.
+        # This becomes the `reasoning` shown in the viewer's grader pill.
+        if not per_criterion:
+            # Defensive: agisdk returned no criteria — fall back to its own message.
+            out_message = str(message)
+        elif all_pass:
+            if softened_count:
+                out_message = (
+                    f"Task passed (with {softened_count} softened "
+                    "string criterion/criteria)."
+                )
+            else:
+                out_message = "All criteria passed."
+        else:
+            failures = [c for c in per_criterion if not c["passed"]]
+            failure_lines = []
+            for c in failures:
+                desc = c["description"] or c["query"] or "<unknown>"
+                exp = c["expected_value"]
+                act = c["actual_value"]
+                # Truncate noisy long values so the summary stays one-line-ish
+                exp_s = repr(exp)[:60]
+                act_s = repr(act)[:60]
+                failure_lines.append(f"• {desc}: expected {exp_s}, got {act_s}")
+            out_message = (
+                f"{len(failures)} of {len(per_criterion)} criteria failed:\n"
+                + "\n".join(failure_lines)
+            )
 
         print(
             json.dumps(
