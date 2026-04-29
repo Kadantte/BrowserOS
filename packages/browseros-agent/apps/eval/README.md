@@ -33,8 +33,20 @@ The `suite` command is the workflow-compatible full loop: execute tasks, run gra
 
 ```bash
 bun run eval run --config configs/browseros-agent-weekly.json
+bun run eval suite --suite suites/agisdk-daily-10.json --variant kimi-fireworks --publish r2
 bun run eval grade --run results/browseros-agent-weekly/2026-04-29-1430
 bun run eval publish --run results/browseros-agent-weekly/2026-04-29-1430 --target r2
+```
+
+Suite mode takes model settings from CLI flags first, then env:
+
+```bash
+EVAL_VARIANT=kimi-fireworks \
+EVAL_AGENT_PROVIDER=openai-compatible \
+EVAL_AGENT_MODEL=accounts/fireworks/models/kimi-k2p5 \
+EVAL_AGENT_API_KEY=$FIREWORKS_API_KEY \
+EVAL_AGENT_BASE_URL=https://api.fireworks.ai/inference/v1 \
+bun run eval suite --suite suites/agisdk-daily-10.json --publish r2
 ```
 
 ## Agent types
@@ -105,6 +117,20 @@ The `apiKey` field supports two formats:
 - **Env var name**: `"OPENAI_API_KEY"` — resolved from `.env.development` at runtime
 - **Direct value**: `"sk-xxxxx"` — used as-is (not recommended)
 
+### Environment variables
+
+| Variable | Used for |
+|----------|----------|
+| `EVAL_AGENT_PROVIDER`, `EVAL_AGENT_MODEL`, `EVAL_AGENT_API_KEY`, `EVAL_AGENT_BASE_URL`, `EVAL_AGENT_SUPPORTS_IMAGES` | Suite variant model selection |
+| `FIREWORKS_API_KEY`, `OPENROUTER_API_KEY`, `ANTHROPIC_API_KEY`, provider-specific keys | Config-file or provider-backed model calls |
+| `EVAL_EXECUTOR_MODEL`, `EVAL_EXECUTOR_API_KEY`, `EVAL_EXECUTOR_BASE_URL` | Suite-mode orchestrator executor override |
+| `CLADO_ACTION_MODEL`, `CLADO_ACTION_API_KEY`, `CLADO_ACTION_BASE_URL` | Clado executor defaults |
+| `BROWSEROS_BINARY` | BrowserOS binary path in CI/local smoke runs |
+| `BROWSEROS_SERVER_URL` | Optional grader MCP URL override |
+| `WEBARENA_INFINITY_DIR` | Local WebArena-Infinity checkout for Infinity tasks |
+| `NOPECHA_API_KEY` | CAPTCHA solver extension |
+| `EVAL_R2_ACCOUNT_ID`, `EVAL_R2_ACCESS_KEY_ID`, `EVAL_R2_SECRET_ACCESS_KEY`, `EVAL_R2_BUCKET`, `EVAL_R2_CDN_BASE_URL` | R2 upload and viewer URL |
+
 ### Supported providers
 
 | Provider | `provider` value | Requires `baseUrl` |
@@ -160,6 +186,7 @@ Each worker gets its own Chrome instance. Worker N uses `base_port + N` for CDP 
 
 | File | Tasks | Description |
 |------|-------|-------------|
+| `agisdk-daily-10.jsonl` | 10 | Daily AGI SDK / REAL Bench subset |
 | `webvoyager.jsonl` | 643 | Full WebVoyager benchmark |
 | `mind2web.jsonl` | 300 | Online-Mind2Web |
 | `webbench-{0,1,2}of4-50.jsonl` | 50 each | WebBench shards (50-task subsets) |
@@ -191,13 +218,18 @@ results/
   browseros-agent-weekly/
     2026-04-29-1430/
       Amazon--0/
+        attempt.json          # Stable attempt summary for viewer/reporting
         metadata.json         # Task result, timing, grader scores
+        grades.json           # Compact grader results
         messages.jsonl         # Full message log
+        grader-artifacts/      # Grader-specific inputs/outputs/stderr
         screenshots/
           001.png              # Step-by-step screenshots
           002.png
       summary.json             # Aggregate pass rates
 ```
+
+R2 publishing preserves the same task files under `runs/<run-id>/...`, writes `runs/<run-id>/manifest.json`, and uploads `viewer.html` at the bucket root. The viewer URL is `EVAL_R2_CDN_BASE_URL/viewer.html?run=<run-id>`.
 
 ## Troubleshooting
 
