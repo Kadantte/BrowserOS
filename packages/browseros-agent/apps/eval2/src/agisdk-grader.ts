@@ -20,6 +20,19 @@ const PythonEvaluatorResultSchema = z.object({
 
 type PythonEvaluatorResult = z.infer<typeof PythonEvaluatorResultSchema>
 
+function parsePythonEvaluatorOutput(stdout: string): PythonEvaluatorResult {
+  const jsonLine = stdout
+    .trim()
+    .split(/\r?\n/)
+    .reverse()
+    .find((line) => line.trim().startsWith('{'))
+  if (!jsonLine) {
+    throw new Error(`No JSON object found in evaluator output: ${stdout}`)
+  }
+
+  return PythonEvaluatorResultSchema.parse(JSON.parse(jsonLine))
+}
+
 export class AgisdkStateDiffGrader implements Grader {
   readonly name = 'agisdk_state_diff'
 
@@ -186,9 +199,7 @@ export class AgisdkStateDiffGrader implements Grader {
         }
 
         try {
-          const result = PythonEvaluatorResultSchema.parse(
-            JSON.parse(stdout.trim()),
-          )
+          const result = parsePythonEvaluatorOutput(stdout)
           resolve(result)
         } catch (error) {
           reject(
