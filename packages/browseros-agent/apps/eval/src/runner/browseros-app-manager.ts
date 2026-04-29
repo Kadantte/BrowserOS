@@ -16,6 +16,7 @@
 import {
   existsSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -33,7 +34,17 @@ export interface EvalPorts {
 
 const MAX_RESTART_ATTEMPTS = 3
 const CDP_WAIT_TIMEOUT_MS = 30_000
-const SERVER_HEALTH_TIMEOUT_MS = 30_000
+// Bumped from 30s → 90s while debugging dev-CI startup. Dev's server module
+// graph is ~108 files larger than main's; cold-cache module load on a CI
+// runner can take much longer than the original 30s budget allowed.
+const SERVER_HEALTH_TIMEOUT_MS = 90_000
+
+// Where per-worker server stderr is written. Captured (rather than ignored)
+// so eval-weekly.yml can upload these as workflow artifacts on failure for
+// post-mortem debugging. Path is also referenced in the workflow's artifact
+// upload step.
+const SERVER_LOG_DIR =
+  process.env.BROWSEROS_SERVER_LOG_DIR || '/tmp/browseros-server-logs'
 
 const MONOREPO_ROOT = join(
   dirname(fileURLToPath(import.meta.url)),
@@ -183,15 +194,30 @@ export class BrowserOSAppManager {
       VITE_BROWSEROS_SERVER_PORT: String(server),
     }
 
+    // Capture stderr to a per-worker file so we can post-mortem startup hangs
+    // (eval-weekly workflow uploads the directory as an artifact on failure).
+    const stderrLogPath = join(
+      SERVER_LOG_DIR,
+      `server-W${this.workerIndex}.log`,
+    )
+    try {
+      const { mkdirSync } = await import('node:fs')
+      mkdirSync(SERVER_LOG_DIR, { recursive: true })
+    } catch {}
+    const stderrFd = openSync(stderrLogPath, 'a')
+
+    // `start:ci` skips `--watch` (no file-watcher overhead in CI). Falls back
+    // to the regular `start` script outside CI for the dev-watch experience.
+    const startScript = process.env.CI ? 'start:ci' : 'start'
     this.serverProc = spawn({
-      cmd: ['bun', 'run', '--filter', '@browseros/server', 'start'],
+      cmd: ['bun', 'run', '--filter', '@browseros/server', startScript],
       cwd: MONOREPO_ROOT,
       stdout: 'ignore',
-      stderr: 'ignore',
+      stderr: stderrFd,
       env: serverEnv,
     })
     console.log(
-      `  [W${this.workerIndex}] Server started (PID: ${this.serverProc.pid})`,
+      `  [W${this.workerIndex}] Server started (PID: ${this.serverProc.pid}, stderr → ${stderrLogPath})`,
     )
 
     // --- Wait for Server Health ---
