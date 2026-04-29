@@ -24,9 +24,18 @@ Opens the eval dashboard at `http://localhost:9900` in config mode. From there: 
 
 ```bash
 bun run eval -c configs/browseros-agent-weekly.json
+bun run eval suite --config configs/browseros-agent-weekly.json --publish r2
 ```
 
 Runs immediately. Dashboard still available at `http://localhost:9900` for live progress.
+
+The `suite` command is the workflow-compatible full loop: execute tasks, run graders, write artifacts, and optionally publish to R2. The old `-c` form remains supported during migration.
+
+```bash
+bun run eval run --config configs/browseros-agent-weekly.json
+bun run eval grade --run results/browseros-agent-weekly/2026-04-29-1430
+bun run eval publish --run results/browseros-agent-weekly/2026-04-29-1430 --target r2
+```
 
 ## Agent types
 
@@ -109,6 +118,20 @@ The `apiKey` field supports two formats:
 | Fireworks, Together, etc. | `openai-compatible` | Yes |
 | Ollama | `ollama` | No |
 | Clado Action (executor only) | `clado-action` | Yes |
+
+### R2 publishing
+
+`suite --config ... --publish r2` and `publish --target r2` upload the run artifacts plus `viewer.html` to the viewer-compatible R2 layout:
+
+```bash
+export EVAL_R2_ACCOUNT_ID=...
+export EVAL_R2_ACCESS_KEY_ID=...
+export EVAL_R2_SECRET_ACCESS_KEY=...
+export EVAL_R2_BUCKET=browseros-eval
+export EVAL_R2_CDN_BASE_URL=https://eval.browseros.com
+```
+
+Published runs are available at `EVAL_R2_CDN_BASE_URL/viewer.html?run=<run-id>`.
 
 ### BrowserOS infrastructure
 
