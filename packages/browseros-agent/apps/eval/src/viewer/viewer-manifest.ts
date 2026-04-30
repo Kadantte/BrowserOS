@@ -14,6 +14,7 @@ export interface ViewerManifestTaskPaths {
 
 export interface ViewerManifestTaskInput {
   queryId: string
+  artifactId?: string
   query: string
   startUrl?: string
   status: string
@@ -22,7 +23,8 @@ export interface ViewerManifestTaskInput {
   graderResults: Record<string, GraderResult>
 }
 
-export interface ViewerManifestTask extends ViewerManifestTaskInput {
+export interface ViewerManifestTask
+  extends Omit<ViewerManifestTaskInput, 'artifactId'> {
   startUrl: string
   paths: ViewerManifestTaskPaths
 }
@@ -75,10 +77,13 @@ export function buildViewerManifest(
     ...(input.agentConfig ? { agentConfig: input.agentConfig } : {}),
     ...(input.dataset ? { dataset: input.dataset } : {}),
     ...(input.summary ? { summary: input.summary } : {}),
-    tasks: input.tasks.map((task) => ({
-      ...task,
-      startUrl: task.startUrl ?? '',
-      paths: taskPaths(task.queryId),
-    })),
+    tasks: input.tasks.map((task) => {
+      const { artifactId, ...publicTask } = task
+      return {
+        ...publicTask,
+        startUrl: publicTask.startUrl ?? '',
+        paths: taskPaths(artifactId ?? publicTask.queryId),
+      }
+    }),
   }
 }

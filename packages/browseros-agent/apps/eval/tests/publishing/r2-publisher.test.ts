@@ -26,6 +26,7 @@ async function writeRunFixture(
   root: string,
   configName = 'browseros-agent-weekly',
   timestamp = '2026-04-29-1200',
+  options: { queryId?: string } = {},
 ): Promise<{ runDir: string; runId: string }> {
   const runDir = join(root, configName, timestamp)
   const taskDir = join(runDir, 'task-1')
@@ -33,7 +34,7 @@ async function writeRunFixture(
   await writeFile(
     join(taskDir, 'metadata.json'),
     JSON.stringify({
-      query_id: 'task-1',
+      query_id: options.queryId ?? 'task-1',
       dataset: 'webbench',
       query: 'Find pricing',
       start_url: 'https://example.test',
@@ -143,6 +144,72 @@ describe('R2Publisher', () => {
         },
       ],
     })
+  })
+
+  it('uses task directory ids for canonical paths when metadata query ids differ', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'eval-r2-path-id-'))
+    const { runDir, runId } = await writeRunFixture(
+      dir,
+      'weekly',
+      '2026-04-29-1200',
+      { queryId: 'query-id-from-metadata' },
+    )
+    const viewerPath = join(dir, 'viewer.html')
+    await writeFile(viewerPath, '<html>viewer</html>')
+    const client = new FakeR2Client()
+
+    await new R2Publisher({
+      client,
+      viewerPath,
+      config: {
+        accountId: 'acct',
+        accessKeyId: 'key',
+        secretAccessKey: 'secret',
+        bucket: 'bucket',
+        cdnBaseUrl: 'https://eval.example.test',
+      },
+      now: () => new Date('2026-04-29T12:00:00.000Z'),
+    }).publishRun(runDir, runId)
+
+    const byKey = new Map(client.puts.map((put) => [put.Key, put]))
+    const manifest = JSON.parse(
+      Buffer.from(
+        byKey.get(`runs/${runId}/manifest.json`)?.Body as Buffer,
+      ).toString('utf-8'),
+    )
+
+    expect(byKey.has(`runs/${runId}/tasks/task-1/metadata.json`)).toBe(true)
+    expect(manifest.tasks[0]).toMatchObject({
+      queryId: 'query-id-from-metadata',
+      paths: {
+        metadata: 'tasks/task-1/metadata.json',
+        screenshots: 'tasks/task-1/screenshots',
+      },
+    })
+  })
+
+  it('encodes run ids in returned viewer urls', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'eval-r2-viewer-url-'))
+    const { runDir } = await writeRunFixture(dir)
+    const viewerPath = join(dir, 'viewer.html')
+    await writeFile(viewerPath, '<html>viewer</html>')
+    const client = new FakeR2Client()
+
+    const result = await new R2Publisher({
+      client,
+      viewerPath,
+      config: {
+        accountId: 'acct',
+        accessKeyId: 'key',
+        secretAccessKey: 'secret',
+        bucket: 'bucket',
+        cdnBaseUrl: 'https://eval.example.test',
+      },
+    }).publishRun(runDir, 'run with spaces')
+
+    expect(result.viewerUrl).toBe(
+      'https://eval.example.test/viewer.html?run=run%20with%20spaces',
+    )
   })
 
   it('publishes unuploaded runs from a config results directory', async () => {

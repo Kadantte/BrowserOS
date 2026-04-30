@@ -289,6 +289,8 @@ export class R2Publisher {
         if (relative.startsWith('screenshots/') && extname(file) === '.png') {
           screenshotCount++
         }
+        // Keep legacy keys during the manifest v2 rollout so cached viewers and
+        // old manifests can still resolve task artifacts.
         jobs.push({
           key: `runs/${runId}/${taskId}/${relative}`,
           filePath: file,
@@ -303,6 +305,7 @@ export class R2Publisher {
 
       manifestTasks.push({
         queryId: (meta.query_id as string | undefined) || taskId,
+        artifactId: taskId,
         query: (meta.query as string | undefined) || '',
         startUrl: (meta.start_url as string | undefined) || '',
         status: statusFromMetadata(meta),
@@ -346,7 +349,7 @@ export class R2Publisher {
     return {
       runId,
       uploadedFiles: uploaded + 2,
-      viewerUrl: `${this.config.cdnBaseUrl}/viewer.html?run=${runId}`,
+      viewerUrl: `${this.config.cdnBaseUrl}/viewer.html?run=${encodeURIComponent(runId)}`,
       manifest,
     }
   }

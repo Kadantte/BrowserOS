@@ -91,4 +91,15 @@ describe('report run summaries', () => {
   it('keeps legacy config names when run ids have no timestamp suffix', () => {
     expect(extractConfigName('ci-weekly')).toBe('ci-weekly')
   })
+
+  it('uses an explicit unknown date when uploadedAt is missing', () => {
+    const [summary] = buildRunSummaries([
+      {
+        runId: 'ci-weekly',
+        tasks: [],
+      },
+    ])
+
+    expect(summary.date).toBe('unknown')
+  })
 })

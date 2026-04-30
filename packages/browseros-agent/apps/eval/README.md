@@ -283,6 +283,8 @@ R2 publishing preserves the task files under `runs/<run-id>/...`, writes `runs/<
 
 The static viewer uses `task.paths` when present. Older uploaded runs without `schemaVersion` or `task.paths` still work through the legacy inferred layout: `runs/<run-id>/<task-id>/metadata.json`, `messages.jsonl`, and `screenshots/<n>.png`.
 
+Manifest paths are stable artifact locations, not a guarantee that every optional artifact exists for every task. For example, `attempt.json`, `trace.jsonl`, or grader artifact directories may be absent when that artifact was not produced by the run.
+
 ## Troubleshooting
 
 **BrowserOS not found**: Expects `/Applications/BrowserOS.app/Contents/MacOS/BrowserOS`. Set `BROWSEROS_BINARY` to override.

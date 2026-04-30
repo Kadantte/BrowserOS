@@ -33,6 +33,8 @@ export interface RunSummary {
   agentType: string
 }
 
+// Report score uses the primary pass/fail grader so mixed-grader runs keep
+// the same precedence as the eval summary.
 const PASS_FAIL_GRADER_ORDER = [
   'agisdk_state_diff',
   'infinity_state',
@@ -44,7 +46,7 @@ export function extractConfigName(runId: string): string {
 }
 
 function reportDate(manifest: ReportManifest): string {
-  if (!manifest.uploadedAt) return manifest.runId.slice(0, 15)
+  if (!manifest.uploadedAt) return 'unknown'
   const [date, time] = manifest.uploadedAt.split('T')
   return `${date} ${time?.slice(0, 5) || ''}`
 }

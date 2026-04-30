@@ -83,4 +83,30 @@ describe('buildViewerManifest', () => {
       ],
     })
   })
+
+  it('can separate display query ids from artifact path ids', () => {
+    const manifest = buildViewerManifest({
+      runId: 'run-3',
+      tasks: [
+        {
+          queryId: 'metadata-query-id',
+          artifactId: 'task-dir-id',
+          query: 'Do the task',
+          status: 'completed',
+          durationMs: 10,
+          screenshotCount: 0,
+          graderResults: {},
+        },
+      ],
+    })
+
+    expect(manifest.tasks[0]).toMatchObject({
+      queryId: 'metadata-query-id',
+      paths: {
+        metadata: 'tasks/task-dir-id/metadata.json',
+        screenshots: 'tasks/task-dir-id/screenshots',
+      },
+    })
+    expect('artifactId' in manifest.tasks[0]).toBe(false)
+  })
 })
