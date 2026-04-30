@@ -43,12 +43,13 @@ func stopDogfoodRun(out io.Writer, target dogfoodRuntimeTarget, timeout time.Dur
 		return err
 	}
 	if !active {
-		return cleanupDogfoodRunFiles(target)
+		cleanupDogfoodRunFilesWithWarning(out, target)
+		return nil
 	}
 
 	fmt.Fprintln(out, labelStyle.Sprint("Stopping dogfood run first."))
 	if err := stopDogfoodDaemon(target); err == nil {
-		if stopped, err := waitForDogfoodStopped(target, timeout); err != nil {
+		if stopped, err := waitForDogfoodStopped(out, target, timeout); err != nil {
 			return err
 		} else if stopped {
 			fmt.Fprintln(out, successStyle.Sprint("Dogfood stopped."))
@@ -66,7 +67,7 @@ func stopDogfoodRun(out io.Writer, target dogfoodRuntimeTarget, timeout time.Dur
 	if err := signalDogfoodPID(state.PID, syscall.SIGTERM); err != nil {
 		return err
 	}
-	if stopped, err := waitForDogfoodStopped(target, timeout); err != nil {
+	if stopped, err := waitForDogfoodStopped(out, target, timeout); err != nil {
 		return err
 	} else if stopped {
 		fmt.Fprintln(out, successStyle.Sprint("Dogfood stopped."))
@@ -75,7 +76,7 @@ func stopDogfoodRun(out io.Writer, target dogfoodRuntimeTarget, timeout time.Dur
 	if err := signalDogfoodPID(state.PID, syscall.SIGKILL); err != nil {
 		return err
 	}
-	if stopped, err := waitForDogfoodStopped(target, time.Second); err != nil {
+	if stopped, err := waitForDogfoodStopped(out, target, time.Second); err != nil {
 		return err
 	} else if stopped {
 		fmt.Fprintln(out, successStyle.Sprint("Dogfood force-stopped."))
@@ -124,7 +125,7 @@ func stopDogfoodDaemon(target dogfoodRuntimeTarget) error {
 	return nil
 }
 
-func waitForDogfoodStopped(target dogfoodRuntimeTarget, timeout time.Duration) (bool, error) {
+func waitForDogfoodStopped(out io.Writer, target dogfoodRuntimeTarget, timeout time.Duration) (bool, error) {
 	deadline := time.Now().Add(timeout)
 	for {
 		active, err := dogfoodRunActive(target.LockPath)
@@ -132,7 +133,8 @@ func waitForDogfoodStopped(target dogfoodRuntimeTarget, timeout time.Duration) (
 			return false, err
 		}
 		if !active {
-			return true, cleanupDogfoodRunFiles(target)
+			cleanupDogfoodRunFilesWithWarning(out, target)
+			return true, nil
 		}
 		if time.Now().After(deadline) {
 			return false, nil
@@ -176,6 +178,12 @@ func signalDogfoodPID(pid int, sig syscall.Signal) error {
 		return err
 	}
 	return nil
+}
+
+func cleanupDogfoodRunFilesWithWarning(out io.Writer, target dogfoodRuntimeTarget) {
+	if err := cleanupDogfoodRunFiles(target); err != nil {
+		fmt.Fprintf(out, "%s could not remove dogfood run files: %v\n", warnStyle.Sprint("Warning:"), err)
+	}
 }
 
 func cleanupDogfoodRunFiles(target dogfoodRuntimeTarget) error {

@@ -277,8 +277,20 @@ func parseEnvLine(line string) (string, string, bool) {
 }
 
 func stripInlineComment(value string) string {
-	if index := strings.Index(value, " #"); index >= 0 {
-		return value[:index]
+	quote := byte(0)
+	for index := 0; index < len(value); index++ {
+		switch value[index] {
+		case '\'', '"':
+			if quote == 0 {
+				quote = value[index]
+			} else if quote == value[index] {
+				quote = 0
+			}
+		case '#':
+			if quote == 0 {
+				return value[:index]
+			}
+		}
 	}
 	return value
 }

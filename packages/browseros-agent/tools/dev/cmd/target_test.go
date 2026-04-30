@@ -58,6 +58,26 @@ func TestResolveDevTargetFallsBackToExampleEnvPorts(t *testing.T) {
 	}
 }
 
+func TestReadPortsFromEnvFileStripsHashComments(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ".env")
+	if err := os.WriteFile(path, []byte(
+		"BROWSEROS_CDP_PORT=9005#comment\nBROWSEROS_SERVER_PORT=9105 # comment\nBROWSEROS_EXTENSION_PORT=9305\n",
+	), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ports, ok, err := readPortsFromEnvFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !ok {
+		t.Fatal("expected ports to be found")
+	}
+	if ports.CDP != 9005 || ports.Server != 9105 || ports.Extension != 9305 {
+		t.Fatalf("unexpected ports: %#v", ports)
+	}
+}
+
 func TestResolveDogfoodTargetReadsDogfoodConfig(t *testing.T) {
 	root := t.TempDir()
 	xdgConfig := t.TempDir()
