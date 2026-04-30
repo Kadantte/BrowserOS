@@ -160,7 +160,7 @@ bun run test                  # Run all tests
 bun run test:all              # Run all tests
 bun run test:main             # Run key server tools and integration tests
 
-# App-specific test groups
+# App-specific test groups (from packages/browseros-agent)
 cd apps/server && bun run test:tools
 cd apps/server && bun run test:integration
 
