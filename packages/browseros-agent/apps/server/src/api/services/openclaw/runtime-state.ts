@@ -82,12 +82,19 @@ function isPortAvailable(port: number): Promise<boolean> {
   })
 }
 
-async function findAvailablePort(startPort: number): Promise<number> {
+async function findAvailablePort(
+  startPort: number,
+  excludePort?: number,
+): Promise<number> {
   let port = startPort
-  while (!(await isPortAvailable(port))) {
+  while (port === excludePort || !(await isPortAvailable(port))) {
     port++
   }
   return port
+}
+
+export interface AllocateGatewayPortOptions {
+  excludePort?: number
 }
 
 /**
@@ -97,6 +104,7 @@ async function findAvailablePort(startPort: number): Promise<number> {
  */
 export async function allocateGatewayPort(
   openclawDir: string,
+  opts: AllocateGatewayPortOptions = {},
 ): Promise<number> {
   const forcedPort = readForcedGatewayPort()
   if (forcedPort !== null) {
@@ -105,10 +113,17 @@ export async function allocateGatewayPort(
   }
 
   const persisted = await readPersistedGatewayPort(openclawDir)
-  if (persisted !== null && (await isPortAvailable(persisted))) {
+  if (
+    persisted !== null &&
+    persisted !== opts.excludePort &&
+    (await isPortAvailable(persisted))
+  ) {
     return persisted
   }
-  const port = await findAvailablePort(OPENCLAW_GATEWAY_CONTAINER_PORT)
+  const port = await findAvailablePort(
+    OPENCLAW_GATEWAY_CONTAINER_PORT,
+    opts.excludePort,
+  )
   await writePersistedGatewayPort(openclawDir, port)
   return port
 }
