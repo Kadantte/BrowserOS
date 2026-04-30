@@ -102,6 +102,18 @@ interface ResolvedPaths {
   outputDir: string
 }
 
+/** Returns the eval results directory for both flat and nested config layouts. */
+function defaultResultsBase(configDir: string): string {
+  const resolvedConfigDir = resolve(configDir)
+  if (basename(resolvedConfigDir) === 'configs') {
+    return resolve(resolvedConfigDir, '..', 'results')
+  }
+  if (basename(dirname(resolvedConfigDir)) === 'configs') {
+    return resolve(resolvedConfigDir, '..', '..', 'results')
+  }
+  return resolve(resolvedConfigDir, '..', 'results')
+}
+
 function resolvePaths(
   options: RunEvalOptions,
   config: EvalConfig,
@@ -124,7 +136,7 @@ function resolvePaths(
     ? config.output_dir.startsWith('/')
       ? config.output_dir
       : resolve(configDir, config.output_dir)
-    : resolve(configDir, '..', 'results')
+    : defaultResultsBase(configDir)
   const outputDir =
     options.outputDir ?? join(resultsBase, configName, timestamp)
 

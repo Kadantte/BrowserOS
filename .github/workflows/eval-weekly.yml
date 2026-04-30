@@ -14,7 +14,7 @@ on:
       config:
         description: 'Eval config file (relative to apps/eval/)'
         required: false
-        default: 'configs/browseros-agent-weekly.json'
+        default: 'configs/legacy/browseros-agent-weekly.json'
 
 permissions:
   contents: read
@@ -79,7 +79,7 @@ jobs:
           # OpenClaw container runtime is macOS-only; opt the Linux runner
           # into the no-op stub so the server can boot and the eval can run.
           BROWSEROS_SKIP_OPENCLAW: '1'
-          EVAL_CONFIG: ${{ github.event.inputs.config || 'configs/browseros-agent-weekly.json' }}
+          EVAL_CONFIG: ${{ github.event.inputs.config || 'configs/legacy/browseros-agent-weekly.json' }}
         run: |
           echo "Running eval with config: $EVAL_CONFIG"
           xvfb-run --auto-servernum --server-args="-screen 0 1440x900x24" bun run src/index.ts suite --config "$EVAL_CONFIG" --publish r2

@@ -24,8 +24,8 @@ Opens the eval dashboard at `http://localhost:9900` in config mode. From there: 
 ### CLI mode
 
 ```bash
-bun run eval -c configs/browseros-agent-weekly.json
-bun run eval suite --config configs/browseros-agent-weekly.json --publish r2
+bun run eval -c configs/legacy/browseros-agent-weekly.json
+bun run eval suite --config configs/legacy/browseros-agent-weekly.json --publish r2
 ```
 
 Runs immediately. Dashboard still available at `http://localhost:9900` for live progress.
@@ -33,10 +33,17 @@ Runs immediately. Dashboard still available at `http://localhost:9900` for live 
 The `suite` command is the workflow-compatible full loop: execute tasks, run graders, write artifacts, and optionally publish to R2. The old `-c` form remains supported during migration.
 
 ```bash
-bun run eval run --config configs/browseros-agent-weekly.json
-bun run eval suite --suite suites/agisdk-daily-10.json --variant kimi-fireworks --publish r2
+bun run eval run --config configs/legacy/browseros-agent-weekly.json
+bun run eval suite --suite configs/suites/agisdk-daily-10.json --variant kimi-fireworks --publish r2
 bun run eval grade --run results/browseros-agent-weekly/2026-04-29-1430
 bun run eval publish --run results/browseros-agent-weekly/2026-04-29-1430 --target r2
+```
+
+Config files live in two groups:
+
+```txt
+configs/legacy/  # Complete EvalConfig files used by older workflows and the dashboard
+configs/suites/  # Suite definitions; model/provider comes from CLI flags or env
 ```
 
 Suite mode takes model settings from CLI flags first, then env:
@@ -47,7 +54,7 @@ EVAL_AGENT_PROVIDER=openai-compatible \
 EVAL_AGENT_MODEL=accounts/fireworks/models/kimi-k2p5 \
 EVAL_AGENT_API_KEY=$FIREWORKS_API_KEY \
 EVAL_AGENT_BASE_URL=https://api.fireworks.ai/inference/v1 \
-bun run eval suite --suite suites/agisdk-daily-10.json --publish r2
+bun run eval suite --suite configs/suites/agisdk-daily-10.json --publish r2
 ```
 
 ### Suites and variants

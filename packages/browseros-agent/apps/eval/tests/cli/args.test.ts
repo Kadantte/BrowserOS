@@ -7,13 +7,13 @@ describe('parseEvalCliArgs', () => {
       parseEvalCliArgs([
         'suite',
         '--config',
-        'configs/browseros-agent-weekly.json',
+        'configs/legacy/browseros-agent-weekly.json',
         '--publish',
         'r2',
       ]),
     ).toEqual({
       command: 'suite',
-      configPath: 'configs/browseros-agent-weekly.json',
+      configPath: 'configs/legacy/browseros-agent-weekly.json',
       publishTarget: 'r2',
     })
   })
@@ -23,7 +23,7 @@ describe('parseEvalCliArgs', () => {
       parseEvalCliArgs([
         'suite',
         '--suite',
-        'suites/agisdk-daily-10.json',
+        'configs/suites/agisdk-daily-10.json',
         '--variant',
         'kimi-fireworks',
         '--provider',
@@ -35,7 +35,7 @@ describe('parseEvalCliArgs', () => {
       ]),
     ).toEqual({
       command: 'suite',
-      suitePath: 'suites/agisdk-daily-10.json',
+      suitePath: 'configs/suites/agisdk-daily-10.json',
       variantId: 'kimi-fireworks',
       provider: 'openai-compatible',
       model: 'accounts/fireworks/models/kimi-k2p5',
@@ -45,10 +45,10 @@ describe('parseEvalCliArgs', () => {
 
   it('keeps the old config shorthand as legacy config mode', () => {
     expect(
-      parseEvalCliArgs(['-c', 'configs/browseros-agent-weekly.json']),
+      parseEvalCliArgs(['-c', 'configs/legacy/browseros-agent-weekly.json']),
     ).toEqual({
       command: 'legacy',
-      configPath: 'configs/browseros-agent-weekly.json',
+      configPath: 'configs/legacy/browseros-agent-weekly.json',
     })
   })
 

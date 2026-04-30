@@ -36,14 +36,16 @@ describe('EvalSuiteSchema', () => {
   })
 
   it('validates the daily AGISDK 10-task suite', async () => {
-    const loaded = await loadSuite('apps/eval/suites/agisdk-daily-10.json')
+    const loaded = await loadSuite(
+      'apps/eval/configs/suites/agisdk-daily-10.json',
+    )
     const lines = (await readFile(loaded.datasetPath, 'utf-8'))
       .trim()
       .split('\n')
 
     expect(loaded.suite.id).toBe('agisdk-daily-10')
     expect(loaded.suite.graders).toEqual(['agisdk_state_diff'])
-    expect(loaded.suite.workers).toBe(10)
+    expect(loaded.suite.workers).toBe(1)
     expect(lines).toHaveLength(10)
     expect(JSON.parse(lines[0]).query_id).toBe('agisdk-dashdish-10')
     expect(JSON.parse(lines[9]).query_id).toBe('agisdk-zilloft-6')

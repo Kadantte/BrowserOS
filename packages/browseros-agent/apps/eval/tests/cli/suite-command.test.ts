@@ -37,13 +37,15 @@ async function writeTempSuite(): Promise<{ dir: string; suitePath: string }> {
 describe('suite command', () => {
   it('resolves an existing config through the config adapter', async () => {
     const resolved = await resolveSuiteCommand({
-      configPath: 'apps/eval/configs/browseros-agent-weekly.json',
+      configPath: 'apps/eval/configs/legacy/browseros-agent-weekly.json',
       env: {},
     })
 
     expect(resolved.kind).toBe('config')
     expect(resolved.suite.id).toBe('browseros-agent-weekly')
-    expect(resolved.evalConfig.dataset).toBe('../data/webbench-2of4-50.jsonl')
+    expect(resolved.evalConfig.dataset).toBe(
+      '../../data/webbench-2of4-50.jsonl',
+    )
     expect(resolved.variant.publicMetadata.agent.apiKeyConfigured).toBe(true)
   })
 
@@ -76,7 +78,10 @@ describe('suite command', () => {
   it('runs config and suite commands through the runner dependency', async () => {
     const calls: RunEvalOptions[] = []
     await runSuiteCommand(
-      { configPath: 'apps/eval/configs/browseros-agent-weekly.json', env: {} },
+      {
+        configPath: 'apps/eval/configs/legacy/browseros-agent-weekly.json',
+        env: {},
+      },
       {
         runEval: async (options) => {
           calls.push(options)
