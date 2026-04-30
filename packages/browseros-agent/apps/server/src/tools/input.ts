@@ -75,6 +75,30 @@ export const click = defineTool({
     const x = point.x / dpr
     const y = point.y / dpr
 
+    // Drop a small red dot at the click point. Self-fades and removes itself
+    // after ~1s. position:fixed so viewport-relative coords are correct.
+    await ctx.browser
+      .evaluate(
+        args.page,
+        `((cx, cy) => {
+  const STYLE_ID = '__molmo_click_dot_style';
+  if (!document.getElementById(STYLE_ID)) {
+    const s = document.createElement('style');
+    s.id = STYLE_ID;
+    s.textContent = '@keyframes __molmoClickDot{0%{transform:scale(0.6);opacity:1}100%{transform:scale(2.4);opacity:0}}';
+    (document.head || document.documentElement).appendChild(s);
+  }
+  const d = document.createElement('div');
+  d.style.cssText = 'position:fixed;left:' + (cx - 8) + 'px;top:' + (cy - 8) + 'px;width:16px;height:16px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px 3px rgba(239,68,68,0.55);pointer-events:none;z-index:2147483647;animation:__molmoClickDot 800ms ease-out forwards;';
+  document.documentElement.appendChild(d);
+  setTimeout(() => d.remove(), 1000);
+  return null;
+})(${x}, ${y})`,
+      )
+      .catch(() => {
+        // dot is purely cosmetic; ignore any failure (e.g. CSP blocks inline style)
+      })
+
     await ctx.browser.clickAt(args.page, x, y, {
       button: args.button,
       clickCount: args.clickCount,
