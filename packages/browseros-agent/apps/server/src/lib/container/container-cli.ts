@@ -57,11 +57,6 @@ export class ContainerCli {
     await this.runRequired(['pull', ref], onLog)
   }
 
-  async loadImage(tarballPath: string, onLog?: LogFn): Promise<string[]> {
-    const result = await this.runRequired(['load', '-i', tarballPath], onLog)
-    return parseLoadedImageRefs(result.stdout)
-  }
-
   async createContainer(spec: ContainerSpec, onLog?: LogFn): Promise<void> {
     await this.runRequired(buildCreateArgs(spec), onLog)
   }
@@ -201,13 +196,6 @@ function portArg(port: PortMapping): string {
 
 function mountArg(mount: MountSpec): string {
   return `${mount.source}:${mount.target}${mount.readonly ? ':ro' : ''}`
-}
-
-function parseLoadedImageRefs(stdout: string): string[] {
-  return stdout
-    .split('\n')
-    .map((line) => line.match(/^Loaded image(?:\(s\))?:\s*(.+)$/i)?.[1]?.trim())
-    .filter((ref): ref is string => !!ref)
 }
 
 function isNoSuchContainer(stderr: string): boolean {

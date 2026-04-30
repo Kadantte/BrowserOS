@@ -8,7 +8,6 @@ import {
   ContainerCliError,
   ImageLoadError,
   LimaCommandError,
-  ManifestMissingError,
   VmError,
   VmNotReadyError,
   VmStateCorruptedError,
@@ -24,7 +23,6 @@ describe('VM errors', () => {
       new LimaCommandError('limactl start', 7, 'bad lima'),
       new ContainerCliError('nerdctl pull', 8, 'bad nerdctl'),
       new ImageLoadError('openclaw:v1', 'bad image'),
-      new ManifestMissingError('/tmp/manifest.json'),
     ]
 
     for (const error of errors) {

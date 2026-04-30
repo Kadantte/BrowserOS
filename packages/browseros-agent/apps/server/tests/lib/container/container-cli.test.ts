@@ -90,21 +90,6 @@ describe('ContainerCli', () => {
     expect(lines).toContain('denied')
   })
 
-  it('loads images from guest tarballs and returns loaded refs', async () => {
-    const sshPath = await fakeSsh(
-      { stdout: 'Loaded image(s): openclaw:v1\n' },
-      logPath,
-    )
-    const cli = await createCli(sshPath, tempDir)
-
-    await expect(
-      cli.loadImage('/mnt/browseros/cache/images/openclaw.tar.gz'),
-    ).resolves.toEqual(['openclaw:v1'])
-    await expect(readFile(logPath, 'utf8')).resolves.toContain(
-      `${sshPrefix(sshConfigPath(tempDir))} 'nerdctl' 'load' '-i' '/mnt/browseros/cache/images/openclaw.tar.gz'`,
-    )
-  })
-
   it('creates containers from typed specs', async () => {
     const sshPath = await fakeSsh({}, logPath)
     const cli = await createCli(sshPath, tempDir)

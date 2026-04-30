@@ -19,7 +19,6 @@ import { PATHS } from '@browseros/shared/constants/paths'
 
 export const VM_NAME = 'browseros-vm'
 export const GUEST_VM_STATE = '/mnt/browseros/vm'
-export const GUEST_IMAGE_CACHE = '/mnt/browseros/cache/images'
 const HOST_LIMACTL_BINARY = 'limactl'
 
 export type Arch = 'arm64' | 'x64'
@@ -52,18 +51,6 @@ export function getVmStateDir(browserosRoot = rootDir()): string {
 
 export function getVmCacheDir(browserosRoot = rootDir()): string {
   return join(browserosRoot, PATHS.CACHE_DIR_NAME, 'vm')
-}
-
-export function getImageCacheDir(browserosRoot = rootDir()): string {
-  return join(getVmCacheDir(browserosRoot), 'images')
-}
-
-export function getCachedManifestPath(browserosRoot = rootDir()): string {
-  return join(getVmCacheDir(browserosRoot), 'manifest.json')
-}
-
-export function getInstalledManifestPath(browserosRoot = rootDir()): string {
-  return join(getVmStateDir(browserosRoot), 'manifest.json')
 }
 
 export function getContainerdSocketPath(browserosRoot = rootDir()): string {
@@ -215,15 +202,9 @@ export function hostPathToGuest(
   browserosRoot = rootDir(),
 ): string {
   const vmState = getVmStateDir(browserosRoot)
-  const imageCache = getImageCacheDir(browserosRoot)
   const vmStateRelative = mountedRelativePath(vmState, hostPath)
   if (vmStateRelative !== null)
     return guestPath(GUEST_VM_STATE, vmStateRelative)
-
-  const imageCacheRelative = mountedRelativePath(imageCache, hostPath)
-  if (imageCacheRelative !== null) {
-    return guestPath(GUEST_IMAGE_CACHE, imageCacheRelative)
-  }
 
   throw new Error(`host path ${hostPath} is not under any known guest mount`)
 }

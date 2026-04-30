@@ -10,7 +10,7 @@ import { logger } from '../logger'
 import { LimaCommandError, VmError, VmNotReadyError } from './errors'
 import { LimaCli } from './lima-cli'
 import { renderLimaTemplate } from './lima-config'
-import { getImageCacheDir, getVmStateDir, VM_NAME } from './paths'
+import { getVmStateDir, VM_NAME } from './paths'
 import { VM_TELEMETRY_EVENTS } from './telemetry'
 
 export type LogFn = (msg: string) => void
@@ -221,7 +221,6 @@ export class VmRuntime {
 
     return renderLimaTemplate(await readFile(this.deps.templatePath, 'utf8'), {
       vmStateDir: getVmStateDir(this.deps.browserosRoot),
-      imageCacheDir: getImageCacheDir(this.deps.browserosRoot),
     })
   }
 
