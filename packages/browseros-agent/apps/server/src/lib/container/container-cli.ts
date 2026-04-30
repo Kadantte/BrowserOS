@@ -41,6 +41,18 @@ export class ContainerCli {
     return result.exitCode === 0
   }
 
+  /** Return the image ref used to create a container, or null when absent. */
+  async containerImageRef(name: string): Promise<string | null> {
+    const args = ['inspect', '--format', '{{.Config.Image}}', name]
+    const result = await this.runCommand(args)
+    if (result.exitCode === 0) {
+      const image = result.stdout.trim()
+      return image || null
+    }
+    if (isNoSuchContainer(result.stderr)) return null
+    throw this.commandError(args, result)
+  }
+
   async pullImage(ref: string, onLog?: LogFn): Promise<void> {
     await this.runRequired(['pull', ref], onLog)
   }
