@@ -50,8 +50,6 @@ export class CladoActionExecutor {
   constructor(
     config: ExecutorConfig,
     serverUrl: string,
-    readonly _windowId?: number,
-    readonly _tabId?: number,
     initialPageId?: number,
   ) {
     if (!isCladoActionProvider(config.provider)) {

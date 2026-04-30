@@ -61,7 +61,6 @@ describe('executor backend boundary', () => {
     }
 
     const backend = createExecutorBackend({
-      backendKind: 'tool-loop',
       executor: fakeBackend,
     })
     const result = await backend.execute('Click checkout', signal)

@@ -42,8 +42,6 @@ export function createExecutorBackend(
     return new CladoExecutorBackend({
       configTemplate: required(options.configTemplate, 'configTemplate'),
       serverUrl: required(options.serverUrl, 'serverUrl'),
-      windowId: options.windowId,
-      tabId: options.tabId,
       initialPageId: options.initialPageId,
       callbacks: options.callbacks,
     })

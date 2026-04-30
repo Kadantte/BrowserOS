@@ -9,8 +9,6 @@ import { CladoActionExecutor } from './clado-action-executor'
 export interface CladoExecutorBackendOptions {
   configTemplate: ResolvedAgentConfig
   serverUrl: string
-  windowId?: number
-  tabId?: number
   initialPageId?: number
   callbacks?: ExecutorCallbacks
 }
@@ -50,8 +48,6 @@ export class CladoExecutorBackend implements ExecutorBackend {
         baseUrl: this.options.configTemplate.baseUrl,
       },
       this.options.serverUrl,
-      this.options.windowId,
-      this.options.tabId,
       this.options.initialPageId,
     )
     this.executor.setCallbacks(this.options.callbacks ?? {})

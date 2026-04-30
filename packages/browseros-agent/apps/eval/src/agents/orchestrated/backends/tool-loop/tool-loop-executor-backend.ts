@@ -29,7 +29,8 @@ export class ToolLoopExecutorBackend implements ExecutorBackend {
     instruction: string,
     signal?: AbortSignal,
   ): Promise<DelegationResult> {
-    if (!this.options.browser) {
+    const browser = this.options.browser
+    if (!browser) {
       throw new Error('Browser instance is required for tool-loop executor')
     }
 
@@ -47,13 +48,13 @@ export class ToolLoopExecutorBackend implements ExecutorBackend {
       workingDir: `/tmp/browseros-eval-executor-${conversationId}`,
     }
 
-    const browserContext = await this.browserContext()
+    const browserContext = await this.browserContext(browser)
     let agent: AiSdkAgent | null = null
 
     try {
       agent = await AiSdkAgent.create({
         resolvedConfig: agentConfig,
-        browser: this.options.browser,
+        browser,
         registry,
         browserContext,
       })
@@ -116,15 +117,19 @@ export class ToolLoopExecutorBackend implements ExecutorBackend {
     }
   }
 
-  async close(): Promise<void> {}
+  async close(): Promise<void> {
+    // No persistent resources; AiSdkAgent is disposed at the end of each execute() call.
+  }
 
   getTotalSteps(): number {
     return this.stepsUsed
   }
 
-  private async browserContext(): Promise<BrowserContext | undefined> {
-    const pages = await this.options.browser?.listPages()
-    const activePage = pages?.[0]
+  private async browserContext(
+    browser: Browser,
+  ): Promise<BrowserContext | undefined> {
+    const pages = await browser.listPages()
+    const activePage = pages[0]
     if (!activePage) return undefined
 
     return {
