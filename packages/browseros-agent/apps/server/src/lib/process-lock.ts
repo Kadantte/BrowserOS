@@ -29,7 +29,7 @@ export class ProcessLockTimeoutError extends Error {
     public readonly lockName: string,
     public readonly lockPath: string,
     public readonly timeoutMs: number,
-    public readonly cause?: unknown,
+    public override readonly cause?: unknown,
   ) {
     super(
       `Timed out acquiring process lock "${lockName}" at ${lockPath} after ${timeoutMs}ms`,
