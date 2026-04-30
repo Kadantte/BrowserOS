@@ -133,6 +133,14 @@ class UnsupportedPlatformTestRuntime extends ContainerRuntime {
     throw unsupportedPlatformError()
   }
 
+  override async prewarmGatewayImage(): Promise<void> {
+    throw unsupportedPlatformError()
+  }
+
+  override async isGatewayCurrent(): Promise<boolean> {
+    return false
+  }
+
   override async startGateway(): Promise<void> {
     throw unsupportedPlatformError()
   }

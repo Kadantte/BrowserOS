@@ -117,6 +117,35 @@ describe('OpenClawService', () => {
     expect(logs).toContain('OpenClaw prewarm: ready')
   })
 
+  it('logs the overridden image ref during prewarm', async () => {
+    const originalImage = process.env.OPENCLAW_IMAGE
+    process.env.OPENCLAW_IMAGE = 'localhost/openclaw:test'
+    const ensureReady = mock(async () => {})
+    const prewarmGatewayImage = mock(async () => {})
+    const logs: string[] = []
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.runtime = {
+      ensureReady,
+      isReady: async () => false,
+      prewarmGatewayImage,
+    }
+
+    try {
+      await service.prewarm((line) => logs.push(line))
+    } finally {
+      if (originalImage === undefined) {
+        delete process.env.OPENCLAW_IMAGE
+      } else {
+        process.env.OPENCLAW_IMAGE = originalImage
+      }
+    }
+
+    expect(logs).toContain(
+      'OpenClaw prewarm: ensuring image localhost/openclaw:test is available',
+    )
+  })
+
   it('creates agents through the cli client without role bootstrap files', async () => {
     tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
     const createAgent = mock(async () => ({

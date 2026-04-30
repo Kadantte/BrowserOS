@@ -83,6 +83,10 @@ describe('container-runtime factory', () => {
       running: false,
     })
     await expect(runtime.ensureReady()).rejects.toThrow('supports macOS only')
+    await expect(runtime.prewarmGatewayImage()).rejects.toThrow(
+      'supports macOS only',
+    )
+    await expect(runtime.isGatewayCurrent()).resolves.toBe(false)
     await expect(runtime.stopVm()).resolves.toBeUndefined()
   })
 

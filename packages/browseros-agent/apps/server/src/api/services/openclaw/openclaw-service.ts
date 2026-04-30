@@ -351,15 +351,15 @@ export class OpenClawService {
   /** Warm the VM and gateway image so later setup/start avoids registry work. */
   async prewarm(onLog?: (msg: string) => void): Promise<void> {
     return this.withLifecycleLock('prewarm', async () => {
+      const imageRef = process.env.OPENCLAW_IMAGE?.trim() || OPENCLAW_IMAGE
       const logProgress = (message: string) => {
+        // Startup prewarm runs outside a user request, so keep phase logs visible without streaming command progress.
         logger.info(message)
         onLog?.(message)
       }
       logProgress('OpenClaw prewarm: ensuring BrowserOS VM is ready')
       await this.runtime.ensureReady()
-      logProgress(
-        `OpenClaw prewarm: ensuring image ${OPENCLAW_IMAGE} is available`,
-      )
+      logProgress(`OpenClaw prewarm: ensuring image ${imageRef} is available`)
       await this.runtime.prewarmGatewayImage()
       logProgress('OpenClaw prewarm: ready')
     })
