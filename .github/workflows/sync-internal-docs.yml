@@ -21,6 +21,7 @@ jobs:
 
       - uses: actions/checkout@v4
         with:
+          token: ${{ secrets.INTERNAL_DOCS_SYNC_TOKEN }}
           submodules: true
           ref: dev
           fetch-depth: 50
