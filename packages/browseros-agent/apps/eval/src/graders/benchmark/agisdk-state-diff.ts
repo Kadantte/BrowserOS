@@ -14,9 +14,7 @@ import type { Grader, GraderInput } from '../types'
 const EVAL_SCRIPT = join(
   import.meta.dirname,
   '..',
-  '..',
-  '..',
-  'scripts',
+  'python',
   'agisdk-evaluate.py',
 )
 

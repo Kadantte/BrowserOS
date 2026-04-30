@@ -22,10 +22,7 @@ interface InfinityEvalOutput {
   message: string
 }
 
-const EVAL_SCRIPT = resolve(
-  import.meta.dir,
-  '../../../scripts/infinity-evaluate.py',
-)
+const EVAL_SCRIPT = resolve(import.meta.dir, '../python/infinity-evaluate.py')
 
 export class InfinityStateGrader implements Grader {
   name = 'infinity_state'
