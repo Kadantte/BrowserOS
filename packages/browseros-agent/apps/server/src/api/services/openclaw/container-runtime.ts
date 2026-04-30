@@ -15,6 +15,7 @@ import type {
   ContainerCommandResult,
   ContainerSpec,
   LogFn,
+  WaitForContainerNameReleaseOptions,
 } from '../../../lib/container'
 import { isContainerNameInUse } from '../../../lib/container'
 import { logger } from '../../../lib/logger'
@@ -30,6 +31,10 @@ const GATEWAY_STATE_DIR = `${GATEWAY_CONTAINER_HOME}/.openclaw`
 const GUEST_OPENCLAW_HOME = `${GUEST_VM_STATE}/openclaw`
 const GATEWAY_NPM_PREFIX = `${GATEWAY_CONTAINER_HOME}/.npm-global`
 const CREATE_CONTAINER_MAX_ATTEMPTS = 3
+const OPENCLAW_NAME_RELEASE_WAIT: WaitForContainerNameReleaseOptions = {
+  timeoutMs: 10_000,
+  intervalMs: 100,
+}
 // Prepend user-installed bin so tools like `claude` / `gemini` CLI that
 // are installed via npm into the mounted home are discoverable by
 // OpenClaw's child-process spawns (no login shell is involved).
@@ -263,7 +268,8 @@ export class ContainerRuntime {
     container: ContainerSpec,
     onLog?: LogFn,
   ): Promise<void> {
-    for (let attempt = 1; attempt <= CREATE_CONTAINER_MAX_ATTEMPTS; attempt++) {
+    let attempt = 1
+    while (true) {
       await this.removeContainerAndWait(container.name, onLog)
       try {
         await this.shell.createContainer(container, onLog)
@@ -271,7 +277,7 @@ export class ContainerRuntime {
       } catch (err) {
         if (
           !(err instanceof ContainerNameInUseError) ||
-          attempt === CREATE_CONTAINER_MAX_ATTEMPTS
+          attempt >= CREATE_CONTAINER_MAX_ATTEMPTS
         ) {
           throw err
         }
@@ -280,10 +286,9 @@ export class ContainerRuntime {
           attempt,
           maxAttempts: CREATE_CONTAINER_MAX_ATTEMPTS,
         })
+        attempt++
       }
     }
-
-    throw new Error('OpenClaw gateway container create retry loop exited')
   }
 
   private async runSetupCreateWithNameReconcile(
@@ -291,12 +296,13 @@ export class ContainerRuntime {
     createArgs: string[],
     onLog?: LogFn,
   ): Promise<ContainerCommandResult> {
-    for (let attempt = 1; attempt <= CREATE_CONTAINER_MAX_ATTEMPTS; attempt++) {
+    let attempt = 1
+    while (true) {
       const result = await this.shell.runCommand(createArgs, onLog)
       if (
         result.exitCode === 0 ||
         !isContainerNameInUse(result.stderr) ||
-        attempt === CREATE_CONTAINER_MAX_ATTEMPTS
+        attempt >= CREATE_CONTAINER_MAX_ATTEMPTS
       ) {
         return result
       }
@@ -310,12 +316,7 @@ export class ContainerRuntime {
         },
       )
       await this.removeContainerAndWait(setupContainerName, onLog)
-    }
-
-    return {
-      exitCode: 1,
-      stdout: '',
-      stderr: 'OpenClaw setup container create retry loop exited unexpectedly',
+      attempt++
     }
   }
 
@@ -324,7 +325,10 @@ export class ContainerRuntime {
     onLog?: LogFn,
   ): Promise<void> {
     await this.shell.removeContainer(containerName, { force: true }, onLog)
-    await this.shell.waitForContainerNameRelease(containerName, undefined)
+    await this.shell.waitForContainerNameRelease(
+      containerName,
+      OPENCLAW_NAME_RELEASE_WAIT,
+    )
   }
 
   private async buildGatewayContainerSpec(

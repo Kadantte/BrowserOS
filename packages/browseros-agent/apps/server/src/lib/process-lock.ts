@@ -78,6 +78,7 @@ async function acquireProcessLock(
         realpath: false,
         stale: options.staleMs ?? DEFAULT_STALE_MS,
         update: options.updateMs ?? DEFAULT_UPDATE_MS,
+        // The wrapper owns retry/backoff so acquisition respects timeoutMs.
         retries: 0,
       })
     } catch (err) {

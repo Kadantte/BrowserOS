@@ -12,6 +12,7 @@ import { ContainerRuntime } from '../../../../src/api/services/openclaw/containe
 import { ContainerNameInUseError } from '../../../../src/lib/vm/errors'
 
 const PROJECT_DIR = '/tmp/openclaw'
+const OPENCLAW_NAME_RELEASE_WAIT = { timeoutMs: 10_000, intervalMs: 100 }
 const defaultSpec = {
   hostPort: 18789,
   hostHome: '/Users/me/.browseros/vm/openclaw',
@@ -39,7 +40,7 @@ describe('ContainerRuntime', () => {
     )
     expect(deps.shell.waitForContainerNameRelease).toHaveBeenCalledWith(
       OPENCLAW_GATEWAY_CONTAINER_NAME,
-      undefined,
+      OPENCLAW_NAME_RELEASE_WAIT,
     )
     expect(deps.loader.ensureAgentImageLoaded).toHaveBeenCalledWith(
       'openclaw',
@@ -215,7 +216,7 @@ describe('ContainerRuntime', () => {
     )
     expect(deps.shell.waitForContainerNameRelease).toHaveBeenCalledWith(
       `${OPENCLAW_GATEWAY_CONTAINER_NAME}-setup`,
-      undefined,
+      OPENCLAW_NAME_RELEASE_WAIT,
     )
   })
 

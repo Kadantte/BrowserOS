@@ -287,7 +287,9 @@ function parseContainerInfo(
 
 function isNoSuchContainer(stderr: string): boolean {
   const lower = stderr.toLowerCase()
-  return lower.includes('no such container') || lower.includes('not found')
+  return (
+    lower.includes('no such container') || lower.includes('container not found')
+  )
 }
 
 export function isContainerNameInUse(stderr: string): boolean {

@@ -16,6 +16,7 @@ import { OPENCLAW_GATEWAY_CONTAINER_PORT } from '@browseros/shared/constants/ope
 import { getOpenClawStateDir } from './openclaw-env'
 
 const RUNTIME_STATE_FILE = 'runtime-state.json'
+const MAX_TCP_PORT = 65_535
 
 interface RuntimeState {
   gatewayPort: number
@@ -26,7 +27,7 @@ function readForcedGatewayPort(): number | null {
   if (!raw) return null
 
   const parsed = Number.parseInt(raw, 10)
-  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > 65535) {
+  if (!Number.isInteger(parsed) || parsed <= 0 || parsed > MAX_TCP_PORT) {
     return null
   }
   return parsed
@@ -49,7 +50,7 @@ export async function readPersistedGatewayPort(
       typeof parsed.gatewayPort === 'number' &&
       Number.isInteger(parsed.gatewayPort) &&
       parsed.gatewayPort > 0 &&
-      parsed.gatewayPort <= 65535
+      parsed.gatewayPort <= MAX_TCP_PORT
     ) {
       return parsed.gatewayPort
     }
@@ -89,6 +90,11 @@ async function findAvailablePort(
   let port = startPort
   while (port === excludePort || !(await isPortAvailable(port))) {
     port++
+    if (port > MAX_TCP_PORT) {
+      throw new Error(
+        `No available OpenClaw gateway port found from ${startPort}`,
+      )
+    }
   }
   return port
 }

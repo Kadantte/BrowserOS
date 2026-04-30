@@ -30,8 +30,9 @@ export class ContainerCliError extends VmError {
     command: string,
     public readonly exitCode: number,
     public readonly stderr: string,
+    message = `${command} failed with exit code ${exitCode}: ${stderr}`,
   ) {
-    super(`${command} failed with exit code ${exitCode}: ${stderr}`)
+    super(message)
   }
 }
 
@@ -42,8 +43,12 @@ export class ContainerNameInUseError extends ContainerCliError {
     exitCode: number,
     stderr: string,
   ) {
-    super(command, exitCode, stderr)
-    this.message = `${command} failed because container name "${containerName}" is already in use: ${stderr}`
+    super(
+      command,
+      exitCode,
+      stderr,
+      `${command} failed because container name "${containerName}" is already in use: ${stderr}`,
+    )
   }
 }
 

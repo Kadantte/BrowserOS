@@ -210,6 +210,18 @@ describe('ContainerCli', () => {
     await expect(cli.inspectContainer('gateway')).resolves.toBeNull()
   })
 
+  it('does not treat unrelated not found errors as absent containers', async () => {
+    const sshPath = await fakeSsh(
+      { stderr: 'network interface not found', exit: 1 },
+      logPath,
+    )
+    const cli = await createCli(sshPath, tempDir)
+
+    await expect(cli.inspectContainer('gateway')).rejects.toBeInstanceOf(
+      ContainerCliError,
+    )
+  })
+
   it('waits until a container name is no longer resolvable', async () => {
     const sshPath = await fakeSshContainerExistsThenMissing(tempDir, logPath)
     const cli = await createCli(sshPath, tempDir)
