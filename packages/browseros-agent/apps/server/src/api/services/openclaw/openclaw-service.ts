@@ -356,11 +356,11 @@ export class OpenClawService {
         onLog?.(message)
       }
       logProgress('OpenClaw prewarm: ensuring BrowserOS VM is ready')
-      await this.runtime.ensureReady(logProgress)
+      await this.runtime.ensureReady()
       logProgress(
         `OpenClaw prewarm: ensuring image ${OPENCLAW_IMAGE} is available`,
       )
-      await this.runtime.prewarmGatewayImage(logProgress)
+      await this.runtime.prewarmGatewayImage()
       logProgress('OpenClaw prewarm: ready')
     })
   }

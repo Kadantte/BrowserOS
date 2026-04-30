@@ -108,6 +108,8 @@ describe('OpenClawService', () => {
 
     expect(ensureReady).toHaveBeenCalledTimes(1)
     expect(prewarmGatewayImage).toHaveBeenCalledTimes(1)
+    expect(ensureReady.mock.calls[0]?.length).toBe(0)
+    expect(prewarmGatewayImage.mock.calls[0]?.length).toBe(0)
     expect(logs).toContain('OpenClaw prewarm: ensuring BrowserOS VM is ready')
     expect(logs).toContain(
       `OpenClaw prewarm: ensuring image ${OPENCLAW_IMAGE} is available`,
