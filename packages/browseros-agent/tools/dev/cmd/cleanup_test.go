@@ -108,7 +108,7 @@ func TestValidateDevProfileRootRejectsUnsafePaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{"/", home} {
+	for _, path := range []string{"/", home, "/etc"} {
 		if err := validateDevProfileRootForDeletion(path); err == nil {
 			t.Fatalf("expected %s to be rejected", path)
 		}

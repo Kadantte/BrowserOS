@@ -71,7 +71,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return err
 	} else if ok {
-		if err := runSafeCleanup(out); err != nil {
+		if err := runSafeCleanup(out, safeCleanupOptions{ports: true, temps: true}); err != nil {
 			return err
 		}
 	}
@@ -113,7 +113,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 		}); err != nil {
 			return err
 		} else if ok {
-			if err := runLimactl(limactlPath, paths.LimaHome, "stop", limaVMName); err != nil {
+			if err := runLimactl(out, limactlPath, paths.LimaHome, "stop", limaVMName); err != nil {
 				return err
 			}
 			fmt.Fprintln(out, successStyle.Sprint("VM stopped."))
@@ -130,7 +130,7 @@ func runReset(cmd *cobra.Command, args []string) error {
 	}); err != nil {
 		return err
 	} else if ok {
-		if err := runLimactl(limactlPath, paths.LimaHome, "delete", "--force", limaVMName); err != nil {
+		if err := runLimactl(out, limactlPath, paths.LimaHome, "delete", "--force", limaVMName); err != nil {
 			return err
 		}
 		fmt.Fprintln(out, successStyle.Sprint("VM deleted."))
@@ -222,7 +222,7 @@ func maybeResetOpenClaw(out io.Writer, reader *bufio.Reader, limactlPath string,
 			openClawContainerName,
 			openClawSetupContainer,
 		)
-		if err := runInVM(limactlPath, limaHome, "sh", "-lc", script); err != nil {
+		if err := runInVM(out, limactlPath, limaHome, "sh", "-lc", script); err != nil {
 			return err
 		}
 		fmt.Fprintln(out, successStyle.Sprint("OpenClaw containers removed if present."))
@@ -236,7 +236,7 @@ func maybeResetOpenClaw(out io.Writer, reader *bufio.Reader, limactlPath string,
 		return err
 	} else if ok {
 		script := fmt.Sprintf("nerdctl image rm %s >/dev/null 2>&1 || true", openClawImage)
-		if err := runInVM(limactlPath, limaHome, "sh", "-lc", script); err != nil {
+		if err := runInVM(out, limactlPath, limaHome, "sh", "-lc", script); err != nil {
 			return err
 		}
 		fmt.Fprintln(out, successStyle.Sprint("OpenClaw image removed if present."))
@@ -291,7 +291,8 @@ func maybeResetLegacyPodman(out io.Writer, reader *bufio.Reader) error {
 	fmt.Fprintln(out, dimStyle.Sprint("Future reset flows can add more legacy cleanup checks here."))
 	fmt.Fprintln(out)
 
-	for _, machine := range machines {
+	for i := range machines {
+		machine := machines[i]
 		if machine.Running {
 			if ok, err := confirmYesNo(out, reader, resetPrompt{
 				Title:  "Stop legacy Podman machine?",
@@ -300,11 +301,11 @@ func maybeResetLegacyPodman(out io.Writer, reader *bufio.Reader) error {
 			}); err != nil {
 				return err
 			} else if ok {
-				if err := runCommand(podmanPath, "machine", "stop", machine.Name); err != nil {
+				if err := runCommand(out, podmanPath, "machine", "stop", machine.Name); err != nil {
 					return err
 				}
 				fmt.Fprintf(out, "%s %s\n", successStyle.Sprint("Stopped:"), commandStyle.Sprint(machine.Name))
-				machine.Running = false
+				machines[i].Running = false
 			}
 		}
 
@@ -315,7 +316,7 @@ func maybeResetLegacyPodman(out io.Writer, reader *bufio.Reader) error {
 		}); err != nil {
 			return err
 		} else if ok {
-			if err := runCommand(podmanPath, "machine", "rm", "--force", machine.Name); err != nil {
+			if err := runCommand(out, podmanPath, "machine", "rm", "--force", machine.Name); err != nil {
 				return err
 			}
 			fmt.Fprintf(out, "%s %s\n", successStyle.Sprint("Deleted:"), commandStyle.Sprint(machine.Name))
@@ -363,7 +364,18 @@ func validateDevProfileRootForDeletion(root string) error {
 	if cleanRoot == cleanHome {
 		return fmt.Errorf("refusing to delete home directory %s", cleanRoot)
 	}
+	if !isPathInside(cleanRoot, cleanHome) {
+		return fmt.Errorf("refusing to delete path outside home directory: %s", cleanRoot)
+	}
 	return nil
+}
+
+func isPathInside(path string, parent string) bool {
+	rel, err := filepath.Rel(parent, path)
+	if err != nil {
+		return false
+	}
+	return rel != "." && rel != "" && !strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel)
 }
 
 func findVM(limactlPath string, limaHome string) (*limaListEntry, error) {
@@ -414,16 +426,16 @@ func parseLimaListOutput(output []byte) ([]limaListEntry, error) {
 	return entries, nil
 }
 
-func runLimactl(limactlPath string, limaHome string, args ...string) error {
+func runLimactl(out io.Writer, limactlPath string, limaHome string, args ...string) error {
 	cmd := limactlCommand(limactlPath, limaHome, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = out
+	cmd.Stderr = out
 	return cmd.Run()
 }
 
-func runInVM(limactlPath string, limaHome string, args ...string) error {
+func runInVM(out io.Writer, limactlPath string, limaHome string, args ...string) error {
 	shellArgs := limactlShellArgs(args...)
-	return runLimactl(limactlPath, limaHome, shellArgs...)
+	return runLimactl(out, limactlPath, limaHome, shellArgs...)
 }
 
 func limactlShellArgs(args ...string) []string {
@@ -436,9 +448,9 @@ func limactlCommand(limactlPath string, limaHome string, args ...string) *exec.C
 	return cmd
 }
 
-func runCommand(path string, args ...string) error {
+func runCommand(out io.Writer, path string, args ...string) error {
 	cmd := exec.Command(path, args...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	cmd.Stdout = out
+	cmd.Stderr = out
 	return cmd.Run()
 }

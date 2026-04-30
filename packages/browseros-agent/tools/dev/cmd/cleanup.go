@@ -26,6 +26,11 @@ var (
 	cleanupYes   bool
 )
 
+type safeCleanupOptions struct {
+	ports bool
+	temps bool
+}
+
 func init() {
 	cleanupCmd.Flags().BoolVar(&cleanupPorts, "ports", false, "Only kill port processes")
 	cleanupCmd.Flags().BoolVar(&cleanupTemps, "temps", false, "Only remove temp directories")
@@ -51,15 +56,15 @@ func runCleanup(cmd *cobra.Command, args []string) error {
 			return nil
 		}
 	}
-	return runSafeCleanup(out)
+	return runSafeCleanup(out, safeCleanupOptions{
+		ports: !cleanupTemps || cleanupPorts,
+		temps: !cleanupPorts || cleanupTemps,
+	})
 }
 
 // runSafeCleanup is shared by cleanup and reset before any destructive repair steps.
-func runSafeCleanup(out io.Writer) error {
-	doPorts := !cleanupTemps || cleanupPorts
-	doTemps := !cleanupPorts || cleanupTemps
-
-	if doPorts {
+func runSafeCleanup(out io.Writer, opts safeCleanupOptions) error {
+	if opts.ports {
 		ports := proc.DefaultLocalPorts()
 		stopped, err := proc.StopAllWatchProcesses(3 * time.Second)
 		if err != nil {
@@ -82,7 +87,7 @@ func runSafeCleanup(out io.Writer) error {
 		fmt.Fprintln(out, successStyle.Sprint("Ports cleared."))
 	}
 
-	if doTemps {
+	if opts.temps {
 		n := proc.CleanupTempDirs("browseros-test-", "browseros-dev-")
 		if n > 0 {
 			fmt.Fprintf(out, "%s removed %d temp directories\n", successStyle.Sprint("Removed:"), n)
