@@ -89,7 +89,7 @@ export const click = defineTool({
     (document.head || document.documentElement).appendChild(s);
   }
   const d = document.createElement('div');
-  d.style.cssText = 'position:fixed;left:' + (cx - 8) + 'px;top:' + (cy - 8) + 'px;width:16px;height:16px;border-radius:50%;background:#ef4444;box-shadow:0 0 10px 3px rgba(239,68,68,0.55);pointer-events:none;z-index:2147483647;animation:__molmoClickDot 800ms ease-out forwards;';
+  d.style.cssText = 'position:fixed;left:' + (cx - 16) + 'px;top:' + (cy - 16) + 'px;width:32px;height:32px;border-radius:50%;background:#ef4444;box-shadow:0 0 24px 8px rgba(239,68,68,0.6);pointer-events:none;z-index:2147483647;animation:__molmoClickDot 800ms ease-out forwards;';
   document.documentElement.appendChild(d);
   setTimeout(() => d.remove(), 1000);
   return null;
@@ -121,74 +121,28 @@ export const click = defineTool({
   },
 })
 
-export const click_at = defineTool({
-  name: 'click_at',
-  description: 'Click at specific page coordinates',
+export const type = defineTool({
+  name: 'type',
+  description:
+    'Type text into the currently focused element. Call ' +
+    '`click({target: ...})` first to focus the right input.',
   input: z.object({
     page: pageParam,
-    x: z.number().describe('X coordinate'),
-    y: z.number().describe('Y coordinate'),
-    button: z
-      .enum(['left', 'right', 'middle'])
-      .default('left')
-      .describe('Mouse button'),
-    clickCount: z.number().default(1).describe('Number of clicks'),
+    text: z.string().describe('Text to type'),
   }),
   output: z.object({
-    action: z.literal('click_at'),
+    action: z.literal('type'),
     page: z.number(),
-    x: z.number(),
-    y: z.number(),
-    button: z.enum(['left', 'right', 'middle']),
-    clickCount: z.number(),
+    textLength: z.number(),
   }),
   handler: async (args, ctx, response) => {
-    await ctx.browser.clickAt(args.page, args.x, args.y, {
-      button: args.button,
-      clickCount: args.clickCount,
-    })
-    response.text(`Clicked at (${args.x}, ${args.y})`)
+    await ctx.browser.type(args.page, args.text)
+    response.text(`Typed ${args.text.length} characters`)
     response.data({
-      action: 'click_at',
+      action: 'type',
       page: args.page,
-      x: args.x,
-      y: args.y,
-      button: args.button,
-      clickCount: args.clickCount,
+      textLength: args.text.length,
     })
-    response.includeSnapshot(args.page)
-  },
-})
-
-export const hover_at = defineTool({
-  name: 'hover_at',
-  description: 'Hover at specific page coordinates',
-  input: z.object({
-    page: pageParam,
-    x: z.number().describe('X coordinate'),
-    y: z.number().describe('Y coordinate'),
-  }),
-  handler: async (args, ctx, response) => {
-    await ctx.browser.hoverAt(args.page, args.x, args.y)
-    response.text(`Hovered at (${args.x}, ${args.y})`)
-    response.includeSnapshot(args.page)
-  },
-})
-
-export const type_at = defineTool({
-  name: 'type_at',
-  description:
-    'Click at specific coordinates then type text. Use for typing into inputs at known positions.',
-  input: z.object({
-    page: pageParam,
-    x: z.number().describe('X coordinate to click before typing'),
-    y: z.number().describe('Y coordinate to click before typing'),
-    text: z.string().describe('Text to type'),
-    clear: z.boolean().default(false).describe('Clear field before typing'),
-  }),
-  handler: async (args, ctx, response) => {
-    await ctx.browser.typeAt(args.page, args.x, args.y, args.text, args.clear)
-    response.text(`Typed ${args.text.length} chars at (${args.x}, ${args.y})`)
     response.includeSnapshot(args.page)
   },
 })

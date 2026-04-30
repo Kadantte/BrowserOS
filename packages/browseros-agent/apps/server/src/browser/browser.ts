@@ -873,6 +873,11 @@ export class Browser {
     await keyboard.pressCombo(session, key)
   }
 
+  async type(page: number, text: string): Promise<void> {
+    const session = await this.resolveSession(page)
+    await keyboard.typeText(session, text)
+  }
+
   async drag(
     page: number,
     sourceElement: number,

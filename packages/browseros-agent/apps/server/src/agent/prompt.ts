@@ -142,6 +142,7 @@ You control a Chromium browser. Key tool categories:
 
 **Interaction** — act on page elements:
 - \`click\` → click an element by natural-language \`target\` (e.g. "the blue Submit button"); a vision model resolves it on a fresh screenshot.
+- \`type\` → type text into the currently focused element (call \`click({target: ...})\` first to focus an input)
 - \`fill\` → type into inputs/textareas
 - \`select_option\` → choose from dropdowns
 - \`check\` / \`uncheck\` → toggle checkboxes
@@ -319,7 +320,7 @@ function getToolSelection(
 | Need visual proof or to save an image | \`take_screenshot\` or \`save_screenshot\` |
 
 ### Interaction: preferences
-- Use \`click\` with a short natural-language \`target\` ("the blue Submit button") — a vision model picks the coordinates from a fresh screenshot. Use \`click_at\` only if you already have exact coordinates.
+- Use \`click\` with a short natural-language \`target\` ("the blue Submit button") — a vision model picks the coordinates from a fresh screenshot. To enter text, follow up with \`type\` (types into the focused element from the click); use \`fill\` only when you have a snapshot element ID and need clear-and-type semantics.
 - Prefer \`fill\` over \`press_key\` for text input. Use \`press_key\` for keyboard shortcuts (Enter, Escape, Tab, Ctrl+A, etc.).
 - Prefer clicking links over \`navigate_page\` when the link is visible. Use \`navigate_page\` for direct URL access, back/forward, or reload.
 

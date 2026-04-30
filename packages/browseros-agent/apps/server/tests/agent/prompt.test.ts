@@ -575,7 +575,9 @@ describe('tool selection', () => {
 
   it('includes interaction preferences', () => {
     const prompt = buildRegular()
-    expect(prompt).toContain('Prefer `click` with element IDs over `click_at`')
+    expect(prompt).toContain(
+      'Use `click` with a short natural-language `target`',
+    )
     expect(prompt).toContain('Prefer `fill` over `press_key` for text input')
     expect(prompt).toContain('Prefer clicking links over `navigate_page`')
   })
