@@ -776,12 +776,14 @@ describe('OpenClawService', () => {
     firstService.runtime = {
       ensureReady: firstEnsureReady,
       isReady: async () => gatewayReady,
+      isGatewayCurrent: async () => true,
       startGateway,
       waitForReady,
     }
     secondService.runtime = {
       ensureReady: secondEnsureReady,
       isReady: async () => gatewayReady,
+      isGatewayCurrent: async () => true,
       startGateway,
       waitForReady,
     }
