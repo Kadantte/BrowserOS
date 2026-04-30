@@ -13,6 +13,8 @@ import (
 
 var setupIfNeeded bool
 
+const setupModeIfNeeded = true
+
 var setupCmd = &cobra.Command{
 	Use:   "setup",
 	Short: "Install dev dependencies and generate required code",
@@ -44,8 +46,13 @@ func buildSetupPlan(root string, ifNeeded bool) setupPlan {
 }
 
 func generatedGraphQLExists(root string) bool {
-	info, err := os.Stat(filepath.Join(root, "apps/agent/generated/graphql"))
-	return err == nil && info.IsDir()
+	for _, file := range []string{"gql.ts", "graphql.ts", "schema.graphql"} {
+		info, err := os.Stat(filepath.Join(root, "apps/agent/generated/graphql", file))
+		if err != nil || info.IsDir() {
+			return false
+		}
+	}
+	return true
 }
 
 // runDevSetup prepares the repo for local development. Dependency install always
