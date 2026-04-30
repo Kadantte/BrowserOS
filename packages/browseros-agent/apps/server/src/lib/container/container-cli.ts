@@ -72,7 +72,7 @@ export class ContainerCli {
     const args = buildCreateArgs(spec)
     const result = await this.runCommand(args, onLog)
     if (result.exitCode === 0) return
-    if (isNameInUse(result.stderr)) {
+    if (isContainerNameInUse(result.stderr)) {
       throw new ContainerNameInUseError(
         spec.name,
         `nerdctl ${args.join(' ')}`,
@@ -290,7 +290,7 @@ function isNoSuchContainer(stderr: string): boolean {
   return lower.includes('no such container') || lower.includes('not found')
 }
 
-function isNameInUse(stderr: string): boolean {
+export function isContainerNameInUse(stderr: string): boolean {
   const lower = stderr.toLowerCase()
   return (
     (lower.includes('name-store error') && lower.includes('already used')) ||
