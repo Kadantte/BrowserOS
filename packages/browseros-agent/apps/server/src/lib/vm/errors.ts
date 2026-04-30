@@ -35,6 +35,29 @@ export class ContainerCliError extends VmError {
   }
 }
 
+export class ContainerNameInUseError extends ContainerCliError {
+  constructor(
+    public readonly containerName: string,
+    command: string,
+    exitCode: number,
+    stderr: string,
+  ) {
+    super(command, exitCode, stderr)
+    this.message = `${command} failed because container name "${containerName}" is already in use: ${stderr}`
+  }
+}
+
+export class ContainerNameReleaseTimeoutError extends VmError {
+  constructor(
+    public readonly containerName: string,
+    public readonly timeoutMs: number,
+  ) {
+    super(
+      `Timed out waiting ${timeoutMs}ms for container name "${containerName}" to be released`,
+    )
+  }
+}
+
 export class ImageLoadError extends VmError {
   constructor(
     public readonly imageRef: string,
