@@ -5,6 +5,10 @@ on:
     - cron: '0 */4 * * *'
   workflow_dispatch:
 
+concurrency:
+  group: sync-internal-docs
+  cancel-in-progress: false
+
 jobs:
   sync:
     name: Bump internal-docs submodule pointer on dev
@@ -32,6 +36,31 @@ jobs:
         run: |
           set -e
 
+          # Merges immediately when GitHub reports the PR as clean; otherwise enables auto-merge for pending branch requirements.
+          merge_or_enable_auto_merge() {
+            local pr_url="$1"
+            local head_sha="$2"
+            local merge_state=""
+
+            for attempt in 1 2 3 4 5; do
+              merge_state=$(gh pr view "$pr_url" --json mergeStateStatus --jq '.mergeStateStatus')
+              if [ "$merge_state" != "UNKNOWN" ]; then
+                break
+              fi
+
+              echo "PR merge state is UNKNOWN; waiting for GitHub to compute it (attempt ${attempt}/5)."
+              sleep 3
+            done
+
+            echo "PR merge state: ${merge_state}"
+
+            if [ "$merge_state" = "CLEAN" ]; then
+              gh pr merge "$pr_url" --squash --delete-branch --match-head-commit "$head_sha"
+            else
+              gh pr merge "$pr_url" --auto --squash --delete-branch --match-head-commit "$head_sha"
+            fi
+          }
+
           # Skip if submodule not yet configured (handoff window before someone adds it)
           if ! git config --file .gitmodules --get-regexp '^submodule\..internal-docs\.path$' >/dev/null 2>&1; then
             echo "internal-docs submodule not yet configured in .gitmodules. Skipping."
@@ -45,18 +74,42 @@ jobs:
             exit 0
           fi
 
-          BRANCH="bot/sync-internal-docs-$(date -u +%Y%m%d-%H%M%S)"
+          # Reuse an open sync PR so a failed merge attempt does not strand duplicate bot branches.
+          EXISTING_SYNC_PR=$(gh pr list \
+            --base dev \
+            --state open \
+            --json headRefName,url \
+            --jq 'map(select(.headRefName | startswith("bot/sync-internal-docs"))) | first // empty | [.url, .headRefName] | @tsv')
+
+          if [ -n "$EXISTING_SYNC_PR" ]; then
+            PR_URL=$(printf '%s\n' "$EXISTING_SYNC_PR" | cut -f1)
+            BRANCH=$(printf '%s\n' "$EXISTING_SYNC_PR" | cut -f2)
+            echo "Updating existing sync PR: ${PR_URL}"
+          else
+            PR_URL=""
+            BRANCH="bot/sync-internal-docs"
+          fi
+
           git config user.name  "browseros-bot"
           git config user.email "bot@browseros.ai"
-          git checkout -b "$BRANCH"
+          git checkout -B "$BRANCH"
           git add .internal-docs
           git commit -m "chore: sync internal-docs submodule"
-          git push -u origin "$BRANCH"
 
-          PR_URL=$(gh pr create \
-            --base dev \
-            --head "$BRANCH" \
-            --title "chore: sync internal-docs submodule" \
-            --body "Automated bump of the \`.internal-docs\` submodule pointer. Auto-merging.")
+          if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+            git fetch --depth=1 origin "+refs/heads/${BRANCH}:refs/remotes/origin/${BRANCH}"
+            REMOTE_SHA=$(git rev-parse "refs/remotes/origin/${BRANCH}")
+            git push -u origin "$BRANCH" --force-with-lease="refs/heads/${BRANCH}:${REMOTE_SHA}"
+          else
+            git push -u origin "$BRANCH"
+          fi
 
-          gh pr merge "$PR_URL" --auto --squash --delete-branch
+          if [ -z "$PR_URL" ]; then
+            PR_URL=$(gh pr create \
+              --base dev \
+              --head "$BRANCH" \
+              --title "chore: sync internal-docs submodule" \
+              --body "Automated bump of the \`.internal-docs\` submodule pointer. Auto-merging.")
+          fi
+
+          merge_or_enable_auto_merge "$PR_URL" "$(git rev-parse HEAD)"
