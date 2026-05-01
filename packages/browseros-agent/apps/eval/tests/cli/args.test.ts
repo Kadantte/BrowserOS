@@ -52,6 +52,28 @@ describe('parseEvalCliArgs', () => {
     })
   })
 
+  it('parses one-off query overrides for a single eval run', () => {
+    expect(
+      parseEvalCliArgs([
+        'run',
+        '--config',
+        'configs/legacy/gui-click-amazon-smoke.json',
+        '--query',
+        'open the cart',
+        '--start-url',
+        'https://www.amazon.com/',
+        '--output-dir',
+        '/tmp/gui-click-eval',
+      ]),
+    ).toEqual({
+      command: 'run',
+      configPath: 'configs/legacy/gui-click-amazon-smoke.json',
+      query: 'open the cart',
+      startUrl: 'https://www.amazon.com/',
+      outputDir: '/tmp/gui-click-eval',
+    })
+  })
+
   it('rejects missing required command options with targeted errors', () => {
     expect(() => parseEvalCliArgs(['run'])).toThrow(
       'run requires --config or --suite',

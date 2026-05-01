@@ -18,6 +18,9 @@ export interface SuiteCliArgs {
   apiKey?: string
   baseUrl?: string
   publishTarget?: PublishTarget
+  query?: string
+  startUrl?: string
+  outputDir?: string
 }
 
 export interface RunCliArgs
@@ -83,6 +86,9 @@ function parseSuiteLikeArgs(
       'api-key': { type: 'string' },
       'base-url': { type: 'string' },
       publish: { type: 'string' },
+      query: { type: 'string' },
+      'start-url': { type: 'string' },
+      'output-dir': { type: 'string' },
     },
   })
 
@@ -104,6 +110,12 @@ function parseSuiteLikeArgs(
   if (apiKey) parsed.apiKey = apiKey
   const baseUrl = stringValue(values['base-url'])
   if (baseUrl) parsed.baseUrl = baseUrl
+  const query = stringValue(values.query)
+  if (query) parsed.query = query
+  const startUrl = stringValue(values['start-url'])
+  if (startUrl) parsed.startUrl = startUrl
+  const outputDir = stringValue(values['output-dir'])
+  if (outputDir) parsed.outputDir = outputDir
 
   if (command === 'suite') {
     const target = publishTarget(stringValue(values.publish))

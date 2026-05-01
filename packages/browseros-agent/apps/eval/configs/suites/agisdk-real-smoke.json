@@ -5,7 +5,7 @@
     "type": "single"
   },
   "graders": ["agisdk_state_diff"],
-  "workers": 1,
+  "workers": 20,
   "restartBrowserPerTask": true,
   "timeoutMs": 1800000,
   "browseros": {

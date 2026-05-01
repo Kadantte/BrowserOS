@@ -15,6 +15,9 @@ export async function runRunCommand(
       model: args.model,
       apiKey: args.apiKey,
       baseUrl: args.baseUrl,
+      query: args.query,
+      startUrl: args.startUrl,
+      outputDir: args.outputDir,
     },
     deps,
   )

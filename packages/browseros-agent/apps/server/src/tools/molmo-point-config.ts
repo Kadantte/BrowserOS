@@ -1,5 +1,5 @@
 export const MOLMO_POINT_ENDPOINT =
-  'https://gseb9k0a2n2vhl-8000.proxy.runpod.net/'
+  'https://browseros--molmopoint-gui-molmopointserver-web.modal.run/'
 
 export const MOLMO_POINT_MAX_NEW_TOKENS = 64
-export const MOLMO_POINT_TIMEOUT_MS = 10_000
+export const MOLMO_POINT_TIMEOUT_MS = 60_000

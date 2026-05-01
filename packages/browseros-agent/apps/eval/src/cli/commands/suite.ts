@@ -21,6 +21,9 @@ export interface SuiteCommandOptions {
   apiKey?: string
   baseUrl?: string
   publishTarget?: PublishTarget
+  query?: string
+  startUrl?: string
+  outputDir?: string
   env?: Env
 }
 
@@ -179,11 +182,19 @@ export async function runSuiteCommand(
   const resolved = await resolveSuiteCommand(options)
   const runOptions: RunEvalOptions =
     resolved.kind === 'config'
-      ? { configPath: resolved.configPath }
+      ? {
+          configPath: resolved.configPath,
+          query: options.query,
+          startUrl: options.startUrl,
+          outputDir: options.outputDir,
+        }
       : {
           configPath: resolved.suitePath,
           dataPath: resolved.datasetPath,
           config: resolved.evalConfig,
+          query: options.query,
+          startUrl: options.startUrl,
+          outputDir: options.outputDir,
         }
 
   const result = await runEval(runOptions)

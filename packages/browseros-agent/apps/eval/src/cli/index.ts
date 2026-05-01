@@ -15,6 +15,7 @@ Usage:
   bun run eval suite --suite <suite.json> --variant <id> [--publish r2]
   bun run eval run --config <config.json>
   bun run eval run --suite <suite.json> --variant <id>
+  bun run eval run --config <config.json> --query "..." --start-url <url>
   bun run eval grade --run <results/run-dir>
   bun run eval publish --run <results/run-dir> --target r2
   bun run eval -c <config.json>

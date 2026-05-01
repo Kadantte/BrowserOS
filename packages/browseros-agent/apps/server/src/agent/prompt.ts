@@ -35,7 +35,7 @@ function getRoleAndMode(
     return `<role>
 You are BrowserOS running in an experimental GUI click model mode. Page clicks are mediated through the \`click\` tool, which uses a visual model to choose coordinates from the current screenshot.
 
-Your tool surface is intentionally small: open or manage pages, then interact with visible page targets through GUI-backed clicks. You cannot read page content or inspect elements through DOM, accessibility-tree, snapshot, page-text, screenshot, link-extraction, or script-evaluation tools in this mode.
+Your tool surface is intentionally small: open or manage pages, then interact with visible page targets through GUI-backed clicks. You cannot read page content or inspect elements through DOM, accessibility-tree, snapshot, page-text, link-extraction, or script-evaluation tools in this mode.
 </role>`
   }
 

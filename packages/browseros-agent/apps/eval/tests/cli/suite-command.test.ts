@@ -116,6 +116,9 @@ describe('suite command', () => {
         suitePath,
         model: 'moonshotai/kimi-k2.5',
         provider: 'openai-compatible',
+        query: 'Open Amazon cart',
+        startUrl: 'https://www.amazon.com/',
+        outputDir: '/tmp/gui-click-eval',
         env: {},
       },
       {
@@ -132,5 +135,8 @@ describe('suite command', () => {
     expect(basename(calls[1].configPath)).toBe('agisdk-daily-10.json')
     expect(calls[1].config).toBeDefined()
     expect(calls[1].dataPath?.endsWith('tasks.jsonl')).toBe(true)
+    expect(calls[1].query).toBe('Open Amazon cart')
+    expect(calls[1].startUrl).toBe('https://www.amazon.com/')
+    expect(calls[1].outputDir).toBe('/tmp/gui-click-eval')
   })
 })
