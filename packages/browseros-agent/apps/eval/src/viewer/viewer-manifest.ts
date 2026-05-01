@@ -35,6 +35,7 @@ export interface ViewerManifest {
   suiteId?: string
   variantId?: string
   uploadedAt?: string
+  reportPath?: string
   agentConfig?: Record<string, unknown>
   dataset?: string
   summary?: Record<string, unknown>
@@ -46,6 +47,7 @@ export interface BuildViewerManifestInput {
   suiteId?: string
   variantId?: string
   uploadedAt?: string
+  reportPath?: string
   agentConfig?: Record<string, unknown>
   dataset?: string
   summary?: Record<string, unknown>
@@ -74,6 +76,7 @@ export function buildViewerManifest(
     ...(input.suiteId ? { suiteId: input.suiteId } : {}),
     ...(input.variantId ? { variantId: input.variantId } : {}),
     ...(input.uploadedAt ? { uploadedAt: input.uploadedAt } : {}),
+    ...(input.reportPath ? { reportPath: input.reportPath } : {}),
     ...(input.agentConfig ? { agentConfig: input.agentConfig } : {}),
     ...(input.dataset ? { dataset: input.dataset } : {}),
     ...(input.summary ? { summary: input.summary } : {}),

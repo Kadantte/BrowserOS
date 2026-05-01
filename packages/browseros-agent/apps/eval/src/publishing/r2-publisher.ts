@@ -379,10 +379,12 @@ export class R2Publisher {
         await readFile(join(runDir, 'summary.json'), 'utf-8'),
       ) as Record<string, unknown>
     } catch {}
+    const reportStat = await stat(join(runDir, 'report.html')).catch(() => null)
 
     return buildViewerManifest({
       runId,
       uploadedAt: this.now().toISOString(),
+      reportPath: reportStat?.isFile() ? 'report.html' : undefined,
       agentConfig,
       dataset,
       summary: summaryData

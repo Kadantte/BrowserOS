@@ -61,6 +61,17 @@
   .header-stats .stat-pass { color: #3fb950; }
   .header-stats .stat-fail { color: #f85149; }
   .header-stats .stat-score { color: #f0883e; }
+  .header-report {
+    color: #58a6ff;
+    text-decoration: none;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid #30363d;
+    border-radius: 6px;
+    padding: 5px 9px;
+    white-space: nowrap;
+  }
+  .header-report:hover { border-color: #58a6ff; background: #1c2333; }
 
   /* ── 3-column layout ─────────────────────────────────────────── */
   .layout {
@@ -526,6 +537,7 @@
   <div class="header-sep"></div>
   <span class="header-run" id="header-run"></span>
   <span class="header-date" id="header-date"></span>
+  <a class="header-report" id="header-report" target="_blank" rel="noopener" style="display: none;">Run Report</a>
   <div class="header-stats" id="header-stats"></div>
 </div>
 
@@ -628,6 +640,16 @@
       parts.push(`<span class="stat-score">avg ${stats.avgScore}%</span>`);
     }
     el.innerHTML = parts.join('');
+
+    const reportLink = document.getElementById('header-report');
+    const url = reportUrl(manifest);
+    if (url) {
+      reportLink.href = url;
+      reportLink.style.display = '';
+    } else {
+      reportLink.removeAttribute('href');
+      reportLink.style.display = 'none';
+    }
   }
 
   // ── Sidebar rendering ─────────────────────────────────────────
@@ -714,7 +736,7 @@
   }
 
   function artifactPath(task, artifact) {
-    const manifestPath = task.paths && task.paths[artifact];
+    const manifestPath = task.paths?.[artifact];
     if (typeof manifestPath === 'string' && manifestPath.length > 0) {
       return manifestPath.replace(/^\/+/, '');
     }
@@ -723,6 +745,17 @@
 
   function artifactUrl(task, artifact) {
     return `${basePath}/${artifactPath(task, artifact)}`;
+  }
+
+  function runArtifactUrl(path) {
+    if (typeof path !== 'string' || path.length === 0) return null;
+    return `${basePath}/${path.replace(/^\/+/, '')}`;
+  }
+
+  function reportUrl(manifest, task) {
+    const url = runArtifactUrl(manifest?.reportPath);
+    if (!url || !task) return url;
+    return `${url}#${encodeURIComponent(task.queryId || task.id || '')}`;
   }
 
   function metadataUrl(task) {
@@ -909,6 +942,14 @@
       html += '<div class="db-section">';
       html += '<span class="db-label">Duration</span>';
       html += `<span class="db-value">${fmtDuration(task.durationMs)}</span>`;
+      html += '</div>';
+    }
+
+    const reportLink = reportUrl(manifest, task);
+    if (reportLink) {
+      html += '<div class="db-section">';
+      html += '<span class="db-label">Report</span>';
+      html += `<span class="db-value"><a href="${escAttr(reportLink)}" target="_blank" rel="noopener">Open task analysis</a></span>`;
       html += '</div>';
     }
 

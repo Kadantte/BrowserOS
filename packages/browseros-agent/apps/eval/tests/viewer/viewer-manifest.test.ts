@@ -9,6 +9,7 @@ describe('buildViewerManifest', () => {
       suiteId: 'agisdk-daily-10',
       variantId: 'kimi',
       uploadedAt: '2026-04-29T06:00:00.000Z',
+      reportPath: 'report.html',
       summary: { total: 1, passRate: 0 },
       tasks: [
         {
@@ -32,6 +33,7 @@ describe('buildViewerManifest', () => {
 
     const publishManifest: R2RunManifest = manifest
     expect(publishManifest.schemaVersion).toBe(2)
+    expect(manifest.reportPath).toBe('report.html')
     expect(manifest.tasks[0].paths.messages).toBe(
       'tasks/agisdk-dashdish-4/messages.jsonl',
     )

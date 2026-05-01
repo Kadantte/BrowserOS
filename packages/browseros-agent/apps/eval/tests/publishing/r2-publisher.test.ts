@@ -54,6 +54,7 @@ async function writeRunFixture(
     join(runDir, 'summary.json'),
     JSON.stringify({ passRate: 1, avgDurationMs: 1200 }),
   )
+  await writeFile(join(runDir, 'report.html'), '<html>report</html>')
   return { runDir, runId: `${configName}-${timestamp}` }
 }
 
@@ -110,6 +111,9 @@ describe('R2Publisher', () => {
     expect(byKey.get(`runs/${runId}/summary.json`)?.ContentType).toBe(
       'application/json',
     )
+    expect(byKey.get(`runs/${runId}/report.html`)?.ContentType).toBe(
+      'text/html',
+    )
     expect(byKey.get('viewer.html')?.ContentType).toBe('text/html')
     expect(result.viewerUrl).toBe(
       `https://eval.example.test/viewer.html?run=${runId}`,
@@ -126,6 +130,7 @@ describe('R2Publisher', () => {
       uploadedAt: '2026-04-29T12:00:00.000Z',
       agentConfig: { type: 'single', model: 'kimi' },
       dataset: 'webbench',
+      reportPath: 'report.html',
       summary: { passRate: 1, avgDurationMs: 1200 },
       tasks: [
         {

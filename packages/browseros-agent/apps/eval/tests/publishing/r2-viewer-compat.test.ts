@@ -6,6 +6,7 @@ interface ViewerPathResolvers {
   artifactUrl(task: Record<string, unknown>, artifact: string): string
   metadataUrl(task: Record<string, unknown>): string
   messagesUrl(task: Record<string, unknown>): string
+  reportUrl(manifest: Record<string, unknown>): string | null
   screenshotUrl(task: Record<string, unknown>, step: number): string
 }
 
@@ -24,7 +25,7 @@ async function loadViewerPathResolvers(): Promise<ViewerPathResolvers> {
     `
       const basePath = 'runs/run-1';
       ${block}
-      return { artifactUrl, metadataUrl, messagesUrl, screenshotUrl };
+      return { artifactUrl, metadataUrl, messagesUrl, reportUrl, screenshotUrl };
     `,
   ) as () => ViewerPathResolvers
   return createResolvers()
@@ -93,6 +94,15 @@ describe('R2 viewer artifact path compatibility', () => {
     expect(resolvers.screenshotUrl(task, 7)).toBe(
       'runs/run-1/tasks/task-1/screenshots/7.png',
     )
+  })
+
+  it('resolves manifest-level run report links', async () => {
+    const resolvers = await loadViewerPathResolvers()
+
+    expect(resolvers.reportUrl({ reportPath: 'report.html' })).toBe(
+      'runs/run-1/report.html',
+    )
+    expect(resolvers.reportUrl({})).toBe(null)
   })
 
   it('falls back to legacy inferred paths for old uploaded runs', async () => {
