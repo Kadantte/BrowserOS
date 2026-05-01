@@ -31,6 +31,7 @@ import {
   scroll,
   select_option,
   type_at,
+  type_text,
   uncheck,
   upload_file,
 } from './input'
@@ -95,12 +96,13 @@ export const registry = createRegistry([
   evaluate_script,
   get_console_logs,
 
-  // Input (17)
+  // Input (18)
   click,
   click_at,
   hover,
   hover_at,
   type_at,
+  type_text,
   drag_at,
   focus,
   clear,

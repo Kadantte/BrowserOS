@@ -73,4 +73,26 @@ describe('ToolResponse', () => {
     assert.ok(text.includes('[Page 1 snapshot]'))
     assert.ok(text.includes('[42] button "Submit"'))
   })
+
+  it('suppresses snapshot post-actions when requested', async () => {
+    const response = new ToolResponse({ postActionTimeoutMs: 200 })
+    response.text('ok')
+    response.includeSnapshot(1)
+
+    let called = false
+    const browser = {
+      snapshot: async () => {
+        called = true
+        return '[42] button "Submit"'
+      },
+    } as unknown as Browser
+
+    const result = await response.build(browser, { suppressSnapshots: true })
+    const text = textOf(result)
+
+    assert.equal(called, false)
+    assert.ok(text.includes('ok'))
+    assert.ok(!text.includes('Additional context'))
+    assert.ok(!text.includes('[Page 1 snapshot]'))
+  })
 })

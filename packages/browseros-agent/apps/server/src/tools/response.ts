@@ -25,6 +25,10 @@ interface ToolResponseOptions {
   postActionTimeoutMs?: number
 }
 
+interface ToolResponseBuildOptions {
+  suppressSnapshots?: boolean
+}
+
 export class ToolResponse {
   private content: ContentItem[] = []
   private hasError = false
@@ -123,12 +127,19 @@ export class ToolResponse {
     }
   }
 
-  async build(browser: Browser): Promise<ToolResult> {
-    if (this.postActions.length > 0) {
+  async build(
+    browser: Browser,
+    options: ToolResponseBuildOptions = {},
+  ): Promise<ToolResult> {
+    const postActions = options.suppressSnapshots
+      ? this.postActions.filter((action) => action.type !== 'snapshot')
+      : this.postActions
+
+    if (postActions.length > 0) {
       this.text('\n--- Additional context (auto-included) ---')
     }
 
-    for (const action of this.postActions) {
+    for (const action of postActions) {
       try {
         await this.withTimeout(this.runPostAction(action, browser))
       } catch {

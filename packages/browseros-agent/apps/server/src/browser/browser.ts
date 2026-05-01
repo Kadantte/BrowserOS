@@ -364,6 +364,31 @@ export class Browser {
     }
   }
 
+  async resolveFocusedElement(pageId: number): Promise<number | null> {
+    const session = await this.resolveSession(pageId)
+    try {
+      const result = await session.Runtime.evaluate({
+        expression: `(() => {
+          let element = document.activeElement;
+          while (element?.shadowRoot?.activeElement) {
+            element = element.shadowRoot.activeElement;
+          }
+          return element instanceof Element ? element : null;
+        })()`,
+      })
+      const objectId = result.result?.objectId
+      if (!objectId) return null
+
+      const desc = await session.DOM.describeNode({ objectId })
+      const backendNodeId = desc.node?.backendNodeId
+      if (!backendNodeId) return null
+
+      return await this.resolveActionableElement(pageId, backendNodeId)
+    } catch {
+      return null
+    }
+  }
+
   async resolveElementProperties(
     pageId: number,
     backendNodeId: number,
@@ -911,6 +936,16 @@ export class Browser {
     }
   }
 
+  async viewportSize(page: number): Promise<{ width: number; height: number }> {
+    const session = await this.resolveSession(page)
+    const metrics = await session.Page.getLayoutMetrics()
+    const viewport = metrics.cssVisualViewport ?? metrics.cssLayoutViewport
+    return {
+      width: viewport.clientWidth,
+      height: viewport.clientHeight,
+    }
+  }
+
   async evaluate(
     page: number,
     expression: string,
@@ -1099,6 +1134,11 @@ export class Browser {
     await keyboard.typeText(session, text)
   }
 
+  async typeText(page: number, text: string): Promise<void> {
+    const session = await this.resolveSession(page)
+    await keyboard.typeText(session, text)
+  }
+
   async dragAt(
     page: number,
     from: { x: number; y: number },
@@ -1220,8 +1260,9 @@ export class Browser {
       y = center.y
     } else {
       const metrics = await session.Page.getLayoutMetrics()
-      x = metrics.layoutViewport.clientWidth / 2
-      y = metrics.layoutViewport.clientHeight / 2
+      const viewport = metrics.cssVisualViewport ?? metrics.cssLayoutViewport
+      x = viewport.clientWidth / 2
+      y = viewport.clientHeight / 2
     }
 
     const beforeWindowPosition =

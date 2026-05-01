@@ -1,5 +1,8 @@
 import { z } from 'zod'
-import { defineToolWithCategory } from './framework'
+import { logger } from '../lib/logger'
+import { defineToolWithCategory, type ToolContext } from './framework'
+import { resolveGuiPoint } from './gui-click-resolver'
+import type { ToolResponse } from './response'
 
 const pageParam = z.number().describe('Page ID (from list_pages)')
 const defineInputTool = defineToolWithCategory('input')
@@ -7,12 +10,46 @@ const elementParam = z
   .number()
   .describe('Element ID from snapshot (the number in [N])')
 
+async function enforceAcl(
+  toolName: string,
+  args: Record<string, unknown>,
+  ctx: ToolContext,
+  response: ToolResponse,
+): Promise<boolean> {
+  if (!ctx.aclRules?.length) return false
+
+  const { checkAcl } = await import('./acl/acl-guard')
+  const check = await checkAcl(toolName, args, ctx.browser, ctx.aclRules)
+  if (!check.blocked) return false
+
+  const desc =
+    check.rule?.description ??
+    check.rule?.textMatch ??
+    check.rule?.sitePattern ??
+    'ACL rule'
+  if (check.pageId !== undefined && check.elementId !== undefined) {
+    await ctx.browser.highlightBlockedElement(
+      check.pageId,
+      check.elementId,
+      desc,
+    )
+  }
+  response.error(
+    `Action blocked by ACL rule: "${desc}". The element on this page is restricted. Choose a different action or skip this step.`,
+  )
+  return true
+}
+
 export const click = defineInputTool({
   name: 'click',
-  description: 'Click an element by its ID from the last snapshot',
+  description:
+    'Click a visible page target using the GUI click model. Provide a concise visual prompt for what to click.',
   input: z.object({
     page: pageParam,
-    element: elementParam,
+    prompt: z
+      .string()
+      .min(1)
+      .describe('Visual click instruction, e.g. "click the search box"'),
     button: z
       .enum(['left', 'right', 'middle'])
       .default('left')
@@ -25,27 +62,43 @@ export const click = defineInputTool({
   output: z.object({
     action: z.literal('click'),
     page: z.number(),
-    element: z.number(),
+    prompt: z.string(),
     button: z.enum(['left', 'right', 'middle']),
     clickCount: z.number(),
+    x: z.number(),
+    y: z.number(),
   }),
   handler: async (args, ctx, response) => {
-    const coords = await ctx.browser.click(args.page, args.element, {
+    const { x, y, log } = await resolveGuiPoint(ctx, args.page, args.prompt)
+    const clickLog = {
+      ...log,
+      clickPoint: { x, y },
+      button: args.button,
+      clickCount: args.clickCount,
+    }
+
+    const blocked = await enforceAcl('click', { ...args, x, y }, ctx, response)
+    if (blocked) {
+      logger.info('GUI click blocked by ACL', clickLog)
+      return
+    }
+
+    logger.info('GUI click dispatching', clickLog)
+    await ctx.browser.clickAt(args.page, x, y, {
       button: args.button,
       clickCount: args.clickCount,
     })
-    const coordText = coords
-      ? ` at (${Math.round(coords.x)}, ${Math.round(coords.y)})`
-      : ''
-    response.text(`Clicked [${args.element}]${coordText}`)
+    logger.info('GUI click dispatched', clickLog)
+    response.text('tool call executed successfully')
     response.data({
       action: 'click',
       page: args.page,
-      element: args.element,
+      prompt: args.prompt,
       button: args.button,
       clickCount: args.clickCount,
+      x,
+      y,
     })
-    response.includeSnapshot(args.page)
   },
 })
 
@@ -146,22 +199,43 @@ export const drag_at = defineInputTool({
 
 export const hover = defineInputTool({
   name: 'hover',
-  description: 'Hover over an element by its ID',
+  description:
+    'Hover over a visible page target using the GUI click model. Provide a concise visual prompt for what to hover.',
   input: z.object({
     page: pageParam,
-    element: elementParam,
+    prompt: z
+      .string()
+      .min(1)
+      .describe('Visual hover instruction, e.g. "hover the account menu"'),
   }),
   output: z.object({
     action: z.literal('hover'),
     page: z.number(),
-    element: z.number(),
+    prompt: z.string(),
+    x: z.number(),
+    y: z.number(),
   }),
   handler: async (args, ctx, response) => {
-    const coords = await ctx.browser.hover(args.page, args.element)
-    response.text(
-      `Hovered over [${args.element}] at (${Math.round(coords.x)}, ${Math.round(coords.y)})`,
-    )
-    response.data({ action: 'hover', page: args.page, element: args.element })
+    const { x, y, log } = await resolveGuiPoint(ctx, args.page, args.prompt)
+    const hoverLog = { ...log, hoverPoint: { x, y } }
+
+    const blocked = await enforceAcl('hover', { ...args, x, y }, ctx, response)
+    if (blocked) {
+      logger.info('GUI hover blocked by ACL', hoverLog)
+      return
+    }
+
+    logger.info('GUI hover dispatching', hoverLog)
+    await ctx.browser.hoverAt(args.page, x, y)
+    logger.info('GUI hover dispatched', hoverLog)
+    response.text('tool call executed successfully')
+    response.data({
+      action: 'hover',
+      page: args.page,
+      prompt: args.prompt,
+      x,
+      y,
+    })
   },
 })
 
@@ -251,6 +325,32 @@ export const press_key = defineInputTool({
   },
 })
 
+export const type_text = defineInputTool({
+  name: 'type_text',
+  description:
+    'Type text into the currently focused element. Use after GUI click focuses a text field.',
+  input: z.object({
+    page: pageParam,
+    text: z
+      .string()
+      .describe('Text to type into the currently focused element'),
+  }),
+  output: z.object({
+    action: z.literal('type_text'),
+    page: z.number(),
+    textLength: z.number(),
+  }),
+  handler: async (args, ctx, response) => {
+    await ctx.browser.typeText(args.page, args.text)
+    response.text('tool call executed successfully')
+    response.data({
+      action: 'type_text',
+      page: args.page,
+      textLength: args.text.length,
+    })
+  },
+})
+
 export const drag = defineInputTool({
   name: 'drag',
   description:
@@ -303,7 +403,7 @@ export const drag = defineInputTool({
 
 export const scroll = defineInputTool({
   name: 'scroll',
-  description: 'Scroll the page or a specific element',
+  description: 'Scroll the page viewport',
   input: z.object({
     page: pageParam,
     direction: z
@@ -311,32 +411,21 @@ export const scroll = defineInputTool({
       .default('down')
       .describe('Scroll direction'),
     amount: z.number().default(3).describe('Number of scroll ticks'),
-    element: z
-      .number()
-      .optional()
-      .describe('Element ID to scroll at (scrolls page center if omitted)'),
   }),
   output: z.object({
     action: z.literal('scroll'),
     page: z.number(),
     direction: z.enum(['up', 'down', 'left', 'right']),
     amount: z.number(),
-    element: z.number().optional(),
   }),
   handler: async (args, ctx, response) => {
-    await ctx.browser.scroll(
-      args.page,
-      args.direction,
-      args.amount,
-      args.element,
-    )
+    await ctx.browser.scroll(args.page, args.direction, args.amount)
     response.text(`Scrolled ${args.direction} by ${args.amount}`)
     response.data({
       action: 'scroll',
       page: args.page,
       direction: args.direction,
       amount: args.amount,
-      element: args.element,
     })
   },
 })

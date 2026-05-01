@@ -19,6 +19,7 @@ const GUARDED_TOOLS = new Set([
   'uncheck',
   'select_option',
   'press_key',
+  'type_text',
   'upload_file',
 ])
 
@@ -38,6 +39,9 @@ async function resolveTargetElementId(
   if (typeof args.element === 'number') return args.element
   if (toolName === 'drag' && typeof args.sourceElement === 'number') {
     return args.sourceElement
+  }
+  if (toolName === 'type_text') {
+    return (await browser.resolveFocusedElement(pageId)) ?? undefined
   }
 
   if (typeof args.x === 'number' && typeof args.y === 'number') {

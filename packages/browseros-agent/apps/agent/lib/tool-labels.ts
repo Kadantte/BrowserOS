@@ -36,6 +36,7 @@ const VERB_OVERRIDES: Record<string, string> = {
   hover: 'Hovered',
   hover_at: 'Hovered at coordinates',
   type_at: 'Typed at coordinates',
+  type_text: 'Typed text',
   drag_at: 'Dragged',
   focus: 'Focused element',
   fill: 'Filled field',
@@ -186,8 +187,8 @@ const SUBJECT_EXTRACTORS: Record<string, SubjectExtractor> = {
   find_files: (i) => quote(stringField(i, 'pattern', 'query')),
 
   // Element interactions
-  click: (i) => stringField(i, 'element'),
-  hover: (i) => stringField(i, 'element'),
+  click: (i) => stringField(i, 'prompt'),
+  hover: (i) => stringField(i, 'prompt', 'element'),
   focus: (i) => stringField(i, 'element'),
   clear: (i) => stringField(i, 'element'),
   check: (i) => stringField(i, 'element'),
@@ -199,6 +200,7 @@ const SUBJECT_EXTRACTORS: Record<string, SubjectExtractor> = {
     return target ?? truncate(text, 40)
   },
   press_key: (i) => stringField(i, 'key'),
+  type_text: (i) => truncate(stringField(i, 'text'), 40),
 
   // Coordinate-based input
   click_at: (i) => coords(i.x, i.y),

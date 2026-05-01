@@ -31,6 +31,14 @@ function getRoleAndMode(
   _exclude: Set<string>,
   options?: BuildSystemPromptOptions,
 ): string {
+  if (options?.guiClickOnly) {
+    return `<role>
+You are BrowserOS running in an experimental GUI click model mode. Page clicks are mediated through the \`click\` tool, which uses a visual model to choose coordinates from the current screenshot.
+
+Your tool surface is intentionally small: open or manage pages, then interact with visible page targets through GUI-backed clicks. You cannot read page content or inspect elements through DOM, accessibility-tree, snapshot, page-text, screenshot, link-extraction, or script-evaluation tools in this mode.
+</role>`
+  }
+
   const hasWorkspace = !!options?.workspaceDir
 
   let role: string
@@ -124,6 +132,22 @@ function getCapabilities(
 ): string {
   const hasWorkspace = !!options?.workspaceDir
 
+  if (options?.guiClickOnly) {
+    return `<capabilities>
+## Your Capabilities
+
+### Browser Control
+Use these browser tools under the GUI click model constraint:
+- \`click\` captures the current page screenshot internally, asks the GUI click model where to click based on your prompt, then executes that coordinate click.
+- \`hover\` captures the current page screenshot internally, asks the GUI model where to hover based on your prompt, then moves the cursor there.
+- \`type_text\` types into the currently focused element. Use it after \`click\` focuses a text field.
+- \`scroll\` scrolls the page viewport.
+- \`get_active_page\`, \`list_pages\`, \`navigate_page\`, \`new_page\`, and \`close_page\` are available for opening and managing pages.
+
+You cannot inspect the DOM, accessibility tree, snapshots, page text, screenshots, links, or scripts. Use the Page ID from Browser Context directly and issue concise visual click prompts for page targets.
+</capabilities>`
+  }
+
   let capabilities = `<capabilities>
 ## Your Capabilities
 
@@ -195,6 +219,20 @@ function getExecution(
   _exclude: Set<string>,
   options?: BuildSystemPromptOptions,
 ): string {
+  if (options?.guiClickOnly) {
+    return `<execution>
+## Execution
+
+- Use \`click\` for visible page targets. It is the only click path that should choose page coordinates.
+- Use \`hover\` for visible hover targets, \`type_text\` after focusing a field, and \`scroll\` to move the viewport.
+- Use \`new_page\` or \`navigate_page\` to open websites. Use \`get_active_page\`, \`list_pages\`, and \`close_page\` only when needed for page management.
+- Use the Page ID from Browser Context directly.
+- Do not try to observe the page with snapshots, DOM, accessibility trees, screenshots, scripts, link extraction, or text extraction.
+- You are blind to page content between clicks. Make one concise visual click prompt at a time, then continue from your best estimate of the resulting page state.
+- If the task clearly cannot proceed without page observation, say what blocked you.
+</execution>`
+  }
+
   const isNewTab = options?.origin === 'newtab'
 
   let executionContent = `<execution>
@@ -283,6 +321,20 @@ function getToolSelection(
   _exclude: Set<string>,
   options?: BuildSystemPromptOptions,
 ): string {
+  if (options?.guiClickOnly) {
+    return `<tool_selection>
+## Tool Selection
+
+- Use \`click\` for visible page targets.
+- Use \`hover\` for hover menus or targets that reveal content.
+- Use \`type_text\` only after a prior GUI click likely focused a text input. Include a newline in \`text\` when you need to submit with Enter.
+- Use \`scroll\` to move the page viewport when the target is likely below or above the visible area.
+- The \`prompt\` argument should describe the visible target to click, for example: "click the search box", "click the Add to Cart button", or "click the first product result".
+- Use page-opening and page-management tools only to get to the website or manage tabs; they do not replace visual page clicking.
+- Do not request or rely on element IDs, snapshots, DOM nodes, page text, screenshots, scripts, link extraction, or coordinate click tools.
+</tool_selection>`
+  }
+
   const isNewTab = options?.origin === 'newtab'
 
   const navTable = isNewTab
@@ -412,6 +464,19 @@ function getErrorRecovery(
   options?: BuildSystemPromptOptions,
 ): string {
   const hasWorkspace = !!options?.workspaceDir
+
+  if (options?.guiClickOnly) {
+    return `<error_recovery>
+## Error Recovery
+
+### Browser interaction errors
+- If a click does not appear to make progress, try one more click with a more specific visual prompt.
+- After 2 failed attempts, describe the blocker and ask the user for guidance.
+
+### Page errors
+- If you infer that a site is blocked by login, CAPTCHA, 2FA, geo-blocking, or payment confirmation, pause and ask the user to handle it.
+</error_recovery>`
+  }
 
   let recovery = `<error_recovery>
 ## Error Recovery
@@ -601,6 +666,21 @@ function getStyle(
   _exclude: Set<string>,
   options?: BuildSystemPromptOptions,
 ): string {
+  if (options?.guiClickOnly) {
+    return `<style_rules>
+## Style
+
+<tool_call_style>
+- Keep click prompts concise and visual.
+- Do not narrate routine clicks before calling the tool.
+- After a click, continue from your best estimate of the page state.
+</tool_call_style>
+
+- Be concise.
+- Report blockers plainly when GUI clicks and page opening are insufficient.
+</style_rules>`
+  }
+
   const hasWorkspace = !!options?.workspaceDir
 
   let style = `<style_rules>
@@ -664,8 +744,9 @@ function getUserContext(
         '\nYou are running as a **scheduled background task** on a system-managed hidden page.'
     }
 
-    pageCtx +=
-      '\n\n**CRITICAL RULES:**\n1. **Do NOT call `get_active_page` or `list_pages` to find your starting page.** Use the **page ID from the Browser Context** directly.'
+    pageCtx += options?.guiClickOnly
+      ? '\n\n**CRITICAL RULE:** Use the **page ID from the Browser Context** directly when calling `click`.'
+      : '\n\n**CRITICAL RULES:**\n1. **Do NOT call `get_active_page` or `list_pages` to find your starting page.** Use the **page ID from the Browser Context** directly.'
 
     if (options?.isScheduledTask) {
       const pageRef = options.scheduledTaskPageId
@@ -751,10 +832,19 @@ export interface BuildSystemPromptOptions {
   skillsCatalog?: string
   /** Where the chat session originates from — determines navigation behavior. */
   origin?: 'sidepanel' | 'newtab'
+  /** Experimental mode: browser control is limited to GUI-backed click only. */
+  guiClickOnly?: boolean
 }
 
 export function buildSystemPrompt(options?: BuildSystemPromptOptions): string {
   const exclude = new Set(options?.exclude)
+  if (options?.guiClickOnly) {
+    exclude.add('external-integrations')
+    exclude.add('memory-and-identity')
+    exclude.add('workspace')
+    exclude.add('skills')
+    exclude.add('nudges')
+  }
 
   const sections = Object.entries(promptSections)
     .filter(([key]) => !exclude.has(key))

@@ -32,6 +32,11 @@ import { buildMemoryToolSet } from '../tools/memory/build-toolset'
 import type { ToolRegistry } from '../tools/tool-registry'
 import { CHAT_MODE_ALLOWED_TOOLS } from './chat-mode'
 import { createCompactionPrepareStep, type StepWithUsage } from './compaction'
+import {
+  GUI_CLICK_ONLY_BROWSER_TOOL_NAMES,
+  GUI_CLICK_ONLY_MODE,
+  isGuiClickOnlyBrowserToolAllowed,
+} from './gui-click-only'
 import { buildMcpServerSpecs, createMcpClients } from './mcp-builder'
 import {
   getMessageNormalizationOptions,
@@ -101,6 +106,7 @@ export class AiSdkAgent {
       session: {
         origin: config.resolvedConfig.origin,
         originPageId,
+        suppressSnapshotOutputs: GUI_CLICK_ONLY_MODE,
       },
       aclRules: config.aclRules,
     }
@@ -109,32 +115,48 @@ export class AiSdkAgent {
       toolContext,
       config.resolvedConfig.toolApprovalConfig,
     )
-    const browserTools = config.resolvedConfig.chatMode
-      ? Object.fromEntries(
-          Object.entries(allBrowserTools).filter(([name]) =>
-            CHAT_MODE_ALLOWED_TOOLS.has(name),
-          ),
-        )
-      : allBrowserTools
+    let browserTools = allBrowserTools
+    if (GUI_CLICK_ONLY_MODE) {
+      browserTools = Object.fromEntries(
+        Object.entries(allBrowserTools).filter(([name]) =>
+          isGuiClickOnlyBrowserToolAllowed(name),
+        ),
+      )
+    } else if (config.resolvedConfig.chatMode) {
+      browserTools = Object.fromEntries(
+        Object.entries(allBrowserTools).filter(([name]) =>
+          CHAT_MODE_ALLOWED_TOOLS.has(name),
+        ),
+      )
+    }
     if (config.resolvedConfig.chatMode) {
       logger.info('Chat mode enabled, restricting to read-only browser tools', {
         allowedTools: Array.from(CHAT_MODE_ALLOWED_TOOLS),
+      })
+    }
+    if (GUI_CLICK_ONLY_MODE) {
+      logger.info('GUI click-only mode enabled, restricting browser tools', {
+        allowedTools: Array.from(GUI_CLICK_ONLY_BROWSER_TOOL_NAMES),
       })
     }
 
     // Get Klavis tools from shared background handle (no per-session connection).
     // Only expose when user has enabled servers — matches old per-session gating.
     const klavisTools =
+      !GUI_CLICK_ONLY_MODE &&
       config.klavisRef?.handle &&
       config.browserContext?.enabledMcpServers?.length
         ? buildKlavisToolSet(config.klavisRef.handle)
         : {}
 
     // Connect custom (non-Klavis) MCP servers per-session
-    const specs = await buildMcpServerSpecs({
-      browserContext: config.browserContext,
-    })
-    const { clients, tools: customMcpTools } = await createMcpClients(specs)
+    const { clients, tools: customMcpTools } = GUI_CLICK_ONLY_MODE
+      ? { clients: [] as Array<{ close(): Promise<void> }>, tools: {} }
+      : await createMcpClients(
+          await buildMcpServerSpecs({
+            browserContext: config.browserContext,
+          }),
+        )
     const collidingToolNames = Object.keys(customMcpTools).filter(
       (name) => name in klavisTools,
     )
@@ -183,12 +205,15 @@ export class AiSdkAgent {
 
     // Add filesystem tools — skip in chat mode (read-only) and when no workspace is selected
     const filesystemTools =
-      !config.resolvedConfig.chatMode && config.resolvedConfig.workingDir
+      !GUI_CLICK_ONLY_MODE &&
+      !config.resolvedConfig.chatMode &&
+      config.resolvedConfig.workingDir
         ? buildFilesystemToolSet(config.resolvedConfig.workingDir)
         : {}
-    const memoryTools = config.resolvedConfig.chatMode
-      ? {}
-      : buildMemoryToolSet()
+    const memoryTools =
+      config.resolvedConfig.chatMode || GUI_CLICK_ONLY_MODE
+        ? {}
+        : buildMemoryToolSet()
     const tools = {
       ...browserTools,
       ...externalMcpTools,
@@ -212,6 +237,15 @@ export class AiSdkAgent {
     ) {
       excludeSections.push('nudges')
     }
+    if (GUI_CLICK_ONLY_MODE) {
+      excludeSections.push(
+        'external-integrations',
+        'memory-and-identity',
+        'workspace',
+        'skills',
+        'nudges',
+      )
+    }
     const soulContent = await readSoul()
     const isBootstrap = await isSoulBootstrap()
 
@@ -233,6 +267,7 @@ export class AiSdkAgent {
       declinedApps: config.resolvedConfig.declinedApps,
       skillsCatalog,
       origin: config.resolvedConfig.origin,
+      guiClickOnly: GUI_CLICK_ONLY_MODE,
     })
 
     // Configure compaction for context window management

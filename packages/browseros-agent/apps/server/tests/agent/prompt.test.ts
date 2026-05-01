@@ -92,6 +92,17 @@ function buildScheduled(overrides?: Partial<BuildSystemPromptOptions>): string {
   })
 }
 
+/** Build a prompt for experimental GUI click-only mode */
+function buildGuiClickOnly(
+  overrides?: Partial<BuildSystemPromptOptions>,
+): string {
+  return buildSystemPrompt({
+    guiClickOnly: true,
+    origin: 'sidepanel',
+    ...overrides,
+  })
+}
+
 // ---------------------------------------------------------------------------
 // 1. SECTION PRESENCE
 //
@@ -282,6 +293,22 @@ describe('mode-aware framing', () => {
     const prompt = buildChatMode()
     expect(prompt).toContain('read-only chat mode')
     expect(prompt).toContain('cannot interact with them')
+  })
+
+  it('GUI click-only mode exposes only GUI click and page-opening guidance', () => {
+    const prompt = buildGuiClickOnly()
+    expect(prompt).toContain('experimental GUI click model mode')
+    expect(prompt).toContain('Use `click` for visible page targets')
+    expect(prompt).toContain('Use `hover` for hover menus')
+    expect(prompt).toContain('Use `type_text` only after')
+    expect(prompt).toContain('Use `scroll` to move the page viewport')
+    expect(prompt).toContain('`new_page`')
+    expect(prompt).toContain('`navigate_page`')
+    expect(prompt).toContain('`close_page`')
+    expect(prompt).not.toContain('take_snapshot')
+    expect(prompt).not.toContain('get_dom')
+    expect(prompt).not.toContain('`press_key`')
+    expect(prompt).not.toContain('<external_integrations>')
   })
 
   it('chat mode excludes memory-and-identity section', () => {

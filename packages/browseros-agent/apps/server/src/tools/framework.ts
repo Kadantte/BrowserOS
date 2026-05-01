@@ -29,6 +29,7 @@ export interface ToolDirectories {
 export interface ToolSessionContext {
   origin?: 'sidepanel' | 'newtab'
   originPageId?: number
+  suppressSnapshotOutputs?: boolean
 }
 
 export type ToolContext = {
@@ -135,7 +136,9 @@ export async function executeTool(
     response.error(`Internal error in ${tool.name}: ${message}`)
   }
 
-  const result = await response.build(ctx.browser)
+  const result = await response.build(ctx.browser, {
+    suppressSnapshots: ctx.session?.suppressSnapshotOutputs,
+  })
 
   const pageId = (args as Record<string, unknown>).page
   if (typeof pageId === 'number') {

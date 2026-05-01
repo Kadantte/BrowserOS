@@ -13,8 +13,13 @@ import {
   scroll,
   select_option,
   type_at,
+  type_text,
   uncheck,
 } from '../../src/tools/input'
+import {
+  type ClickPoint,
+  getPngDimensionsFromBase64,
+} from '../../src/tools/molmo-point-client'
 import { close_page, navigate_page, new_page } from '../../src/tools/navigation'
 import { evaluate_script, take_snapshot } from '../../src/tools/snapshot'
 import { cleanupWithBrowser, withBrowser } from '../__helpers__/with-browser'
@@ -121,6 +126,39 @@ async function pointInsideElement(
   return { x: point.x, y: point.y }
 }
 
+async function withMockedGuiPoint(
+  browser: Browser,
+  pageId: number,
+  viewportPoint: ClickPoint,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const screenshot = await browser.screenshot(pageId, {
+    format: 'png',
+    fullPage: false,
+  })
+  const dimensions = getPngDimensionsFromBase64(screenshot.data)
+  const viewport = await browser.viewportSize(pageId)
+  const scaleX = dimensions
+    ? dimensions.width / viewport.width
+    : screenshot.devicePixelRatio
+  const scaleY = dimensions
+    ? dimensions.height / viewport.height
+    : screenshot.devicePixelRatio
+  const originalFetch = globalThis.fetch
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        points: [{ x: viewportPoint.x * scaleX, y: viewportPoint.y * scaleY }],
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    )) as typeof fetch
+  try {
+    await fn()
+  } finally {
+    globalThis.fetch = originalFetch
+  }
+}
+
 const FORM_PAGE = `data:text/html,${encodeURIComponent(`<!DOCTYPE html>
 <html><body>
   <h1>Test Form</h1>
@@ -196,7 +234,7 @@ describe('input tools', () => {
   }, 60_000)
 
   it('click triggers a button', async () => {
-    await withBrowser(async ({ execute }) => {
+    await withBrowser(async ({ browser, execute }) => {
       const newResult = await execute(new_page, { url: FORM_PAGE })
       const pageId = pageIdOf(newResult)
 
@@ -206,18 +244,28 @@ describe('input tools', () => {
       const inputId = findElementId(snapText, 'Enter name')
       await execute(fill, { page: pageId, element: inputId, text: 'Alice' })
 
-      // Click submit
-      const btnId = findElementId(snapText, 'Submit')
-      const clickResult = await execute(click, {
-        page: pageId,
-        element: btnId,
-      })
-      assert.ok(!clickResult.isError, textOf(clickResult))
-      const clickData = structuredOf<{ action: string; element: number }>(
-        clickResult,
+      // Click submit via the GUI point model response.
+      const buttonPoint = await pointInsideElement(
+        { browser, directories: { workingDir: process.cwd() } },
+        pageId,
+        'submit-btn',
       )
-      assert.strictEqual(clickData.action, 'click')
-      assert.strictEqual(clickData.element, btnId)
+      await withMockedGuiPoint(browser, pageId, buttonPoint, async () => {
+        const clickResult = await execute(click, {
+          page: pageId,
+          prompt: 'click the Submit button',
+        })
+        assert.ok(!clickResult.isError, textOf(clickResult))
+        assert.strictEqual(
+          textOf(clickResult),
+          'tool call executed successfully',
+        )
+        const clickData = structuredOf<{ action: string; prompt: string }>(
+          clickResult,
+        )
+        assert.strictEqual(clickData.action, 'click')
+        assert.strictEqual(clickData.prompt, 'click the Submit button')
+      })
 
       const output = await execute(evaluate_script, {
         page: pageId,
@@ -226,6 +274,61 @@ describe('input tools', () => {
       assert.strictEqual(textOf(output), 'clicked:Alice')
 
       await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('click is blocked by ACL after the GUI point resolves', async () => {
+    await withBrowser(async ({ browser }) => {
+      const ctx: ToolContext = {
+        browser,
+        directories: { workingDir: process.cwd() },
+        aclRules: [
+          {
+            id: 'submit-rule',
+            sitePattern: '*',
+            textMatch: 'Submit',
+            enabled: true,
+          },
+        ],
+      }
+
+      const newResult = await executeTool(
+        new_page,
+        { url: FORM_PAGE },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+      const pageId = pageIdOf(newResult)
+      const buttonPoint = await pointInsideElement(ctx, pageId, 'submit-btn')
+
+      await withMockedGuiPoint(browser, pageId, buttonPoint, async () => {
+        const clickResult = await executeTool(
+          click,
+          { page: pageId, prompt: 'click the Submit button' },
+          ctx,
+          AbortSignal.timeout(30_000),
+        )
+        assert.ok(clickResult.isError, 'Expected ACL to block GUI click')
+        assert.ok(textOf(clickResult).includes('Action blocked by ACL rule'))
+      })
+
+      const output = await executeTool(
+        evaluate_script,
+        {
+          page: pageId,
+          expression: 'document.getElementById("output").textContent',
+        },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+      assert.strictEqual(textOf(output), '')
+
+      await executeTool(
+        close_page,
+        { page: pageId },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
     })
   }, 60_000)
 
@@ -397,6 +500,104 @@ describe('input tools', () => {
     })
   }, 60_000)
 
+  it('type_text types into the focused element', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: FORM_PAGE })
+      const pageId = pageIdOf(newResult)
+
+      const snap = await execute(take_snapshot, { page: pageId })
+      const inputId = findElementId(textOf(snap), 'Enter name')
+      await execute(fill, { page: pageId, element: inputId, text: 'hello' })
+
+      const typeResult = await execute(type_text, {
+        page: pageId,
+        text: ' world',
+      })
+      assert.ok(!typeResult.isError, textOf(typeResult))
+      assert.strictEqual(textOf(typeResult), 'tool call executed successfully')
+      assert.deepStrictEqual(structuredOf(typeResult), {
+        action: 'type_text',
+        page: pageId,
+        textLength: ' world'.length,
+      })
+
+      const val = await execute(evaluate_script, {
+        page: pageId,
+        expression: 'document.getElementById("name").value',
+      })
+      assert.strictEqual(textOf(val), 'hello world')
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('type_text is blocked by ACL on the focused element', async () => {
+    await withBrowser(async ({ browser }) => {
+      const ctx: ToolContext = {
+        browser,
+        directories: { workingDir: process.cwd() },
+      }
+
+      const newResult = await executeTool(
+        new_page,
+        { url: FORM_PAGE },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+      const pageId = pageIdOf(newResult)
+
+      const snap = await executeTool(
+        take_snapshot,
+        { page: pageId },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+      const inputId = findElementId(textOf(snap), 'Enter name')
+      await executeTool(
+        fill,
+        { page: pageId, element: inputId, text: 'hello' },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+
+      ctx.aclRules = [
+        {
+          id: 'name-rule',
+          sitePattern: '*',
+          textMatch: 'Enter name',
+          enabled: true,
+        },
+      ]
+
+      const typeResult = await executeTool(
+        type_text,
+        { page: pageId, text: ' blocked' },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+      assert.ok(typeResult.isError, 'Expected ACL to block focused typing')
+      assert.ok(textOf(typeResult).includes('Action blocked by ACL rule'))
+
+      const val = await executeTool(
+        evaluate_script,
+        {
+          page: pageId,
+          expression: 'document.getElementById("name").value',
+        },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+      assert.strictEqual(textOf(val), 'hello')
+
+      await executeTool(
+        close_page,
+        { page: pageId },
+        ctx,
+        AbortSignal.timeout(30_000),
+      )
+    })
+  }, 60_000)
+
   it('scroll dispatches without error', async () => {
     const calls: Array<{
       page: number
@@ -437,24 +638,35 @@ describe('input tools', () => {
       page: 7,
       direction: 'down',
       amount: 5,
-      element: undefined,
     })
   })
 
-  it('hover moves cursor over element', async () => {
-    await withBrowser(async ({ execute }) => {
+  it('hover moves cursor via the GUI point model response', async () => {
+    await withBrowser(async ({ browser, execute }) => {
       const newResult = await execute(new_page, { url: FORM_PAGE })
       const pageId = pageIdOf(newResult)
 
-      const snap = await execute(take_snapshot, { page: pageId })
-      const btnId = findElementId(textOf(snap), 'Submit')
-
-      const hoverResult = await execute(hover, {
-        page: pageId,
-        element: btnId,
+      const buttonPoint = await pointInsideElement(
+        { browser, directories: { workingDir: process.cwd() } },
+        pageId,
+        'submit-btn',
+      )
+      await withMockedGuiPoint(browser, pageId, buttonPoint, async () => {
+        const hoverResult = await execute(hover, {
+          page: pageId,
+          prompt: 'hover the Submit button',
+        })
+        assert.ok(!hoverResult.isError, textOf(hoverResult))
+        assert.strictEqual(
+          textOf(hoverResult),
+          'tool call executed successfully',
+        )
+        const hoverData = structuredOf<{ action: string; prompt: string }>(
+          hoverResult,
+        )
+        assert.strictEqual(hoverData.action, 'hover')
+        assert.strictEqual(hoverData.prompt, 'hover the Submit button')
       })
-      assert.ok(!hoverResult.isError, textOf(hoverResult))
-      assert.ok(textOf(hoverResult).includes('Hovered'))
 
       await execute(close_page, { page: pageId })
     })
@@ -467,7 +679,7 @@ describe('input tools', () => {
         directories: { workingDir: process.cwd() },
       }
       const run =
-        (tool: typeof new_page | typeof take_snapshot | typeof click) =>
+        (tool: typeof new_page | typeof take_snapshot | typeof fill) =>
         (args: unknown) =>
           executeTool(tool, args, ctx, AbortSignal.timeout(30_000))
 
@@ -475,21 +687,29 @@ describe('input tools', () => {
       const pageId = pageIdOf(newResult)
 
       const snap = await run(take_snapshot)({ page: pageId })
-      const btnId = findElementId(textOf(snap), 'Submit')
+      const inputId = findElementId(textOf(snap), 'Enter name')
 
-      const beforeBlock = await run(click)({ page: pageId, element: btnId })
+      const beforeBlock = await run(fill)({
+        page: pageId,
+        element: inputId,
+        text: 'Allowed',
+      })
       assert.ok(!beforeBlock.isError, textOf(beforeBlock))
 
       ctx.aclRules = [
         {
-          id: 'submit-rule',
+          id: 'name-rule',
           sitePattern: '*',
-          textMatch: 'Submit',
+          textMatch: 'Enter name',
           enabled: true,
         },
       ]
 
-      const afterBlock = await run(click)({ page: pageId, element: btnId })
+      const afterBlock = await run(fill)({
+        page: pageId,
+        element: inputId,
+        text: 'Blocked',
+      })
       assert.ok(afterBlock.isError, 'Expected ACL block after updating rules')
       assert.ok(textOf(afterBlock).includes('Action blocked by ACL rule'))
 
@@ -598,19 +818,9 @@ describe('input tools', () => {
       )
       assert.ok(!navResult.isError, textOf(navResult))
 
-      const snap = await executeTool(
-        take_snapshot,
-        { page: pageId },
-        ctx,
-        AbortSignal.timeout(30_000),
-      )
-      const linkMatch = textOf(snap).match(/\[(\d+)\]\s*link/)
-      assert.ok(linkMatch, `Expected a link in snapshot:\n${textOf(snap)}`)
-      const linkId = Number(linkMatch?.[1])
-
       const blockedClick = await executeTool(
-        click,
-        { page: pageId, element: linkId },
+        click_at,
+        { page: pageId, x: 10, y: 10 },
         ctx,
         AbortSignal.timeout(30_000),
       )
