@@ -302,6 +302,7 @@ describe('mode-aware framing', () => {
     expect(prompt).toContain('Use `hover` for hover menus')
     expect(prompt).toContain('Use `type_text` only after')
     expect(prompt).toContain('Use `scroll` to move the page viewport')
+    expect(prompt).toContain('Use `take_screenshot` sparingly')
     expect(prompt).toContain('`new_page`')
     expect(prompt).toContain('`navigate_page`')
     expect(prompt).toContain('`close_page`')

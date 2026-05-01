@@ -5,6 +5,7 @@ export const GUI_CLICK_ONLY_BROWSER_TOOL_NAMES = new Set([
   'hover',
   'scroll',
   'type_text',
+  'take_screenshot',
   'get_active_page',
   'list_pages',
   'navigate_page',
