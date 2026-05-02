@@ -7,11 +7,7 @@
 import { randomUUID } from 'node:crypto'
 import { desc, eq } from 'drizzle-orm'
 import { type BrowserOsDatabase, getDb } from '../db'
-import {
-  type AgentDefinitionRow,
-  agentDefinitions,
-  type NewAgentDefinitionRow,
-} from '../db/schema'
+import { type AgentDefinitionRow, agentDefinitions } from '../db/schema'
 import { logger } from '../logger'
 import {
   resolveDefaultModelId,
@@ -58,7 +54,7 @@ export class DbAgentStore implements AgentStore {
       const now = Date.now()
       const id =
         input.adapter === 'openclaw' ? `oc-${randomUUID()}` : randomUUID()
-      const row: NewAgentDefinitionRow = {
+      const row: AgentDefinitionRow = {
         id,
         name: input.name.trim(),
         adapter: input.adapter,
@@ -100,7 +96,7 @@ export class DbAgentStore implements AgentStore {
       if (existing) return existing
 
       const now = Date.now()
-      const row: NewAgentDefinitionRow = {
+      const row: AgentDefinitionRow = {
         id: input.id,
         name: input.name.trim(),
         adapter: input.adapter,

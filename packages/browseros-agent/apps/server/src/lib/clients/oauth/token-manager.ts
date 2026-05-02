@@ -9,7 +9,31 @@ import { TIMEOUTS } from '@browseros/shared/constants/timeouts'
 import { logger } from '../../logger'
 import type { OAuthCallbackServer } from './callback-server'
 import { getOAuthProvider, type OAuthProviderConfig } from './providers'
-import type { OAuthTokenStore, StoredOAuthTokens } from './token-store'
+
+export interface StoredOAuthTokens {
+  accessToken: string
+  refreshToken: string
+  expiresAt: number
+  email?: string
+  accountId?: string
+}
+
+export interface OAuthStatus {
+  authenticated: boolean
+  email?: string
+  provider: string
+}
+
+export interface OAuthTokenStore {
+  upsertTokens(
+    browserosId: string,
+    provider: string,
+    tokens: StoredOAuthTokens,
+  ): void
+  getTokens(browserosId: string, provider: string): StoredOAuthTokens | null
+  deleteTokens(browserosId: string, provider: string): void
+  getStatus(browserosId: string, provider: string): OAuthStatus
+}
 
 interface PendingOAuthFlow {
   provider: string
