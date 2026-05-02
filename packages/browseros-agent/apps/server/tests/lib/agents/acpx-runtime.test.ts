@@ -1288,13 +1288,15 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
         })
       },
     } as never
+    const calls: Array<{ method: string; input: unknown }> = []
     const runtime = new AcpxRuntime({
       cwd,
       stateDir,
       openclawGatewayChat,
       // Provide a runtime factory that would fail loudly if reached —
       // image turns must NOT fall through to the ACP path.
-      runtimeFactory: () => {
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
         throw new Error('ACP path should not be reached for image turns')
       },
     })
@@ -1325,6 +1327,9 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       { type: 'done', stopReason: 'end_turn' },
     ])
     expect(gatewayCalls).toHaveLength(1)
+    expect(
+      calls.filter((call) => call.method === 'createRuntime'),
+    ).toHaveLength(0)
     const gatewayInput = gatewayCalls[0]?.input as {
       agentId: string
       sessionKey: string
