@@ -188,6 +188,40 @@ export function wrapCommandWithEnv(
   return prefix ? `env ${prefix} ${command}` : command
 }
 
+/** Ensures the runtime cwd exists, creating only the managed default workspace. */
+export async function ensureUsableCwd(
+  cwd: string,
+  isDefaultWorkspace: boolean,
+): Promise<void> {
+  if (isDefaultWorkspace) {
+    await mkdir(cwd, { recursive: true })
+    return
+  }
+  let info: Stats
+  try {
+    info = await stat(cwd)
+  } catch (err) {
+    if (isNotFoundError(err)) {
+      throw new Error(`Selected workspace does not exist: ${cwd}`)
+    }
+    throw err
+  }
+  if (!info.isDirectory()) {
+    throw new Error(`Selected workspace is not a directory: ${cwd}`)
+  }
+}
+
+export function buildBrowserosAcpPrompt(
+  prefix: string,
+  message: string,
+): string {
+  return `${prefix}
+
+<user_request>
+${escapePromptTagText(message)}
+</user_request>`
+}
+
 async function writeFileIfMissing(
   path: string,
   content: string,
@@ -254,6 +288,13 @@ async function sourceFileExists(path: string): Promise<boolean> {
 
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`
+}
+
+function escapePromptTagText(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
 }
 
 function isNotFoundError(err: unknown): boolean {
