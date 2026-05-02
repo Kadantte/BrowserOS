@@ -21,7 +21,7 @@ export class IdentityService {
   /** Chooses the stable BrowserOS id without coupling it to the product SQLite schema. */
   initialize(config: IdentityConfig): void {
     this.browserOSId =
-      config.installId ??
+      normalizeInstallId(config.installId) ??
       this.loadFromState(config.statePath) ??
       this.generateAndSave(config.statePath)
   }
@@ -63,6 +63,10 @@ export class IdentityService {
     }
     return browserosId
   }
+}
+
+function normalizeInstallId(installId: string | undefined): string | null {
+  return installId && installId.length > 0 ? installId : null
 }
 
 function isNotFoundError(err: unknown): boolean {

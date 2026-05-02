@@ -28,6 +28,16 @@ describe('IdentityService', () => {
     expect(service.getBrowserOSId()).toBe('install-123')
   })
 
+  it('ignores an empty install id and generates a fallback id', () => {
+    const dir = mkTempDir()
+    const statePath = join(dir, 'identity', 'browseros-id.json')
+    const service = new IdentityService()
+
+    service.initialize({ installId: '', statePath })
+
+    expect(service.getBrowserOSId()).not.toBe('')
+  })
+
   it('persists a generated fallback id without using the database', async () => {
     const dir = mkTempDir()
     const statePath = join(dir, 'identity', 'browseros-id.json')
