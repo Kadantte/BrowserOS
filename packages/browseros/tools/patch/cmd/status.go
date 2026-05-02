@@ -24,6 +24,9 @@ func init() {
 			if err != nil {
 				return err
 			}
+			if progress := commandProgress(cmd); progress != nil {
+				progress.Step("Inspecting workspace drift")
+			}
 			status, err := engine.InspectWorkspace(cmd.Context(), ws, info)
 			if err != nil {
 				return err
