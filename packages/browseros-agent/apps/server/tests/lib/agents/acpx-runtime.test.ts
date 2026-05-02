@@ -837,6 +837,117 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
     )
   })
 
+  it('injects AGENT_HOME into Claude ACP command resolution', async () => {
+    const browserosDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-browseros-'),
+    )
+    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+    tempDirs.push(browserosDir, stateDir)
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      browserosDir,
+      stateDir,
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent = makeAgent({ id: 'agent-1', adapter: 'claude' })
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'hi',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    const command = (
+      calls[0]?.input as AcpRuntimeOptions
+    ).agentRegistry.resolve('claude')
+    expect(command).toContain('env AGENT_HOME=')
+    expect(command).not.toContain('CODEX_HOME=')
+  })
+
+  it('injects AGENT_HOME and CODEX_HOME into Codex ACP command resolution', async () => {
+    const browserosDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-browseros-'),
+    )
+    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+    tempDirs.push(browserosDir, stateDir)
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      browserosDir,
+      stateDir,
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent = makeAgent({ id: 'agent-1', adapter: 'codex' })
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'hi',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    const command = (
+      calls[0]?.input as AcpRuntimeOptions
+    ).agentRegistry.resolve('codex')
+    expect(command).toContain('env AGENT_HOME=')
+    expect(command).toContain('CODEX_HOME=')
+    expect(command).toContain('/runtime/codex-home')
+  })
+
+  it('does not reuse an Acpx runtime across different command identities', async () => {
+    const browserosDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-browseros-'),
+    )
+    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+    tempDirs.push(browserosDir, stateDir)
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      browserosDir,
+      stateDir,
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const first = makeAgent({ id: 'agent-1', adapter: 'codex' })
+    const second = makeAgent({ id: 'agent-2', adapter: 'codex' })
+
+    await collectStream(
+      await runtime.send({
+        agent: first,
+        sessionId: 'main',
+        sessionKey: first.sessionKey,
+        message: 'first',
+        permissionMode: 'approve-all',
+      }),
+    )
+    await collectStream(
+      await runtime.send({
+        agent: second,
+        sessionId: 'main',
+        sessionKey: second.sessionKey,
+        message: 'second',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    expect(
+      calls.filter((call) => call.method === 'createRuntime'),
+    ).toHaveLength(2)
+  })
+
   it('resolves the openclaw adapter to a lima/nerdctl exec command', async () => {
     const calls: Array<{ method: string; input: unknown }> = []
     const runtime = new AcpxRuntime({

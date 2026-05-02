@@ -36,6 +36,7 @@ import {
   ensureRuntimeSkills,
   materializeCodexHome,
   resolveAgentRuntimePaths,
+  wrapCommandWithEnv,
 } from './acpx-runtime-context'
 import {
   deriveRuntimeSessionKey,
@@ -237,6 +238,8 @@ export class AcpxRuntime implements AgentRuntime {
       cwd,
       permissionMode: input.permissionMode,
       nonInteractivePermissions: 'fail',
+      commandEnv: prepared?.agentCommandEnv ?? {},
+      commandIdentity: prepared?.commandIdentity ?? 'openclaw',
       // OpenClaw agents need their gateway sessionKey baked into the
       // spawn command (acpx does not forward sessionKey to newSession);
       // claude/codex don't, and including it would split their cache.
@@ -338,9 +341,17 @@ export class AcpxRuntime implements AgentRuntime {
     cwd: string
     permissionMode: AcpRuntimeOptions['permissionMode']
     nonInteractivePermissions: AcpRuntimeOptions['nonInteractivePermissions']
+    commandEnv: Record<string, string>
+    commandIdentity: string
     openclawSessionKey: string | null
   }): AcpxCoreRuntime {
-    const key = JSON.stringify(input)
+    const key = JSON.stringify({
+      cwd: input.cwd,
+      permissionMode: input.permissionMode,
+      nonInteractivePermissions: input.nonInteractivePermissions,
+      commandIdentity: input.commandIdentity,
+      openclawSessionKey: input.openclawSessionKey,
+    })
     const existing = this.runtimes.get(key)
     if (existing) return existing
 
@@ -352,10 +363,11 @@ export class AcpxRuntime implements AgentRuntime {
     const runtime = this.runtimeFactory({
       cwd: input.cwd,
       sessionStore: this.sessionStore,
-      agentRegistry: createBrowserosAgentRegistry(
-        this.openclawGateway,
-        input.openclawSessionKey,
-      ),
+      agentRegistry: createBrowserosAgentRegistry({
+        openclawGateway: this.openclawGateway,
+        openclawSessionKey: input.openclawSessionKey,
+        commandEnv: input.commandEnv,
+      }),
       mcpServers: isOpenclaw
         ? []
         : createBrowserosMcpServers(this.browserosServerPort),
@@ -369,6 +381,7 @@ export class AcpxRuntime implements AgentRuntime {
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
       browserosServerPort: this.browserosServerPort,
+      commandIdentity: input.commandIdentity,
       openclawSessionKey: input.openclawSessionKey,
     })
     return runtime
@@ -941,10 +954,11 @@ function createBrowserosMcpServers(
   ]
 }
 
-function createBrowserosAgentRegistry(
-  openclawGateway: OpenclawGatewayAccessor | null,
-  openclawSessionKey: string | null,
-): AcpRuntimeOptions['agentRegistry'] {
+function createBrowserosAgentRegistry(input: {
+  openclawGateway: OpenclawGatewayAccessor | null
+  openclawSessionKey: string | null
+  commandEnv: Record<string, string>
+}): AcpRuntimeOptions['agentRegistry'] {
   const registry = createAgentRegistry()
 
   return {
@@ -955,7 +969,7 @@ function createBrowserosAgentRegistry(
       const lower = agentName.trim().toLowerCase()
 
       if (lower === 'openclaw') {
-        if (!openclawGateway) {
+        if (!input.openclawGateway) {
           // Fall back to acpx's built-in `openclaw` adapter, which assumes
           // a host-side openclaw binary. BrowserOS doesn't install one on
           // the host, so this branch will fail at spawn time with a
@@ -963,7 +977,14 @@ function createBrowserosAgentRegistry(
           // gateway accessor.
           return registry.resolve(agentName)
         }
-        return resolveOpenclawAcpCommand(openclawGateway, openclawSessionKey)
+        return resolveOpenclawAcpCommand(
+          input.openclawGateway,
+          input.openclawSessionKey,
+        )
+      }
+
+      if (lower === 'claude' || lower === 'codex') {
+        return wrapCommandWithEnv(registry.resolve(agentName), input.commandEnv)
       }
 
       return registry.resolve(agentName)
