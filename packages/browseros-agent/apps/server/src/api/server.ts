@@ -18,8 +18,7 @@ import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { HttpAgentError } from '../agent/errors'
 import { INLINED_ENV } from '../env'
 import { KlavisClient } from '../lib/clients/klavis/klavis-client'
-import { initializeOAuth } from '../lib/clients/oauth'
-import { getDb } from '../lib/db'
+import type { OAuthTokenManager } from '../lib/clients/oauth/token-manager'
 import { logger } from '../lib/logger'
 import { Sentry } from '../lib/sentry'
 import { getLimaHomeDir, resolveBundledLimactl, VM_NAME } from '../lib/vm'
@@ -89,10 +88,7 @@ export async function createHttpServer(config: HttpServerConfig) {
 
   const { onShutdown } = config
 
-  // Initialize OAuth token manager (callback server binds lazily on first PKCE login)
-  const tokenManager = browserosId
-    ? initializeOAuth(getDb(), browserosId)
-    : null
+  const tokenManager: OAuthTokenManager | null = null
 
   const aclPolicyService = new GlobalAclPolicyService()
   await aclPolicyService.load()
