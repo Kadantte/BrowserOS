@@ -147,7 +147,7 @@ async function setupApplicationTest() {
   const initializeDb = spyOn(dbModule, 'initializeDb').mockImplementation(
     () =>
       ({
-        path: '/tmp/browseros-execution/db/browseros.sqlite',
+        path: '/tmp/browseros-state/db/browseros.sqlite',
         migrationsDir: '/tmp/browseros-resources/db/migrations',
         sqlite: { close: () => {} },
         db: {},

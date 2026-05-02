@@ -95,7 +95,25 @@ describe('getBrowserosDir', () => {
     process.env.NODE_ENV = 'development'
 
     expect(getDbPath()).toBe(
-      join(homedir(), '.browseros-dev', 'db', 'browseros.sqlite'),
+      join(
+        homedir(),
+        PATHS.DEV_BROWSEROS_DIR_NAME,
+        PATHS.DB_DIR_NAME,
+        PATHS.DB_FILE_NAME,
+      ),
+    )
+  })
+
+  it('uses the standard BrowserOS directory for the sqlite database outside development', () => {
+    process.env.NODE_ENV = 'test'
+
+    expect(getDbPath()).toBe(
+      join(
+        homedir(),
+        PATHS.BROWSEROS_DIR_NAME,
+        PATHS.DB_DIR_NAME,
+        PATHS.DB_FILE_NAME,
+      ),
     )
   })
 
