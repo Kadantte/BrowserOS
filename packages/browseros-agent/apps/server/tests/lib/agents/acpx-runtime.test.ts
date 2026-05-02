@@ -859,7 +859,7 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       }),
     )
 
-    const runtimeOptions = calls[0]?.input as AcpRuntimeOptions
+    const runtimeOptions = getCreateRuntimeOptions(calls)
     expect(runtimeOptions.agentRegistry.resolve('claude')).not.toContain(
       '--dangerously-skip-permissions',
     )
@@ -895,9 +895,8 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       }),
     )
 
-    const command = (
-      calls[0]?.input as AcpRuntimeOptions
-    ).agentRegistry.resolve('claude')
+    const command =
+      getCreateRuntimeOptions(calls).agentRegistry.resolve('claude')
     expect(command).toContain('env AGENT_HOME=')
     expect(command).not.toContain('CODEX_HOME=')
   })
@@ -929,9 +928,8 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       }),
     )
 
-    const command = (
-      calls[0]?.input as AcpRuntimeOptions
-    ).agentRegistry.resolve('codex')
+    const command =
+      getCreateRuntimeOptions(calls).agentRegistry.resolve('codex')
     expect(command).toContain('env AGENT_HOME=')
     expect(command).toContain('CODEX_HOME=')
     expect(command).toContain('/runtime/codex-home')
@@ -1016,7 +1014,7 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       }),
     )
 
-    const runtimeOptions = calls[0]?.input as AcpRuntimeOptions
+    const runtimeOptions = getCreateRuntimeOptions(calls)
     const command = runtimeOptions.agentRegistry.resolve('openclaw')
     expect(command).toContain('env LIMA_HOME=/Users/dev/.browseros-dev/lima')
     expect(command).toContain(
@@ -1081,7 +1079,7 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       }),
     )
 
-    const runtimeOptions = calls[0]?.input as AcpRuntimeOptions
+    const runtimeOptions = getCreateRuntimeOptions(calls)
     const command = runtimeOptions.agentRegistry.resolve('openclaw')
     expect(command).toContain(
       '--session agent:main:sidepanel-c0ffee-openclaw-default-medium',
@@ -1440,6 +1438,16 @@ function makeSessionRecord(input: {
     request_token_usage: {},
     acpx: {},
   }
+}
+
+function getCreateRuntimeOptions(
+  calls: Array<{ method: string; input: unknown }>,
+): AcpRuntimeOptions {
+  const input = calls.find((call) => call.method === 'createRuntime')?.input
+  if (!input) {
+    throw new Error('Expected createRuntime call')
+  }
+  return input as AcpRuntimeOptions
 }
 
 function createFakeAcpRuntime(
