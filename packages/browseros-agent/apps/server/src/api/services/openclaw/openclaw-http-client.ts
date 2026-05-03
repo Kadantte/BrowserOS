@@ -73,10 +73,12 @@ export type OpenClawSessionHistoryEvent =
     }
   | { type: 'error'; data: { message: string } }
 
+type GatewayTokenProvider = () => Promise<string | null | undefined>
+
 export class OpenClawHttpClient {
   constructor(
     private readonly hostPort: number,
-    private readonly getToken: () => Promise<string>,
+    private readonly getToken?: GatewayTokenProvider,
   ) {}
 
   async getSessionHistory(
@@ -103,14 +105,11 @@ export class OpenClawHttpClient {
 
   async isAuthenticated(): Promise<boolean> {
     try {
-      const token = await this.getToken()
       const response = await fetch(
         `http://127.0.0.1:${this.hostPort}/v1/models`,
         {
           method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
+          headers: await this.authHeaders(),
         },
       )
       return response.ok
@@ -124,13 +123,12 @@ export class OpenClawHttpClient {
     input: OpenClawSessionHistoryInput,
     extraHeaders: Record<string, string>,
   ): Promise<Response> {
-    const token = await this.getToken()
     const response = await fetch(
       `http://127.0.0.1:${this.hostPort}${buildHistoryPath(sessionKey, input)}`,
       {
         method: 'GET',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(await this.authHeaders()),
           ...extraHeaders,
         },
         signal: input.signal,
@@ -148,6 +146,12 @@ export class OpenClawHttpClient {
       )
     }
     return response
+  }
+
+  private async authHeaders(): Promise<Record<string, string>> {
+    const token = await this.getToken?.()
+    const trimmed = token?.trim()
+    return trimmed ? { Authorization: `Bearer ${trimmed}` } : {}
   }
 }
 

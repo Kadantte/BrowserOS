@@ -143,9 +143,8 @@ export async function createHttpServer(config: HttpServerConfig) {
           getLimactlPath: () => resolveBundledLimactl(resourcesDir),
           getVmName: () => VM_NAME,
         },
-        openclawGatewayChat: new OpenClawGatewayChatClient(
-          () => getOpenClawService().getPort(),
-          async () => getOpenClawService().getGatewayToken(),
+        openclawGatewayChat: new OpenClawGatewayChatClient(() =>
+          getOpenClawService().getPort(),
         ),
         openclawProvisioner: {
           createAgent: (input) => getOpenClawService().createAgent(input),

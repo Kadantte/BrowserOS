@@ -1023,9 +1023,8 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
     expect(command).toContain(
       'nerdctl exec -i -e OPENCLAW_HIDE_BANNER=1 -e OPENCLAW_SUPPRESS_NOTES=1 browseros-openclaw-openclaw-gateway-1',
     )
-    expect(command).toContain(
-      'openclaw acp --url ws://127.0.0.1:18789 --token test-token-abc',
-    )
+    expect(command).toContain('openclaw acp --url ws://127.0.0.1:18789')
+    expect(command).not.toContain('--token')
     // sessionKey routing: the bridge needs --session <key> to map newSession
     // requests to the matching gateway agent (acpx does not forward
     // sessionKey via ACP newSession params).

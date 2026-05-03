@@ -67,7 +67,7 @@ import type {
  * current token and VM/container paths at spawn time.
  */
 export interface OpenclawGatewayAccessor {
-  /** Current gateway auth token. Passed to `openclaw acp --token`. */
+  /** Current gateway auth token. Kept for legacy token-auth gateway clients. */
   getGatewayToken(): string
   /** Container name e.g. browseros-openclaw-openclaw-gateway-1. */
   getContainerName(): string
@@ -1000,8 +1000,8 @@ function createBrowserosAgentRegistry(input: {
  * already installed alongside the gateway is reused; BrowserOS does
  * not require a host-side openclaw install.
  *
- * Auth: `openclaw acp --url ...` deliberately does not reuse implicit
- * env/config credentials, so pass the gateway token explicitly.
+ * Auth: BrowserOS configures the bundled gateway with `gateway.auth.mode=none`,
+ * so no gateway token flag is needed for the local ACP bridge.
  *
  * Banner output: OPENCLAW_HIDE_BANNER and OPENCLAW_SUPPRESS_NOTES
  * suppress non-JSON-RPC chatter on stdout that would otherwise corrupt
@@ -1011,7 +1011,6 @@ function resolveOpenclawAcpCommand(
   gateway: OpenclawGatewayAccessor,
   sessionKey: string | null,
 ): string {
-  const token = gateway.getGatewayToken()
   const limactl = gateway.getLimactlPath()
   const vm = gateway.getVmName()
   const container = gateway.getContainerName()
@@ -1060,8 +1059,6 @@ function resolveOpenclawAcpCommand(
     'acp',
     '--url',
     gatewayUrlInsideContainer,
-    '--token',
-    token,
   ]
   if (bridgeSessionKey) {
     argv.push('--session', bridgeSessionKey)
