@@ -35,22 +35,23 @@ export interface GatewayChatTurnInput {
   signal?: AbortSignal
 }
 
+type GatewayTokenProvider = () => Promise<string | null | undefined>
+
 export class OpenClawGatewayChatClient {
   constructor(
     private readonly getHostPort: () => number,
-    private readonly getToken: () => Promise<string>,
+    private readonly getToken?: GatewayTokenProvider,
   ) {}
 
   async streamTurn(
     input: GatewayChatTurnInput,
   ): Promise<ReadableStream<AgentStreamEvent>> {
-    const token = await this.getToken()
     const response = await fetch(
       `http://127.0.0.1:${this.getHostPort()}/v1/chat/completions`,
       {
         method: 'POST',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(await this.authHeaders()),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -79,6 +80,12 @@ export class OpenClawGatewayChatClient {
         void pumpOpenAIChunks(body, controller, input.signal)
       },
     })
+  }
+
+  private async authHeaders(): Promise<Record<string, string>> {
+    const token = await this.getToken?.()
+    const trimmed = token?.trim()
+    return trimmed ? { Authorization: `Bearer ${trimmed}` } : {}
   }
 }
 
