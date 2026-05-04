@@ -38,7 +38,6 @@ import type {
   AgentStreamEvent,
 } from '../../../lib/agents/types'
 import { logger } from '../../../lib/logger'
-import type { OpenClawGatewayChatClient } from '../openclaw/openclaw-gateway-chat-client'
 
 export type AgentLiveness = 'working' | 'idle' | 'asleep' | 'error'
 
@@ -174,7 +173,6 @@ export class AgentHarnessService {
       runtime?: AgentRuntime
       browserosServerPort?: number
       openclawGateway?: OpenclawGatewayAccessor
-      openclawGatewayChat?: OpenClawGatewayChatClient
       openclawProvisioner?: OpenClawProvisioner
       turnRegistry?: TurnRegistry
       messageQueue?: FileMessageQueue
@@ -186,7 +184,6 @@ export class AgentHarnessService {
       new AcpxRuntime({
         browserosServerPort: deps.browserosServerPort,
         openclawGateway: deps.openclawGateway,
-        openclawGatewayChat: deps.openclawGatewayChat,
       })
     this.openclawProvisioner = deps.openclawProvisioner ?? null
     this.turnRegistry = deps.turnRegistry ?? new TurnRegistry()
