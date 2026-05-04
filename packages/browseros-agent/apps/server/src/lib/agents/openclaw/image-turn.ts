@@ -200,17 +200,15 @@ function userContentToText(content: AcpxUserContent): string {
 }
 
 function unwrapPromptText(raw: string): string {
-  return decodeBasicEntities(
-    raw
-      .replace(
-        /^<browseros_acpx_runtime\b[\s\S]*?<\/browseros_acpx_runtime>\n\n<user_request>\n([\s\S]*?)\n<\/user_request>$/,
-        '$1',
-      )
-      .replace(
-        /^<role>[\s\S]*?<\/role>\n\n<user_request>\n([\s\S]*?)\n<\/user_request>$/,
-        '$1',
-      ),
-  ).trim()
+  const runtimeMatch = raw.match(
+    /^<browseros_acpx_runtime\b[\s\S]*?<\/browseros_acpx_runtime>\n\n<user_request>\n([\s\S]*?)\n<\/user_request>$/,
+  )
+  if (runtimeMatch) return decodeBasicEntities(runtimeMatch[1]).trim()
+  const roleMatch = raw.match(
+    /^<role>[\s\S]*?<\/role>\n\n<user_request>\n([\s\S]*?)\n<\/user_request>$/,
+  )
+  if (roleMatch) return decodeBasicEntities(roleMatch[1]).trim()
+  return raw.trim()
 }
 
 function decodeBasicEntities(value: string): string {

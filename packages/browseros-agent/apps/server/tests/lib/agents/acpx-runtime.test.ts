@@ -1263,7 +1263,15 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
         max_segments: 0,
       },
       closed: false,
-      messages: [],
+      messages: [
+        {
+          User: {
+            id: 'prior-user',
+            content: [{ Text: 'literal &amp; &lt;tag&gt;' } as never],
+          },
+        },
+        { Agent: { content: [{ Text: 'Prior answer.' }], tool_results: {} } },
+      ],
       updated_at: seedTimestamp,
       cumulative_token_usage: {},
       request_token_usage: {},
@@ -1339,6 +1347,10 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       }>
     }
     expect(gatewayInput.agentId).toBe('img-bot')
+    expect(gatewayInput.messages[0]).toEqual({
+      role: 'user',
+      content: 'literal &amp; &lt;tag&gt;',
+    })
     expect(gatewayInput.messages.at(-1)?.role).toBe('user')
     const userContent = gatewayInput.messages.at(-1)?.content
     expect(Array.isArray(userContent)).toBe(true)
@@ -1353,7 +1365,7 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
       agent,
       sessionId: 'main',
     })
-    expect(history.items.map((item) => item.role)).toEqual([
+    expect(history.items.slice(-2).map((item) => item.role)).toEqual([
       'user',
       'assistant',
     ])

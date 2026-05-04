@@ -43,7 +43,6 @@ export interface AcpxAdapterTurnInput {
 }
 
 export interface AcpxAgentAdapter {
-  id: AgentDefinition['adapter']
   prepare(
     input: PrepareAcpxAgentContextInput,
   ): Promise<PreparedAcpxAgentContext>
@@ -53,10 +52,9 @@ export interface AcpxAgentAdapter {
 }
 
 const ADAPTERS: Record<AgentDefinition['adapter'], AcpxAgentAdapter> = {
-  claude: { id: 'claude', prepare: prepareClaudeCodeContext },
-  codex: { id: 'codex', prepare: prepareCodexContext },
+  claude: { prepare: prepareClaudeCodeContext },
+  codex: { prepare: prepareCodexContext },
   openclaw: {
-    id: 'openclaw',
     prepare: prepareOpenClawContext,
     maybeHandleTurn: maybeHandleOpenClawTurn,
   },
