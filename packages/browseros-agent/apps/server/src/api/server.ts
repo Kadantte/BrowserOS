@@ -154,6 +154,14 @@ export async function createHttpServer(config: HttpServerConfig) {
           },
           getStatus: () => getOpenClawService().getStatus(),
         },
+        onTurnLifecycle: (agent, event) => {
+          if (agent.adapter !== 'openclaw') return
+          getOpenClawService().recordAgentTurnEvent(
+            agent.id,
+            agent.sessionKey,
+            event,
+          )
+        },
       }),
     )
 
