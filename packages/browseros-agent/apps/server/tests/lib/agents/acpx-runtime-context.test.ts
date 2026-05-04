@@ -19,7 +19,6 @@ import {
   buildAcpxRuntimePromptPrefix,
   ensureAgentHome,
   ensureRuntimeSkills,
-  materializeClaudeConfig,
   materializeCodexHome,
   resolveAgentRuntimePaths,
   wrapCommandWithEnv,
@@ -67,16 +66,6 @@ describe('acpx runtime context helpers', () => {
         'agent-1',
         'runtime',
         'codex-home',
-      ),
-    )
-    expect(paths.claudeConfigDir).toBe(
-      join(
-        browserosDir,
-        'agents',
-        'harness',
-        'agent-1',
-        'runtime',
-        'claude-config',
       ),
     )
   })
@@ -226,54 +215,6 @@ describe('acpx runtime context helpers', () => {
     await expect(
       materializeCodexHome({ paths, skillNames: skills, sourceCodexHome }),
     ).rejects.toThrow(/config\.toml/)
-  })
-
-  it('materializes Claude config with seed files without touching BrowserOS memory format', async () => {
-    const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-context-'))
-    const sourceClaudeConfigDir = await mkdtemp(
-      join(tmpdir(), 'browseros-claude-src-'),
-    )
-    tempDirs.push(browserosDir, sourceClaudeConfigDir)
-    await writeFile(
-      join(sourceClaudeConfigDir, '.credentials.json'),
-      '{"token":"ok"}\n',
-    )
-    await writeFile(
-      join(sourceClaudeConfigDir, 'settings.json'),
-      '{"theme":"dark"}\n',
-    )
-    const paths = resolveAgentRuntimePaths({
-      browserosDir,
-      agentId: 'agent-1',
-    })
-
-    await ensureAgentHome(paths)
-    await materializeClaudeConfig({ paths, sourceClaudeConfigDir })
-
-    const credentials = await lstat(
-      join(paths.claudeConfigDir, '.credentials.json'),
-    )
-    expect(credentials.isSymbolicLink()).toBe(true)
-    expect(
-      await readFile(join(paths.claudeConfigDir, 'settings.json'), 'utf8'),
-    ).toBe('{"theme":"dark"}\n')
-    expect(
-      await readFile(join(paths.agentHome, 'MEMORY.md'), 'utf8'),
-    ).toContain('# MEMORY.md - What Persists')
-  })
-
-  it('rejects non-file Claude seed sources instead of silently skipping config', async () => {
-    const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-context-'))
-    const sourceClaudeConfigDir = await mkdtemp(
-      join(tmpdir(), 'browseros-claude-src-'),
-    )
-    tempDirs.push(browserosDir, sourceClaudeConfigDir)
-    await mkdir(join(sourceClaudeConfigDir, 'settings.json'))
-    const paths = resolveAgentRuntimePaths({ browserosDir, agentId: 'agent-1' })
-
-    await expect(
-      materializeClaudeConfig({ paths, sourceClaudeConfigDir }),
-    ).rejects.toThrow(/settings\.json/)
   })
 
   it('wraps commands with shell-quoted env vars', () => {

@@ -12,19 +12,16 @@ import {
   finishBrowserosManagedContext,
   prepareBrowserosManagedContext,
 } from '../acpx-agent-common'
-import { materializeClaudeConfig } from '../acpx-runtime-context'
 
-/** Prepares Claude Code with a contained config dir and BrowserOS agent home. */
+/** Prepares Claude Code with BrowserOS agent home while preserving host Claude auth. */
 export async function prepareClaudeCodeContext(
   input: PrepareAcpxAgentContextInput,
 ): Promise<PreparedAcpxAgentContext> {
   const common = await prepareBrowserosManagedContext(input)
-  await materializeClaudeConfig({ paths: common.paths })
   return finishBrowserosManagedContext({
     ...common,
     commandEnv: {
       AGENT_HOME: common.paths.agentHome,
-      CLAUDE_CONFIG_DIR: common.paths.claudeConfigDir,
     },
   })
 }

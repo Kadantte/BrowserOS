@@ -32,7 +32,7 @@ describe('prepareAcpxAgentContext', () => {
     }
   }
 
-  it('prepares Claude with BrowserOS memory, Claude config, BrowserOS MCP, and fingerprinted session', async () => {
+  it('prepares Claude with BrowserOS memory, host auth, BrowserOS MCP, and fingerprinted session', async () => {
     const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
     tempDirs.push(browserosDir)
     const prepared = await prepareAcpxAgentContext({
@@ -46,9 +46,7 @@ describe('prepareAcpxAgentContext', () => {
     })
 
     expect(prepared.commandEnv.AGENT_HOME).toContain('/claude-agent/home')
-    expect(prepared.commandEnv.CLAUDE_CONFIG_DIR).toContain(
-      '/claude-agent/runtime/claude-config',
-    )
+    expect(prepared.commandEnv).not.toHaveProperty('CLAUDE_CONFIG_DIR')
     expect(prepared.commandEnv).not.toHaveProperty('CODEX_HOME')
     expect(prepared.useBrowserosMcp).toBe(true)
     expect(prepared.openclawSessionKey).toBeNull()

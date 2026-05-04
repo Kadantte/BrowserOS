@@ -37,7 +37,6 @@ export interface AgentRuntimePaths {
   runtimeSkillsDir: string
   runtimeRoot: string
   codexHome: string
-  claudeConfigDir: string
 }
 
 export function resolveAgentRuntimePaths(input: {
@@ -62,7 +61,6 @@ export function resolveAgentRuntimePaths(input: {
     runtimeSkillsDir: join(harnessDir, 'runtime-skills'),
     runtimeRoot,
     codexHome: join(runtimeRoot, 'codex-home'),
-    claudeConfigDir: join(runtimeRoot, 'claude-config'),
   }
 }
 
@@ -112,35 +110,6 @@ export async function materializeCodexHome(input: {
         'utf8',
       ),
     )
-  }
-}
-
-const CLAUDE_CONFIG_SEED_FILES = [
-  '.credentials.json',
-  'credentials.json',
-  'settings.json',
-  'settings.local.json',
-  'CLAUDE.md',
-] as const
-
-/** Prepares the Claude config dir that the ACP adapter will see through CLAUDE_CONFIG_DIR. */
-export async function materializeClaudeConfig(input: {
-  paths: AgentRuntimePaths
-  sourceClaudeConfigDir?: string
-}): Promise<void> {
-  await mkdir(input.paths.claudeConfigDir, { recursive: true })
-  const source =
-    input.sourceClaudeConfigDir ??
-    process.env.CLAUDE_CONFIG_DIR?.trim() ??
-    join(homedir(), '.claude')
-  for (const file of CLAUDE_CONFIG_SEED_FILES) {
-    const sourcePath = join(source, file)
-    const targetPath = join(input.paths.claudeConfigDir, file)
-    if (file.includes('credentials')) {
-      await symlinkIfPresent(sourcePath, targetPath)
-    } else {
-      await copyIfPresent(sourcePath, targetPath)
-    }
   }
 }
 
