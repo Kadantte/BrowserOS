@@ -260,9 +260,6 @@ export class OpenClawService {
   private httpClient: OpenClawHttpClient
   private openclawDir: string
   private hostPort = OPENCLAW_GATEWAY_CONTAINER_PORT
-  private token: string
-  private tokenLoaded = false
-  private gatewayAuthMode: 'unknown' | 'none' | 'token' | 'password' = 'unknown'
   private lastError: string | null = null
   private browserosServerPort: number
   private resourcesDir: string | null
@@ -282,12 +279,9 @@ export class OpenClawService {
       projectDir: this.openclawDir,
       browserosRoot: config.browserosDir,
     })
-    this.token = crypto.randomUUID()
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
-    this.httpClient = new OpenClawHttpClient(this.hostPort, () =>
-      this.getGatewayHttpToken(),
-    )
+    this.httpClient = new OpenClawHttpClient(this.hostPort)
     this.browserosServerPort =
       config.browserosServerPort ?? DEFAULT_PORTS.server
     this.resourcesDir = config.resourcesDir ?? null
@@ -321,15 +315,6 @@ export class OpenClawService {
 
   getPort(): number {
     return this.hostPort
-  }
-
-  /**
-   * Legacy gateway auth token accessor. BrowserOS configures new bundled
-   * gateways with `gateway.auth.mode=none`; this remains for older token-auth
-   * gateway clients that still ask the service for a token.
-   */
-  getGatewayToken(): string {
-    return this.token
   }
 
   /** Subscribe to real-time agent status changes from the ClawSession state machine. */
@@ -390,7 +375,6 @@ export class OpenClawService {
         providerKeyCount: Object.keys(provider.envValues).length,
       })
 
-      await this.refreshGatewayAuthToken()
       await this.ensureGatewayPortAllocated(logProgress)
 
       logProgress('Bootstrapping OpenClaw config...')
@@ -413,8 +397,6 @@ export class OpenClawService {
 
       logProgress('Validating OpenClaw config...')
       await this.assertConfigValid(this.bootstrapCliClient)
-
-      await this.refreshGatewayAuthToken()
 
       logProgress('Starting OpenClaw gateway...')
       await this.runtime.startGateway(
@@ -474,8 +456,6 @@ export class OpenClawService {
 
       await this.runtime.ensureReady(logProgress)
 
-      logProgress('Refreshing gateway auth token...')
-      await this.refreshGatewayAuthToken()
       await this.ensureStateEnvFile()
 
       await this.ensureGatewayPortAllocated(logProgress)
@@ -546,8 +526,6 @@ export class OpenClawService {
       this.controlPlaneStatus = 'reconnecting'
       await this.runtime.ensureReady(logProgress)
       this.stopGatewayLogTail()
-      logProgress('Refreshing gateway auth token...')
-      await this.refreshGatewayAuthToken()
       await this.ensureStateEnvFile()
       await this.ensureGatewayPortAllocated(logProgress)
       logProgress('Restarting OpenClaw gateway...')
@@ -592,8 +570,6 @@ export class OpenClawService {
         throw new Error('OpenClaw gateway is not ready')
       }
 
-      logProgress('Reloading gateway auth token...')
-      await this.refreshGatewayAuthToken()
       this.controlPlaneStatus = 'reconnecting'
       logProgress('Reconnecting control plane...')
       await this.runControlPlaneCall(() => this.cliClient.probe())
@@ -867,7 +843,6 @@ export class OpenClawService {
       try {
         await this.runtime.ensureReady()
 
-        await this.refreshGatewayAuthToken()
         await this.ensureStateEnvFile()
 
         const persistedPort = await readPersistedGatewayPort(this.openclawDir)
@@ -997,9 +972,7 @@ export class OpenClawService {
   private setPort(hostPort: number): void {
     if (hostPort === this.hostPort) return
     this.hostPort = hostPort
-    this.httpClient = new OpenClawHttpClient(this.hostPort, () =>
-      this.getGatewayHttpToken(),
-    )
+    this.httpClient = new OpenClawHttpClient(this.hostPort)
   }
 
   private async ensureGatewayPortAllocated(
@@ -1035,13 +1008,10 @@ export class OpenClawService {
     const client =
       hostPort === this.hostPort
         ? this.httpClient
-        : new OpenClawHttpClient(hostPort, () => this.getGatewayHttpToken())
+        : new OpenClawHttpClient(hostPort)
     const authenticated = await client.isAuthenticated()
     if (!authenticated) {
-      logger.warn('OpenClaw gateway readiness probe failed', {
-        hostPort,
-        authMode: this.gatewayAuthMode,
-      })
+      logger.warn('OpenClaw gateway readiness probe failed', { hostPort })
     }
     return authenticated
   }
@@ -1082,7 +1052,6 @@ export class OpenClawService {
 
   private async runControlPlaneCall<T>(fn: () => Promise<T>): Promise<T> {
     try {
-      await this.ensureTokenLoaded()
       const result = await fn()
       this.controlPlaneStatus = 'connected'
       this.lastGatewayError = null
@@ -1103,18 +1072,13 @@ export class OpenClawService {
     if (this.observer.isConnected()) return
     // ClawSession starts empty after the JSONL seed was removed; the WS
     // observer fills in agent status as events arrive.
-    const url = `http://127.0.0.1:${this.hostPort}`
-    const token =
-      this.gatewayAuthMode === 'token' && this.tokenLoaded ? this.token : null
-    this.observer.connect(url, token)
+    this.observer.connect(`http://127.0.0.1:${this.hostPort}`)
   }
 
   private classifyControlPlaneError(
     error: unknown,
   ): OpenClawGatewayRecoveryReason {
     const message = error instanceof Error ? error.message : String(error)
-    if (message.includes('Unauthorized')) return 'token_mismatch'
-    if (message.includes('token')) return 'token_mismatch'
     if (message.includes('not ready')) return 'container_not_ready'
     return 'unknown'
   }
@@ -1342,11 +1306,6 @@ export class OpenClawService {
       hostPort: this.hostPort,
       hostHome: this.openclawDir,
       envFilePath: this.getStateEnvPath(),
-      gatewayToken:
-        this.gatewayAuthMode === 'token' && this.tokenLoaded
-          ? this.token
-          : undefined,
-      privateIngressNoAuth: this.gatewayAuthMode === 'none',
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }
   }
@@ -1449,70 +1408,6 @@ export class OpenClawService {
       providerId: provider.customProvider.providerId,
     })
     return true
-  }
-
-  private async ensureTokenLoaded(): Promise<void> {
-    if (this.gatewayAuthMode !== 'unknown') {
-      return
-    }
-    if (!existsSync(this.getStateConfigPath())) {
-      return
-    }
-
-    await this.loadTokenFromConfig()
-  }
-
-  private async refreshGatewayAuthToken(): Promise<void> {
-    this.tokenLoaded = false
-    this.gatewayAuthMode = 'unknown'
-    if (!existsSync(this.getStateConfigPath())) {
-      return
-    }
-
-    await this.loadTokenFromConfig()
-  }
-
-  private async loadTokenFromConfig(): Promise<void> {
-    try {
-      const config = JSON.parse(
-        await readFile(this.getStateConfigPath(), 'utf-8'),
-      ) as {
-        gateway?: {
-          auth?: {
-            mode?: unknown
-            token?: unknown
-          }
-        }
-      }
-      const auth = config.gateway?.auth
-      const mode = auth?.mode
-      if (mode === 'none') {
-        this.gatewayAuthMode = 'none'
-        logger.debug('OpenClaw gateway config uses no auth')
-        return
-      }
-
-      const token = auth?.token
-      if (typeof token === 'string' && token) {
-        this.token = token
-        this.tokenLoaded = true
-        this.gatewayAuthMode = 'token'
-        logger.info('Loaded OpenClaw gateway token from mounted config')
-        return
-      }
-      this.gatewayAuthMode = mode === 'password' ? 'password' : 'none'
-    } catch (err) {
-      logger.warn('Failed to load OpenClaw gateway token from mounted config', {
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
-  private async getGatewayHttpToken(): Promise<string | null> {
-    await this.ensureTokenLoaded()
-    return this.gatewayAuthMode === 'token' && this.tokenLoaded
-      ? this.token
-      : null
   }
 
   private createProgressLogger(

@@ -42,35 +42,6 @@ describe('OpenClawGatewayChatClient', () => {
     })
     expect(fetchHeaders(fetchMock)).not.toHaveProperty('Authorization')
   })
-
-  it('keeps bearer auth for legacy token-auth gateways', async () => {
-    const fetchMock = mock(() =>
-      Promise.resolve(
-        new Response(emptyStream(), {
-          status: 200,
-          headers: { 'Content-Type': 'text/event-stream' },
-        }),
-      ),
-    )
-    globalThis.fetch = fetchMock as typeof globalThis.fetch
-    const client = new OpenClawGatewayChatClient(
-      () => 18794,
-      async () => 'gateway-token',
-    )
-
-    await client.streamTurn({
-      agentId: 'ops',
-      sessionKey: 'main',
-      messages: [{ role: 'user', content: 'hi' }],
-    })
-
-    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({
-      headers: {
-        Authorization: 'Bearer gateway-token',
-        'Content-Type': 'application/json',
-      },
-    })
-  })
 })
 
 function emptyStream(): ReadableStream<Uint8Array> {

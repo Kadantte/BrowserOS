@@ -64,11 +64,10 @@ import type {
  * when spawning the openclaw ACP adapter inside the gateway container.
  *
  * Fields are getters (not snapshot values) so the harness picks up the
- * current token and VM/container paths at spawn time.
+ * current VM/container paths at spawn time. The bundled gateway runs
+ * with `gateway.auth.mode=none`, so no auth token is plumbed through.
  */
 export interface OpenclawGatewayAccessor {
-  /** Current gateway auth token. Kept for legacy token-auth gateway clients. */
-  getGatewayToken(): string
   /** Container name e.g. browseros-openclaw-openclaw-gateway-1. */
   getContainerName(): string
   /** LIMA_HOME directory containing the browseros-vm instance. */

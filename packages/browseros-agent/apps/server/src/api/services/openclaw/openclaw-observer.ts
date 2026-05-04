@@ -50,14 +50,12 @@ export class OpenClawObserver {
   private connected = false
   private closed = false
   private gatewayUrl: string | null = null
-  private gatewayToken: string | null = null
 
   constructor(private readonly session: ClawSession) {}
 
   /** Start observing the gateway at the given URL. */
-  connect(gatewayUrl: string, token?: string | null): void {
+  connect(gatewayUrl: string): void {
     this.gatewayUrl = gatewayUrl
-    this.gatewayToken = token?.trim() || null
     this.closed = false
     this.doConnect()
   }
@@ -101,10 +99,6 @@ export class OpenClawObserver {
 
     let handshakeSent = false
 
-    /**
-     * Send the gateway protocol connect frame. BrowserOS no-auth gateways omit
-     * auth entirely; legacy token-mode gateways can still pass a token in.
-     */
     const sendConnectRequest = () => {
       if (handshakeSent) return
       handshakeSent = true
@@ -124,7 +118,6 @@ export class OpenClawObserver {
           },
           role: 'operator',
           scopes: ['operator.read'],
-          ...(this.gatewayToken ? { auth: { token: this.gatewayToken } } : {}),
         },
       }
       ws.send(JSON.stringify(connectReq))

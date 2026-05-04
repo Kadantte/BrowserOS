@@ -73,13 +73,8 @@ export type OpenClawSessionHistoryEvent =
     }
   | { type: 'error'; data: { message: string } }
 
-type GatewayTokenProvider = () => Promise<string | null | undefined>
-
 export class OpenClawHttpClient {
-  constructor(
-    private readonly hostPort: number,
-    private readonly getToken?: GatewayTokenProvider,
-  ) {}
+  constructor(private readonly hostPort: number) {}
 
   async getSessionHistory(
     sessionKey: string,
@@ -107,10 +102,7 @@ export class OpenClawHttpClient {
     try {
       const response = await fetch(
         `http://127.0.0.1:${this.hostPort}/v1/models`,
-        {
-          method: 'GET',
-          headers: await this.authHeaders(),
-        },
+        { method: 'GET' },
       )
       return response.ok
     } catch {
@@ -127,10 +119,7 @@ export class OpenClawHttpClient {
       `http://127.0.0.1:${this.hostPort}${buildHistoryPath(sessionKey, input)}`,
       {
         method: 'GET',
-        headers: {
-          ...(await this.authHeaders()),
-          ...extraHeaders,
-        },
+        headers: extraHeaders,
         signal: input.signal,
       },
     )
@@ -146,12 +135,6 @@ export class OpenClawHttpClient {
       )
     }
     return response
-  }
-
-  private async authHeaders(): Promise<Record<string, string>> {
-    const token = await this.getToken?.()
-    const trimmed = token?.trim()
-    return trimmed ? { Authorization: `Bearer ${trimmed}` } : {}
   }
 }
 
