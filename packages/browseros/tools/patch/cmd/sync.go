@@ -18,7 +18,7 @@ func init() {
 		Short:       "Sync a workspace with the latest patch repo state",
 		Args:        cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			ws, err := resolveWorkspace(args, src)
+			ws, err := resolveWorkspace(cmd, args, src)
 			if err != nil {
 				return err
 			}

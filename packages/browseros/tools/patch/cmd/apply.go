@@ -23,7 +23,7 @@ func init() {
 			if len(positional) > 1 {
 				return fmt.Errorf("expected at most one workspace name")
 			}
-			ws, err := resolveWorkspace(positional, src)
+			ws, err := resolveWorkspace(cmd, positional, src)
 			if err != nil {
 				return err
 			}

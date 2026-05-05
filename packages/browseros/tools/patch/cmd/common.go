@@ -14,12 +14,16 @@ func repoInfo() (*repo.Info, error) {
 	return appState.RepoInfo()
 }
 
-func resolveWorkspace(positional []string, src string) (workspace.Entry, error) {
+func resolveWorkspace(cmd *cobra.Command, positional []string, src string) (workspace.Entry, error) {
 	name := ""
 	if len(positional) > 0 {
 		name = positional[0]
 	}
-	return appState.ResolveWorkspace(name, src)
+	commandPath := ""
+	if cmd != nil {
+		commandPath = cmd.CommandPath()
+	}
+	return workspace.ResolveForCommand(appState.Registry, name, appState.CWD, src, commandPath)
 }
 
 func splitWorkspaceAndFilters(cmd *cobra.Command, args []string) ([]string, []string) {
