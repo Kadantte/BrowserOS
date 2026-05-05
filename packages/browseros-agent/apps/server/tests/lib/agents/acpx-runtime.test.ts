@@ -936,6 +936,120 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
     expect(command).toContain('/runtime/codex-home')
   })
 
+  it('resolves Hermes to local ACP command with BrowserOS env', async () => {
+    const browserosDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-browseros-'),
+    )
+    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+    tempDirs.push(browserosDir, stateDir)
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      browserosDir,
+      stateDir,
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent = makeAgent({ id: 'agent-1', adapter: 'hermes' })
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'hi',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    expect(
+      calls.find((call) => call.method === 'ensureSession')?.input,
+    ).toMatchObject({
+      agent: 'hermes',
+    })
+    const command =
+      getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
+    expect(command).toContain('env AGENT_HOME=')
+    expect(command).toContain('hermes acp')
+    expect(command).not.toContain('CODEX_HOME=')
+    expect(getCreateRuntimeOptions(calls).mcpServers).toMatchObject([
+      { name: 'browseros' },
+    ])
+  })
+
+  it('resolves Hermes with BROWSEROS_HERMES_ACP_COMMAND override', async () => {
+    const previous = process.env.BROWSEROS_HERMES_ACP_COMMAND
+    process.env.BROWSEROS_HERMES_ACP_COMMAND = 'python -m acp_adapter'
+    try {
+      const browserosDir = await mkdtemp(
+        join(tmpdir(), 'browseros-acpx-browseros-'),
+      )
+      const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+      tempDirs.push(browserosDir, stateDir)
+      const calls: Array<{ method: string; input: unknown }> = []
+      const runtime = new AcpxRuntime({
+        browserosDir,
+        stateDir,
+        runtimeFactory: (options) => {
+          calls.push({ method: 'createRuntime', input: options })
+          return createFakeAcpRuntime(calls)
+        },
+      })
+      const agent = makeAgent({ id: 'agent-1', adapter: 'hermes' })
+
+      await collectStream(
+        await runtime.send({
+          agent,
+          sessionId: 'main',
+          sessionKey: agent.sessionKey,
+          message: 'hi',
+          permissionMode: 'approve-all',
+        }),
+      )
+
+      const command =
+        getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
+      expect(command).toContain('env AGENT_HOME=')
+      expect(command).toContain('python -m acp_adapter')
+      expect(command).not.toContain('hermes acp')
+    } finally {
+      if (previous === undefined) {
+        delete process.env.BROWSEROS_HERMES_ACP_COMMAND
+      } else {
+        process.env.BROWSEROS_HERMES_ACP_COMMAND = previous
+      }
+    }
+  })
+
+  it('continues Hermes turns with a best-effort model status when model is non-default', async () => {
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      cwd: '/tmp/browseros-acpx-runtime',
+      stateDir: '/tmp/browseros-acpx-state',
+      runtimeFactory: () => createFakeAcpRuntime(calls),
+    })
+    const agent: AgentDefinition = {
+      ...makeAgent({ id: 'agent-1', adapter: 'hermes' }),
+      modelId: 'custom-hermes-model',
+    }
+
+    const events = await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'hello',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    expect(events[0]).toMatchObject({
+      type: 'status',
+      text: expect.stringContaining('Using adapter default'),
+    })
+  })
+
   it('does not reuse an Acpx runtime across different command identities', async () => {
     const browserosDir = await mkdtemp(
       join(tmpdir(), 'browseros-acpx-browseros-'),

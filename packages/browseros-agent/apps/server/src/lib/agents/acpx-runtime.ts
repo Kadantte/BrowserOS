@@ -740,6 +740,10 @@ function createBrowserosAgentRegistry(input: {
         )
       }
 
+      if (lower === 'hermes') {
+        return wrapCommandWithEnv(resolveHermesAcpCommand(), input.commandEnv)
+      }
+
       if (lower === 'claude' || lower === 'codex') {
         return wrapCommandWithEnv(registry.resolve(agentName), input.commandEnv)
       }
@@ -747,6 +751,15 @@ function createBrowserosAgentRegistry(input: {
       return registry.resolve(agentName)
     },
   }
+}
+
+/**
+ * Resolves the host-local Hermes ACP command acpx will spawn.
+ * The env override is intentionally a full command string so local
+ * development can point at an unpublished adapter without changing code.
+ */
+function resolveHermesAcpCommand(): string {
+  return process.env.BROWSEROS_HERMES_ACP_COMMAND?.trim() || 'hermes acp'
 }
 
 /**
