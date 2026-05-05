@@ -84,8 +84,18 @@ const usageTemplate = `{{helpHeader "Usage:"}}{{if .Runnable}}
 `
 
 var rootCmd = &cobra.Command{
-	Use:           "browseros-patch",
-	Short:         "BrowserOS patch tooling for Chromium checkouts",
+	Use:   "browseros-patch",
+	Short: "BrowserOS patch tooling for Chromium checkouts",
+	Long: `browseros-patch moves changes between two places:
+  patch repo: the BrowserOS repo containing chromium_patches/
+  Chromium checkout: a named local Chromium src tree, such as ch1
+
+Pass a checkout name to run from anywhere, for example "browseros-patch diff ch1".`,
+	Example: `  browseros-patch add ch1 /path/to/chromium/src
+  browseros-patch list
+  browseros-patch diff ch1
+  browseros-patch sync ch1
+  browseros-patch extract ch1`,
 	Version:       Version,
 	SilenceUsage:  true,
 	SilenceErrors: true,

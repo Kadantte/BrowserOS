@@ -10,6 +10,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const srcFlagUsage = "Chromium checkout path to operate on directly without registry lookup"
+
 func repoInfo() (*repo.Info, error) {
 	return appState.RepoInfo()
 }

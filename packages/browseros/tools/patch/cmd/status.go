@@ -14,7 +14,9 @@ func init() {
 		Use:         "status [checkout]",
 		Annotations: map[string]string{"group": "Core:"},
 		Short:       "Show checkout sync state",
-		Args:        cobra.MaximumNArgs(1),
+		Example: `  browseros-patch status ch1
+  browseros-patch status --src /path/to/chromium/src`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ws, err := resolveWorkspace(cmd, args, src)
 			if err != nil {
@@ -44,6 +46,6 @@ func init() {
 			})
 		},
 	}
-	command.Flags().StringVar(&src, "src", "", "Chromium checkout path to operate on directly")
+	command.Flags().StringVar(&src, "src", "", srcFlagUsage)
 	rootCmd.AddCommand(command)
 }

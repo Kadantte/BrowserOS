@@ -15,7 +15,9 @@ func init() {
 		Use:         "diff [checkout]",
 		Annotations: map[string]string{"group": "Core:"},
 		Short:       "Preview patch differences for a checkout",
-		Args:        cobra.MaximumNArgs(1),
+		Example: `  browseros-patch diff ch1
+  browseros-patch diff --src /path/to/chromium/src`,
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			ws, err := resolveWorkspace(cmd, args, src)
 			if err != nil {
@@ -41,7 +43,7 @@ func init() {
 			})
 		},
 	}
-	command.Flags().StringVar(&src, "src", "", "Chromium checkout path to operate on directly")
+	command.Flags().StringVar(&src, "src", "", srcFlagUsage)
 	rootCmd.AddCommand(command)
 }
 

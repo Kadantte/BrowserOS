@@ -13,6 +13,7 @@ func init() {
 		Aliases:     []string{"ls"},
 		Annotations: map[string]string{"group": "Chromium Checkouts:"},
 		Short:       "List registered Chromium checkouts",
+		Example:     `  browseros-patch list`,
 		Args:        cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(appState.Registry.Workspaces) == 0 {

@@ -119,3 +119,65 @@ func TestCheckoutCommandUsageTerminology(t *testing.T) {
 		}
 	}
 }
+
+func TestRootHelpExplainsPatchRepoAndCheckoutModel(t *testing.T) {
+	for _, want := range []string{
+		"patch repo",
+		"chromium_patches/",
+		"Chromium checkout",
+		"ch1",
+	} {
+		if !strings.Contains(rootCmd.Long, want) {
+			t.Fatalf("expected root long help to contain %q, got:\n%s", want, rootCmd.Long)
+		}
+	}
+
+	for _, want := range []string{
+		"browseros-patch add ch1 /path/to/chromium/src",
+		"browseros-patch list",
+		"browseros-patch diff ch1",
+		"browseros-patch sync ch1",
+		"browseros-patch extract ch1",
+	} {
+		if !strings.Contains(rootCmd.Example, want) {
+			t.Fatalf("expected root examples to contain %q, got:\n%s", want, rootCmd.Example)
+		}
+	}
+}
+
+func TestCheckoutCommandExamplesUseNamedCheckout(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		example string
+	}{
+		{name: "diff", example: "browseros-patch diff ch1"},
+		{name: "status", example: "browseros-patch status ch1"},
+		{name: "apply", example: "browseros-patch apply ch1"},
+		{name: "sync", example: "browseros-patch sync ch1"},
+		{name: "extract", example: "browseros-patch extract ch1"},
+	} {
+		cmd, _, err := rootCmd.Find([]string{tc.name})
+		if err != nil {
+			t.Fatalf("find %s: %v", tc.name, err)
+		}
+		if !strings.Contains(cmd.Example, tc.example) {
+			t.Fatalf("expected %s examples to contain %q, got:\n%s", tc.name, tc.example, cmd.Example)
+		}
+	}
+}
+
+func TestSrcFlagExplainsDirectCheckoutPath(t *testing.T) {
+	for _, name := range []string{"diff", "status", "apply", "sync", "extract"} {
+		cmd, _, err := rootCmd.Find([]string{name})
+		if err != nil {
+			t.Fatalf("find %s: %v", name, err)
+		}
+		flag := cmd.Flags().Lookup("src")
+		if flag == nil {
+			t.Fatalf("%s missing --src flag", name)
+		}
+		if !strings.Contains(flag.Usage, "without registry lookup") {
+			t.Fatalf("%s --src usage should explain registry bypass, got %q", name, flag.Usage)
+		}
+	}
+}
