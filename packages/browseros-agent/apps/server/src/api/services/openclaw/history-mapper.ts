@@ -31,6 +31,50 @@ import type {
   OpenClawSessionHistoryMessage,
 } from './openclaw-http-client'
 
+const CRON_PROMPT_PREFIX_PATTERN =
+  /^\[cron:[0-9a-f-]+ ([^\]]+)\]\s*([\s\S]*?)\n*Current time:[^\n]*(?:\n[\s\S]*)?$/
+const CRON_DELIVERY_TRAILER =
+  /\n*Use the message tool if you need to notify the user directly[\s\S]*$/
+const BROWSEROS_WORKING_DIR_PREFIX = /^\[Working directory:[^\]]*\]\n+/
+const BROWSEROS_ROLE_BLOCK = /<role>[\s\S]*?<\/role>\n+/
+const BROWSEROS_USER_REQUEST_BLOCK =
+  /<user_request>\n?([\s\S]*?)\n?<\/user_request>/
+const BROWSEROS_SYSTEM_REMINDER_BLOCK =
+  /\n*<system-reminder>[\s\S]*?<\/system-reminder>\s*$/
+
+/**
+ * Strip OpenClaw + BrowserOS scaffolding from a "user" message before
+ * showing it in the chat panel. The raw prompts contain:
+ *
+ *   - OpenClaw cron payload prefix:
+ *       `[cron:<uuid> <name>] <payload>\nCurrent time: ...\nUse the
+ *       message tool if you need to notify the user directly...`
+ *   - BrowserOS ACP prefix:
+ *       `[Working directory: ...]\n\n<role>...</role>\n\n<user_request>
+ *       <actual user text>\n</user_request>\n\n<system-reminder>...</system-reminder>`
+ *
+ * For each, we extract just the user-facing text. Non-matching messages
+ * fall through unchanged so any future pattern we don't recognize stays
+ * visible rather than getting silently dropped.
+ */
+export function cleanHistoryUserText(raw: string): string {
+  if (!raw) return raw
+  const cronMatch = CRON_PROMPT_PREFIX_PATTERN.exec(raw)
+  if (cronMatch) {
+    const payload = cronMatch[2] ?? ''
+    return payload.replace(CRON_DELIVERY_TRAILER, '').trim()
+  }
+  let text = raw
+  text = text.replace(BROWSEROS_WORKING_DIR_PREFIX, '')
+  text = text.replace(BROWSEROS_ROLE_BLOCK, '')
+  text = text.replace(BROWSEROS_SYSTEM_REMINDER_BLOCK, '')
+  const userReq = BROWSEROS_USER_REQUEST_BLOCK.exec(text)
+  if (userReq) {
+    return (userReq[1] ?? '').trim()
+  }
+  return text.trim()
+}
+
 type RichBlock =
   | { type: 'text'; text?: string }
   | { type: 'thinking'; thinking?: string; text?: string }
@@ -80,7 +124,8 @@ export function convertOpenClawHistoryToAgentHistory(
       continue
     }
 
-    const text = collectText(blocks).trim()
+    const rawText = collectText(blocks).trim()
+    const text = role === 'user' ? cleanHistoryUserText(rawText) : rawText
     const reasoningText = collectThinking(blocks).trim()
     const toolCallEntries = collectToolCalls(blocks, pendingByToolCallId)
 

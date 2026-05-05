@@ -45,6 +45,13 @@ export interface OpenClawSessionHistoryMessage {
   messageSeq?: number
   timestamp?: number
   /**
+   * OpenClaw extension envelope. The gateway records the per-session
+   * monotonic sequence on `__openclaw.seq` rather than the top-level
+   * `messageSeq` field, so cursor logic reads from here. `id` is the
+   * gateway's stable message id.
+   */
+  __openclaw?: { id?: string; seq?: number }
+  /**
    * Origin of this message when the response merges multiple sessions.
    * Absent on single-session responses for backward compatibility.
    */

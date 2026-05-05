@@ -1,0 +1,168 @@
+/**
+ * @license
+ * Copyright 2025 BrowserOS
+ */
+
+import { describe, expect, it } from 'bun:test'
+import {
+  cleanHistoryUserText,
+  convertOpenClawHistoryToAgentHistory,
+} from '../../../../src/api/services/openclaw/history-mapper'
+import type { OpenClawSessionHistory } from '../../../../src/api/services/openclaw/openclaw-http-client'
+
+describe('cleanHistoryUserText', () => {
+  it('extracts the cron payload and drops the trailer', () => {
+    const raw =
+      '[cron:681df8ba-85e0-404e-a6ea-891d0f5068af hello-8] Print hello\n' +
+      'Current time: Tuesday, May 5th, 2026 - 2:26 AM (Asia/Calcutta) / 2026-05-04 20:56 UTC\n\n' +
+      'Use the message tool if you need to notify the user directly with an explicit target. ' +
+      'If you do not send directly, your final plain-text reply will be delivered automatically.'
+    expect(cleanHistoryUserText(raw)).toBe('Print hello')
+  })
+
+  it('extracts a multiline cron payload and drops the trailer', () => {
+    const raw =
+      '[cron:abcd1234-0000-0000-0000-000000000000 weather] Tell me the weather in Tokyo\n' +
+      'and report back briefly.\n' +
+      'Current time: Tuesday, May 5th, 2026 - 2:26 AM (Asia/Calcutta) / 2026-05-04 20:56 UTC\n\n' +
+      'Use the message tool if you need to notify the user directly with an explicit target.'
+    expect(cleanHistoryUserText(raw)).toBe(
+      'Tell me the weather in Tokyo\nand report back briefly.',
+    )
+  })
+
+  it('unwraps the BrowserOS ACP user_request envelope', () => {
+    const raw =
+      '[Working directory: /tmp/workspace]\n\n' +
+      '<role>\nYou are BrowserOS - a browser agent...\n</role>\n\n' +
+      '<user_request>\nhey\n</user_request>'
+    expect(cleanHistoryUserText(raw)).toBe('hey')
+  })
+
+  it('strips a trailing system-reminder block', () => {
+    const raw =
+      '[Working directory: /tmp/workspace]\n\n' +
+      '<role>\nYou are BrowserOS\n</role>\n\n' +
+      '<user_request>\nopen google.com\n</user_request>\n\n' +
+      '<system-reminder>\nA reminder the user never typed.\n</system-reminder>'
+    expect(cleanHistoryUserText(raw)).toBe('open google.com')
+  })
+
+  it('preserves messages that match no known scaffolding', () => {
+    expect(cleanHistoryUserText('hello there')).toBe('hello there')
+    expect(cleanHistoryUserText('multi\nline\nuser text')).toBe(
+      'multi\nline\nuser text',
+    )
+  })
+
+  it('returns empty string unchanged', () => {
+    expect(cleanHistoryUserText('')).toBe('')
+  })
+})
+
+describe('convertOpenClawHistoryToAgentHistory', () => {
+  it('strips cron scaffolding from user messages while preserving assistant text', () => {
+    const raw: OpenClawSessionHistory = {
+      sessionKey: 'agent:demo:main',
+      messages: [
+        {
+          role: 'user',
+          content: '' as never,
+          // The HTTP endpoint actually returns content as an array of typed
+          // blocks at runtime; the type is `string` for backward-compat.
+          // Cast via `unknown` to reflect runtime.
+          ...({
+            content: [
+              {
+                type: 'text',
+                text:
+                  '[cron:abc-123 hello-1] Print hello\n' +
+                  'Current time: 2026-05-05 16:00 UTC\n\n' +
+                  'Use the message tool if you need to notify the user directly with an explicit target.',
+              },
+            ],
+          } as unknown as { content: never }),
+          timestamp: 1000,
+        },
+        {
+          role: 'assistant',
+          content: '' as never,
+          ...({
+            content: [{ type: 'text', text: 'hello' }],
+          } as unknown as { content: never }),
+          timestamp: 1001,
+        },
+      ],
+    }
+
+    const out = convertOpenClawHistoryToAgentHistory('demo', raw)
+    expect(out.items.map((i) => ({ role: i.role, text: i.text }))).toEqual([
+      { role: 'user', text: 'Print hello' },
+      { role: 'assistant', text: 'hello' },
+    ])
+  })
+
+  it('attaches assistant reasoning and pairs tool call output across messages', () => {
+    const raw: OpenClawSessionHistory = {
+      sessionKey: 'agent:demo:main',
+      messages: [
+        {
+          role: 'user',
+          content: '' as never,
+          ...({
+            content: [{ type: 'text', text: 'navigate to example.com' }],
+          } as unknown as { content: never }),
+          timestamp: 1000,
+        },
+        {
+          role: 'assistant',
+          content: '' as never,
+          ...({
+            content: [
+              {
+                type: 'thinking',
+                thinking: 'I should call the navigate tool.',
+              },
+              {
+                type: 'toolCall',
+                id: 'call-1',
+                name: 'navigate',
+                arguments: { url: 'https://example.com' },
+              },
+            ],
+          } as unknown as { content: never }),
+          timestamp: 1001,
+        },
+        {
+          role: 'tool',
+          content: '' as never,
+          ...({
+            content: [
+              {
+                type: 'toolResult',
+                toolCallId: 'call-1',
+                content: 'navigated',
+              },
+            ],
+          } as unknown as { content: never }),
+          timestamp: 1002,
+        },
+      ],
+    }
+
+    const out = convertOpenClawHistoryToAgentHistory('demo', raw)
+    // 'tool' role messages are folded into the prior assistant entry, not surfaced
+    expect(out.items.map((i) => i.role)).toEqual(['user', 'assistant'])
+    const assistant = out.items[1]
+    expect(assistant.reasoning?.text).toBe('I should call the navigate tool.')
+    expect(assistant.toolCalls).toEqual([
+      {
+        toolCallId: 'call-1',
+        toolName: 'navigate',
+        status: 'completed',
+        input: { url: 'https://example.com' },
+        output: 'navigated',
+      },
+    ])
+  })
+})
