@@ -84,6 +84,39 @@ describe('prepareAcpxAgentContext', () => {
     expect(prepared.runPrompt).toContain('AGENT_HOME=')
   })
 
+  it('prepares Hermes with BrowserOS memory, skills, BrowserOS MCP, and fingerprinted session', async () => {
+    const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
+    tempDirs.push(browserosDir)
+    const prepared = await prepareAcpxAgentContext({
+      browserosDir,
+      agent: makeAgent('hermes'),
+      sessionId: 'main',
+      sessionKey: 'agent:hermes-agent:main',
+      cwdOverride: null,
+      isSelectedCwd: false,
+      message: 'use hermes',
+    })
+
+    expect(prepared.commandEnv.AGENT_HOME).toContain('/hermes-agent/home')
+    expect(prepared.commandEnv).not.toHaveProperty('CODEX_HOME')
+    expect(prepared.useBrowserosMcp).toBe(true)
+    expect(prepared.openclawSessionKey).toBeNull()
+    expect(prepared.runtimeSessionKey).toMatch(
+      /^agent:hermes-agent:main:[a-f0-9]{16}$/,
+    )
+    expect(prepared.runPrompt).toContain('<browseros_acpx_runtime version=')
+    expect(prepared.runPrompt).toContain(
+      'Available skills: browseros, memory, soul',
+    )
+    expect(prepared.runPrompt).toContain('Current workspace cwd:')
+    expect(prepared.runPrompt).toContain(
+      '<user_request>\nuse hermes\n</user_request>',
+    )
+    expect(
+      await readFile(`${prepared.commandEnv.AGENT_HOME}/MEMORY.md`, 'utf8'),
+    ).toContain('# MEMORY.md')
+  })
+
   it('prepares OpenClaw without BrowserOS memory, host cwd, skills, or MCP', async () => {
     const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
     tempDirs.push(browserosDir)
