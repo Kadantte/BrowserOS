@@ -48,6 +48,32 @@ describe('cleanHistoryUserText', () => {
     expect(cleanHistoryUserText(raw)).toBe('open google.com')
   })
 
+  it('splits queued-marker concatenations and cleans each chunk', () => {
+    // When multiple prompts queue up while a turn is active, BrowserOS
+    // joins them with the queued-marker line. Each chunk between markers
+    // is its own message that should be cleaned independently.
+    const raw =
+      '[Queued user message that arrived while the previous turn was still active]\n' +
+      "[cron:aaaa hello-job-1] print('hello')\n" +
+      'Current time: 2026-05-05 16:00 UTC\n\n' +
+      'Use the message tool if you need to notify the user directly with an explicit target.\n' +
+      '[Queued user message that arrived while the previous turn was still active]\n' +
+      "[cron:bbbb hello-job-2] print('world')\n" +
+      'Current time: 2026-05-05 16:01 UTC\n\n' +
+      'Use the message tool if you need to notify the user directly with an explicit target.'
+    expect(cleanHistoryUserText(raw)).toBe("print('hello')\nprint('world')")
+  })
+
+  it('drops empty chunks left by leading queued marker', () => {
+    // The blob often opens with a marker (no content before it). Empty
+    // chunks should be dropped so we don't emit a leading newline.
+    const raw =
+      '[Queued user message that arrived while the previous turn was still active]\n' +
+      '[cron:aaaa job] payload-only\n' +
+      'Current time: now'
+    expect(cleanHistoryUserText(raw)).toBe('payload-only')
+  })
+
   it('preserves messages that match no known scaffolding', () => {
     expect(cleanHistoryUserText('hello there')).toBe('hello there')
     expect(cleanHistoryUserText('multi\nline\nuser text')).toBe(

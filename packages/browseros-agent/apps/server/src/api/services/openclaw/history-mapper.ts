@@ -41,6 +41,8 @@ const BROWSEROS_USER_REQUEST_BLOCK =
   /<user_request>\n?([\s\S]*?)\n?<\/user_request>/
 const BROWSEROS_SYSTEM_REMINDER_BLOCK =
   /\n*<system-reminder>[\s\S]*?<\/system-reminder>\s*$/
+const QUEUED_MARKER_LINE =
+  /^\[Queued user message that arrived while the previous turn was still active\]\s*$/m
 
 /**
  * Strip OpenClaw + BrowserOS scaffolding from a "user" message before
@@ -52,6 +54,11 @@ const BROWSEROS_SYSTEM_REMINDER_BLOCK =
  *   - BrowserOS ACP prefix:
  *       `[Working directory: ...]\n\n<role>...</role>\n\n<user_request>
  *       <actual user text>\n</user_request>\n\n<system-reminder>...</system-reminder>`
+ *   - Queued-marker concatenation: when multiple prompts queue while a
+ *     turn is active, BrowserOS joins them with the marker line
+ *     `[Queued user message that arrived while the previous turn was
+ *     still active]`. We split on those markers and clean each chunk
+ *     independently, then re-join the non-empty results.
  *
  * For each, we extract just the user-facing text. Non-matching messages
  * fall through unchanged so any future pattern we don't recognize stays
@@ -59,12 +66,31 @@ const BROWSEROS_SYSTEM_REMINDER_BLOCK =
  */
 export function cleanHistoryUserText(raw: string): string {
   if (!raw) return raw
-  const cronMatch = CRON_PROMPT_PREFIX_PATTERN.exec(raw)
+  // Queued-marker case: this is structurally a multi-message blob, so
+  // split first and recurse into each chunk. We keep the join character
+  // narrow (single newline) so e.g. five cron payloads render as five
+  // visually-separate lines rather than one wall of text.
+  if (QUEUED_MARKER_LINE.test(raw)) {
+    const chunks = raw
+      .split(
+        /^\[Queued user message that arrived while the previous turn was still active\]\s*$/m,
+      )
+      .map((chunk) => cleanSingleUserMessage(chunk))
+      .filter((chunk) => chunk.length > 0)
+    return chunks.join('\n')
+  }
+  return cleanSingleUserMessage(raw)
+}
+
+function cleanSingleUserMessage(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return ''
+  const cronMatch = CRON_PROMPT_PREFIX_PATTERN.exec(trimmed)
   if (cronMatch) {
     const payload = cronMatch[2] ?? ''
     return payload.replace(CRON_DELIVERY_TRAILER, '').trim()
   }
-  let text = raw
+  let text = trimmed
   text = text.replace(BROWSEROS_WORKING_DIR_PREFIX, '')
   text = text.replace(BROWSEROS_ROLE_BLOCK, '')
   text = text.replace(BROWSEROS_SYSTEM_REMINDER_BLOCK, '')
