@@ -128,7 +128,7 @@ func init() {
 	cobra.AddTemplateFunc("groupedHelp", groupedHelp)
 	rootCmd.SetUsageTemplate(usageTemplate)
 	rootCmd.PersistentFlags().BoolVar(&jsonOut, "json", false, "Emit JSON output")
-	rootCmd.PersistentFlags().BoolVar(&llmTxt, "llm-txt", false, "Print concise plain-text guidance for coding agents")
+	rootCmd.Flags().BoolVar(&llmTxt, "llm-txt", false, "Print concise plain-text guidance for coding agents")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Enable verbose output")
 	rootCmd.CompletionOptions.DisableDefaultCmd = true
 }

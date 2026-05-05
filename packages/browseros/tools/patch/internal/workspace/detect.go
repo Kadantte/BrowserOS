@@ -81,8 +81,5 @@ func namedCheckoutExample(reg *Registry, commandPath string) string {
 	if commandPath == "" {
 		commandPath = "browseros-patch diff"
 	}
-	if len(reg.Workspaces) == 0 {
-		return commandPath + " <checkout>"
-	}
 	return commandPath + " " + reg.Workspaces[0].Name
 }

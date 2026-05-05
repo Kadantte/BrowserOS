@@ -324,11 +324,31 @@ func TestLLMTxtRejectedWithSubcommand(t *testing.T) {
 	if err == nil {
 		t.Fatalf("expected --llm-txt subcommand error")
 	}
-	if !strings.Contains(err.Error(), "--llm-txt is only valid without a subcommand") {
+	if !strings.Contains(err.Error(), "unknown flag: --llm-txt") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if appState != nil {
 		t.Fatalf("--llm-txt subcommand error should not load app state")
+	}
+}
+
+func TestLLMTxtNotShownInSubcommandHelp(t *testing.T) {
+	diffCmd, _, err := rootCmd.Find([]string{"diff"})
+	if err != nil {
+		t.Fatalf("find diff: %v", err)
+	}
+
+	var help bytes.Buffer
+	diffCmd.SetOut(&help)
+	t.Cleanup(func() {
+		diffCmd.SetOut(nil)
+	})
+
+	if err := diffCmd.Help(); err != nil {
+		t.Fatalf("diff help: %v", err)
+	}
+	if strings.Contains(help.String(), "--llm-txt") {
+		t.Fatalf("subcommand help should not include root-only --llm-txt, got:\n%s", help.String())
 	}
 }
 
