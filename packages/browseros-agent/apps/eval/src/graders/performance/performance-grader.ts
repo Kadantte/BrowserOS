@@ -83,6 +83,7 @@ export class PerformanceGrader implements Grader {
         systemPrompt,
         userPrompt,
         input.outputDir,
+        input.mcpUrl,
       )
       if (response) {
         await writeGraderJsonArtifact(
@@ -185,10 +186,38 @@ export class PerformanceGrader implements Grader {
     systemPrompt: string,
     userPrompt: string,
     outputDir: string,
+    mcpUrl?: string,
   ): Promise<AgentResult | null> {
     const taskId = outputDir.split('/').pop() ?? outputDir
-    console.log(`Perf grader ${taskId}: Starting (model=${this.model})`)
+    console.log(
+      `Perf grader ${taskId}: Starting (model=${this.model}, mcp=${mcpUrl ? 'on' : 'off'})`,
+    )
     const startMs = Date.now()
+
+    const allowedTools = ['Read', 'Glob', 'Grep']
+    const mcpServers: Record<
+      string,
+      { type: 'http'; url: string; headers?: Record<string, string> }
+    > = {}
+    if (mcpUrl) {
+      mcpServers.browseros = {
+        type: 'http',
+        url: mcpUrl,
+        headers: { 'X-BrowserOS-Source': 'sdk-internal' },
+      }
+      // Read-only inspection tools — let the grader verify claims against live browser state.
+      allowedTools.push(
+        'mcp__browseros__get_active_page',
+        'mcp__browseros__list_pages',
+        'mcp__browseros__get_page_content',
+        'mcp__browseros__get_page_links',
+        'mcp__browseros__take_screenshot',
+        'mcp__browseros__take_snapshot',
+        'mcp__browseros__get_dom',
+        'mcp__browseros__search_dom',
+        'mcp__browseros__get_console_logs',
+      )
+    }
 
     const agentPromise = (async (): Promise<AgentResult | null> => {
       let result: AgentResult | null = null
@@ -200,7 +229,8 @@ export class PerformanceGrader implements Grader {
           model: this.model,
           cwd: outputDir,
           systemPrompt,
-          allowedTools: ['Read', 'Glob', 'Grep'],
+          allowedTools,
+          mcpServers,
           permissionMode: 'bypassPermissions',
           allowDangerouslySkipPermissions: true,
           maxTurns: this.maxTurns,

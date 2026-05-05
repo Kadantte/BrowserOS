@@ -163,7 +163,10 @@ export class TaskRunPipeline {
       // Phase 2: Execute agent
       const agentResult = await this.executeAgent(task, pageId)
 
-      // Phase 3: Run graders
+      // Phase 3: Run graders.
+      // The browser is intentionally still on the task page here — graders
+      // (e.g. PerformanceGrader) may inspect live browser state via MCP for
+      // claim verification. Do not move the about:blank cleanup above this.
       const graderResults = await this.runGraders(
         task,
         agentResult,
