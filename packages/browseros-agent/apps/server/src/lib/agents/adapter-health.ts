@@ -23,6 +23,11 @@ interface CachedHealth extends AdapterHealth {
   expiresAt: number
 }
 
+type ExecCommand = (
+  command: string,
+  options: { timeout: number },
+) => Promise<unknown>
+
 /**
  * In-memory cache of adapter binary availability. Probed lazily on
  * first read and refreshed every `cacheTtlMs`. The probe is one
@@ -37,10 +42,19 @@ export class AdapterHealthChecker {
   private readonly cacheTtlMs: number
   private readonly probeTimeoutMs: number
   private readonly inflight = new Map<AgentAdapter, Promise<AdapterHealth>>()
+  private readonly execCommand: ExecCommand
 
-  constructor(options: { cacheTtlMs?: number; probeTimeoutMs?: number } = {}) {
+  constructor(
+    options: {
+      cacheTtlMs?: number
+      probeTimeoutMs?: number
+      execCommand?: ExecCommand
+    } = {},
+  ) {
     this.cacheTtlMs = options.cacheTtlMs ?? 5 * 60 * 1000
     this.probeTimeoutMs = options.probeTimeoutMs ?? 2_000
+    this.execCommand =
+      options.execCommand ?? ((command, options) => execAsync(command, options))
   }
 
   async getHealth(adapter: AgentAdapter): Promise<AdapterHealth> {
@@ -84,7 +98,7 @@ export class AdapterHealthChecker {
       }
     }
     try {
-      await execAsync(command, { timeout: this.probeTimeoutMs })
+      await this.execCommand(command, { timeout: this.probeTimeoutMs })
       return { healthy: true, checkedAt: Date.now() }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
@@ -105,6 +119,7 @@ export class AdapterHealthChecker {
 const ADAPTER_HEALTH_COMMANDS: Partial<Record<AgentAdapter, string>> = {
   claude: 'claude --version',
   codex: 'codex --version',
+  hermes: 'hermes --version',
 }
 
 function friendlyProbeFailure(adapter: AgentAdapter, raw: string): string {
