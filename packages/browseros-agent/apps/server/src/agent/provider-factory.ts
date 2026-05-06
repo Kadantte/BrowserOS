@@ -44,15 +44,16 @@ function createGoogleFactory(
   return createGoogleGenerativeAI({ apiKey: config.apiKey })
 }
 
-function buildOpenRouterReasoning(
+function buildOpenRouterExtraBody(
   config: ResolvedAgentConfig,
 ): Record<string, unknown> {
-  const r = config.reasoning
-  if (!r) return {}
   const body: Record<string, unknown> = {}
-  if (r.enabled !== undefined) body.enabled = r.enabled
-  if (r.maxTokens !== undefined) body.max_tokens = r.maxTokens
-  if (r.effort !== undefined) body.effort = r.effort
+
+  if (config.reasoning?.enabled !== undefined) {
+    body.reasoning = { enabled: config.reasoning.enabled }
+  }
+  if (config.verbosity !== undefined) body.verbosity = config.verbosity
+
   return body
 }
 
@@ -60,9 +61,10 @@ function createOpenRouterFactory(
   config: ResolvedAgentConfig,
 ): (modelId: string) => unknown {
   if (!config.apiKey) throw new Error('OpenRouter provider requires apiKey')
+  const extraBody = buildOpenRouterExtraBody(config)
   return createOpenRouter({
     apiKey: config.apiKey,
-    extraBody: { reasoning: buildOpenRouterReasoning(config) },
+    ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
     fetch: createOpenRouterCompatibleFetch(),
   })
 }

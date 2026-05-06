@@ -93,6 +93,7 @@ export const LLMConfigSchema: z.ZodObject<{
       >
     }>
   >
+  verbosity: z.ZodOptional<z.ZodEnum<['low', 'medium', 'high', 'xhigh', 'max']>>
 }> = z.object({
   provider: LLMProviderSchema,
   model: z.string().optional(),
@@ -116,6 +117,7 @@ export const LLMConfigSchema: z.ZodObject<{
       effort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
     })
     .optional(),
+  verbosity: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
 })
 
 export type LLMConfig = z.infer<typeof LLMConfigSchema>

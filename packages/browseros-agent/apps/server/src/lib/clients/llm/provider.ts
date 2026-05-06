@@ -44,11 +44,25 @@ function createGoogleModel(config: ResolvedLLMConfig): LanguageModel {
   return createGoogleGenerativeAI({ apiKey: config.apiKey })(config.model)
 }
 
+function buildOpenRouterExtraBody(
+  config: ResolvedLLMConfig,
+): Record<string, unknown> {
+  const body: Record<string, unknown> = {}
+
+  if (config.reasoning?.enabled !== undefined) {
+    body.reasoning = { enabled: config.reasoning.enabled }
+  }
+  if (config.verbosity !== undefined) body.verbosity = config.verbosity
+
+  return body
+}
+
 function createOpenRouterModel(config: ResolvedLLMConfig): LanguageModel {
   if (!config.apiKey) throw new Error('OpenRouter provider requires apiKey')
+  const extraBody = buildOpenRouterExtraBody(config)
   return createOpenRouter({
     apiKey: config.apiKey,
-    extraBody: { reasoning: {} },
+    ...(Object.keys(extraBody).length > 0 ? { extraBody } : {}),
     fetch: createOpenRouterCompatibleFetch(),
   })(config.model)
 }

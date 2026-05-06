@@ -35,6 +35,7 @@ export interface ResolvedAgentConfig {
   reasoningEffort?: string
   reasoningSummary?: string
   reasoning?: { enabled?: boolean; maxTokens?: number; effort?: string }
+  verbosity?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
   contextWindowSize?: number
   userSystemPrompt?: string
   workingDir?: string
