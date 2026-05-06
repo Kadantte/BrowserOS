@@ -84,6 +84,15 @@ export const LLMConfigSchema: z.ZodObject<{
   sessionToken: z.ZodOptional<z.ZodString>
   reasoningEffort: z.ZodOptional<z.ZodEnum<['none', 'low', 'medium', 'high']>>
   reasoningSummary: z.ZodOptional<z.ZodEnum<['auto', 'concise', 'detailed']>>
+  reasoning: z.ZodOptional<
+    z.ZodObject<{
+      enabled: z.ZodOptional<z.ZodBoolean>
+      maxTokens: z.ZodOptional<z.ZodNumber>
+      effort: z.ZodOptional<
+        z.ZodEnum<['minimal', 'low', 'medium', 'high', 'xhigh']>
+      >
+    }>
+  >
 }> = z.object({
   provider: LLMProviderSchema,
   model: z.string().optional(),
@@ -99,6 +108,14 @@ export const LLMConfigSchema: z.ZodObject<{
   // ChatGPT Pro (Codex)
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
   reasoningSummary: z.enum(['auto', 'concise', 'detailed']).optional(),
+  // Provider-specific reasoning controls.
+  reasoning: z
+    .object({
+      enabled: z.boolean().optional(),
+      maxTokens: z.number().optional(),
+      effort: z.enum(['minimal', 'low', 'medium', 'high', 'xhigh']).optional(),
+    })
+    .optional(),
 })
 
 export type LLMConfig = z.infer<typeof LLMConfigSchema>

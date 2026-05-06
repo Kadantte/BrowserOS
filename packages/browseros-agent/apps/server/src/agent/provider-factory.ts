@@ -44,13 +44,25 @@ function createGoogleFactory(
   return createGoogleGenerativeAI({ apiKey: config.apiKey })
 }
 
+function buildOpenRouterReasoning(
+  config: ResolvedAgentConfig,
+): Record<string, unknown> {
+  const r = config.reasoning
+  if (!r) return {}
+  const body: Record<string, unknown> = {}
+  if (r.enabled !== undefined) body.enabled = r.enabled
+  if (r.maxTokens !== undefined) body.max_tokens = r.maxTokens
+  if (r.effort !== undefined) body.effort = r.effort
+  return body
+}
+
 function createOpenRouterFactory(
   config: ResolvedAgentConfig,
 ): (modelId: string) => unknown {
   if (!config.apiKey) throw new Error('OpenRouter provider requires apiKey')
   return createOpenRouter({
     apiKey: config.apiKey,
-    extraBody: { reasoning: {} },
+    extraBody: { reasoning: buildOpenRouterReasoning(config) },
     fetch: createOpenRouterCompatibleFetch(),
   })
 }
