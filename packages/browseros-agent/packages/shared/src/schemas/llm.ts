@@ -68,6 +68,18 @@ export const LLMProviderSchema: z.ZodEnum<
 
 export type LLMProvider = z.infer<typeof LLMProviderSchema>
 
+const OpenRouterProviderRoutingSchema = z.object({
+  order: z.array(z.string()).optional(),
+  only: z.array(z.string()).optional(),
+  ignore: z.array(z.string()).optional(),
+  allowFallbacks: z.boolean().optional(),
+  requireParameters: z.boolean().optional(),
+})
+
+export type OpenRouterProviderRouting = z.infer<
+  typeof OpenRouterProviderRoutingSchema
+>
+
 /**
  * LLM configuration schema
  * Used by SDK endpoints and agent configuration
@@ -94,6 +106,7 @@ export const LLMConfigSchema: z.ZodObject<{
     }>
   >
   verbosity: z.ZodOptional<z.ZodEnum<['low', 'medium', 'high', 'xhigh', 'max']>>
+  providerRouting: z.ZodOptional<typeof OpenRouterProviderRoutingSchema>
 }> = z.object({
   provider: LLMProviderSchema,
   model: z.string().optional(),
@@ -118,6 +131,7 @@ export const LLMConfigSchema: z.ZodObject<{
     })
     .optional(),
   verbosity: z.enum(['low', 'medium', 'high', 'xhigh', 'max']).optional(),
+  providerRouting: OpenRouterProviderRoutingSchema.optional(),
 })
 
 export type LLMConfig = z.infer<typeof LLMConfigSchema>

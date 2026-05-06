@@ -19,6 +19,10 @@ type ToolResultContentPart = Extract<
 type UserMessagePart = Exclude<UserContent, string>[number]
 type UserMediaPart = Extract<UserMessagePart, ImagePart | FilePart>
 
+const MAX_SCREENSHOTS_IN_MODEL_HISTORY = 3
+const SCREENSHOT_HISTORY_PLACEHOLDER =
+  '<screenshot omitted from context: keeping latest 3 screenshots>'
+
 export interface MessageNormalizationOptions {
   supportsImages: boolean
   supportsMediaInToolResults: boolean
@@ -113,6 +117,90 @@ function toolResultContentPartToUserMedia(
   }
 }
 
+function isScreenshotToolResult(part: ToolResultPart): boolean {
+  return (
+    part.type === 'tool-result' &&
+    typeof part.toolName === 'string' &&
+    (part.toolName.includes('screenshot') || part.toolName === 'snapshot')
+  )
+}
+
+function isImageToolResultContentPart(part: ToolResultContentPart): boolean {
+  switch (part.type) {
+    case 'media':
+    case 'image-data':
+    case 'file-data':
+      return part.mediaType.startsWith('image/')
+    case 'image-url':
+    case 'image-file-id':
+      return true
+    default:
+      return false
+  }
+}
+
+function pruneScreenshotHistory(messages: ModelMessage[]): ModelMessage[] {
+  let remainingScreenshots = MAX_SCREENSHOTS_IN_MODEL_HISTORY
+  let changed = false
+  const pruned = [...messages]
+
+  for (
+    let messageIndex = messages.length - 1;
+    messageIndex >= 0;
+    messageIndex--
+  ) {
+    const message = messages[messageIndex]
+    if (message.role !== 'tool') continue
+
+    let messageChanged = false
+    const content = [...message.content]
+
+    for (let partIndex = content.length - 1; partIndex >= 0; partIndex--) {
+      const part = content[partIndex]
+      if (
+        part.type !== 'tool-result' ||
+        part.output.type !== 'content' ||
+        !isScreenshotToolResult(part)
+      ) {
+        continue
+      }
+
+      let partChanged = false
+      const value = [...part.output.value]
+
+      for (let valueIndex = value.length - 1; valueIndex >= 0; valueIndex--) {
+        if (!isImageToolResultContentPart(value[valueIndex])) continue
+
+        if (remainingScreenshots > 0) {
+          remainingScreenshots--
+          continue
+        }
+
+        value[valueIndex] = {
+          type: 'text',
+          text: SCREENSHOT_HISTORY_PLACEHOLDER,
+        }
+        partChanged = true
+      }
+
+      if (!partChanged) continue
+
+      content[partIndex] = {
+        ...part,
+        output: { ...part.output, value },
+      }
+      messageChanged = true
+    }
+
+    if (!messageChanged) continue
+
+    pruned[messageIndex] = { ...message, content }
+    changed = true
+  }
+
+  return changed ? pruned : messages
+}
+
 function normalizeToolMessageForModel(
   message: ToolModelMessage,
   supportsImages: boolean,
@@ -178,14 +266,16 @@ export function normalizeMessagesForModel(
   messages: ModelMessage[],
   options: MessageNormalizationOptions,
 ): ModelMessage[] {
+  const screenshotPrunedMessages = pruneScreenshotHistory(messages)
+
   if (options.supportsMediaInToolResults) {
-    return messages
+    return screenshotPrunedMessages
   }
 
   let changed = false
   const normalized: ModelMessage[] = []
 
-  for (const message of messages) {
+  for (const message of screenshotPrunedMessages) {
     if (message.role !== 'tool') {
       normalized.push(message)
       continue
@@ -201,5 +291,5 @@ export function normalizeMessagesForModel(
     normalized.push(...replacement)
   }
 
-  return changed ? normalized : messages
+  return changed ? normalized : screenshotPrunedMessages
 }

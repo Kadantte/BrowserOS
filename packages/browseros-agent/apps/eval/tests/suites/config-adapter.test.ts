@@ -42,11 +42,8 @@ describe('adaptEvalConfigFile', () => {
     const kimi = await adaptEvalConfigFile(
       'apps/eval/configs/legacy/browseros-agent-kimi-k2-5-agisdk-real.json',
     )
-    const bedrockOpus = await adaptEvalConfigFile(
+    const openrouterBedrockOpus = await adaptEvalConfigFile(
       'apps/eval/configs/legacy/browseros-agent-opus-4-6-agisdk-real.json',
-    )
-    const openrouterOpus = await adaptEvalConfigFile(
-      'apps/eval/configs/legacy/browseros-agent-opus-4-7-openrouter-agisdk-real.json',
     )
 
     expect(kimi.suite.id).toBe('browseros-agent-kimi-k2-5-agisdk-real')
@@ -57,29 +54,22 @@ describe('adaptEvalConfigFile', () => {
     })
     expect(kimi.evalConfig.num_workers).toBe(3)
 
-    expect(bedrockOpus.suite.id).toBe('browseros-agent-opus-4-6-agisdk-real')
-    expect(bedrockOpus.evalConfig.agent).toMatchObject({
-      type: 'single',
-      provider: 'bedrock',
-      model: 'global.anthropic.claude-opus-4-6-v1',
-      region: 'us-west-2',
-      accessKeyId: 'AWS_ACCESS_KEY_ID',
-      secretAccessKey: 'AWS_SECRET_ACCESS_KEY',
-    })
-    expect(bedrockOpus.evalConfig.num_workers).toBe(2)
-
-    expect(openrouterOpus.suite.id).toBe(
-      'browseros-agent-opus-4-7-openrouter-agisdk-real',
+    expect(openrouterBedrockOpus.suite.id).toBe(
+      'browseros-agent-opus-4-6-agisdk-real',
     )
-    expect(openrouterOpus.evalConfig.agent).toMatchObject({
+    expect(openrouterBedrockOpus.evalConfig.agent).toMatchObject({
       type: 'single',
       provider: 'openrouter',
-      model: 'anthropic/claude-opus-4.7',
+      model: 'anthropic/claude-opus-4.6',
       apiKey: 'OPENROUTER_API_KEY',
       reasoning: { enabled: true },
-      verbosity: 'xhigh',
+      verbosity: 'high',
+      providerRouting: {
+        only: ['amazon-bedrock'],
+        allowFallbacks: false,
+      },
     })
-    expect(openrouterOpus.evalConfig.num_workers).toBe(10)
+    expect(openrouterBedrockOpus.evalConfig.num_workers).toBe(2)
   })
 
   it('adapts claude-code configs without provider credentials', async () => {

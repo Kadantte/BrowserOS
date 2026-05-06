@@ -4,7 +4,10 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 import type { ToolApprovalConfig } from '@browseros/shared/constants/tool-approval'
-import type { LLMProvider } from '@browseros/shared/schemas/llm'
+import type {
+  LLMProvider,
+  OpenRouterProviderRouting,
+} from '@browseros/shared/schemas/llm'
 
 export interface ProviderConfig {
   provider: LLMProvider
@@ -36,6 +39,7 @@ export interface ResolvedAgentConfig {
   reasoningSummary?: string
   reasoning?: { enabled?: boolean; maxTokens?: number; effort?: string }
   verbosity?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  providerRouting?: OpenRouterProviderRouting
   contextWindowSize?: number
   userSystemPrompt?: string
   workingDir?: string

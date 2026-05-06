@@ -53,6 +53,25 @@ function buildOpenRouterExtraBody(
     body.reasoning = { enabled: config.reasoning.enabled }
   }
   if (config.verbosity !== undefined) body.verbosity = config.verbosity
+  if (config.providerRouting !== undefined) {
+    body.provider = {
+      ...(config.providerRouting.order !== undefined && {
+        order: config.providerRouting.order,
+      }),
+      ...(config.providerRouting.only !== undefined && {
+        only: config.providerRouting.only,
+      }),
+      ...(config.providerRouting.ignore !== undefined && {
+        ignore: config.providerRouting.ignore,
+      }),
+      ...(config.providerRouting.allowFallbacks !== undefined && {
+        allow_fallbacks: config.providerRouting.allowFallbacks,
+      }),
+      ...(config.providerRouting.requireParameters !== undefined && {
+        require_parameters: config.providerRouting.requireParameters,
+      }),
+    }
+  }
 
   return body
 }
