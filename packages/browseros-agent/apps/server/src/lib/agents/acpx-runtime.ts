@@ -4,8 +4,6 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import type { Stats } from 'node:fs'
-import { mkdir, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { OPENCLAW_GATEWAY_CONTAINER_PORT } from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
@@ -23,21 +21,15 @@ import {
 } from 'acpx/runtime'
 import { getBrowserosDir } from '../browseros-dir'
 import { logger } from '../logger'
-import type { AgentRuntimePaths } from './acpx-runtime-context'
 import {
-  BROWSEROS_ACPX_OPERATING_PROMPT_VERSION,
-  buildAcpxRuntimePromptPrefix,
-  ensureAgentHome,
-  ensureRuntimeSkills,
-  materializeCodexHome,
+  getAcpxAgentAdapter,
+  prepareAcpxAgentContext,
+} from './acpx-agent-adapter'
+import {
   resolveAgentRuntimePaths,
   wrapCommandWithEnv,
 } from './acpx-runtime-context'
-import {
-  deriveRuntimeSessionKey,
-  loadLatestRuntimeState,
-  saveLatestRuntimeState,
-} from './acpx-runtime-state'
+import { loadLatestRuntimeState } from './acpx-runtime-state'
 import type {
   AgentDefinition,
   AgentHistoryEntry,
@@ -91,13 +83,9 @@ interface PreparedRuntimeContext {
   runPrompt: string
   agentCommandEnv: Record<string, string>
   commandIdentity: string
+  useBrowserosMcp: boolean
+  openclawSessionKey: string | null
 }
-
-const BROWSEROS_ACP_AGENT_INSTRUCTIONS = `<role>
-You are BrowserOS - a browser agent with full control of a Chromium browser through the BrowserOS MCP server.
-
-Use the BrowserOS MCP server for all browser tasks, including browsing the web, interacting with pages, inspecting browser state, and managing tabs, windows, bookmarks, and history.
-</role>`
 
 export class AcpxRuntime implements AgentRuntime {
   private readonly defaultCwd: string | null
@@ -176,16 +164,11 @@ export class AcpxRuntime implements AgentRuntime {
   async send(
     input: AgentPromptInput,
   ): Promise<ReadableStream<AgentStreamEvent>> {
-    const prepared =
-      input.agent.adapter === 'openclaw'
-        ? null
-        : await this.prepareRuntimeContext(input, input.cwd ?? this.defaultCwd)
-    const cwd =
-      prepared?.cwd ??
-      (await this.resolveNonManagedCwd(
-        input.cwd ?? this.defaultCwd,
-        !!input.cwd,
-      ))
+    const prepared = await this.prepareRuntimeContext(
+      input,
+      input.cwd ?? this.defaultCwd,
+    )
+    const cwd = prepared.cwd
     const imageAttachments = (input.attachments ?? []).filter((a) =>
       a.mediaType.startsWith('image/'),
     )
@@ -207,24 +190,16 @@ export class AcpxRuntime implements AgentRuntime {
       cwd,
       permissionMode: input.permissionMode,
       nonInteractivePermissions: 'fail',
-      commandEnv: prepared?.agentCommandEnv ?? {},
-      commandIdentity: prepared?.commandIdentity ?? 'openclaw',
-      // OpenClaw agents need their gateway sessionKey baked into the
-      // spawn command (acpx does not forward sessionKey to newSession);
-      // claude/codex don't, and including it would split their cache.
-      openclawSessionKey:
-        input.agent.adapter === 'openclaw' ? input.sessionKey : null,
+      commandEnv: prepared.agentCommandEnv,
+      commandIdentity: prepared.commandIdentity,
+      useBrowserosMcp: prepared.useBrowserosMcp,
+      openclawSessionKey: prepared.openclawSessionKey,
     })
 
     return createAcpxEventStream(runtime, input, {
       cwd,
-      runtimeSessionKey: prepared?.runtimeSessionKey ?? input.sessionKey,
-      runPrompt:
-        prepared?.runPrompt ??
-        buildBrowserosAcpPrompt(
-          BROWSEROS_ACP_AGENT_INSTRUCTIONS,
-          input.message,
-        ),
+      runtimeSessionKey: prepared.runtimeSessionKey,
+      runPrompt: prepared.runPrompt,
     })
   }
 
@@ -245,64 +220,27 @@ export class AcpxRuntime implements AgentRuntime {
     return (await this.sessionStore.load(agent.sessionKey)) ?? null
   }
 
-  private async resolveNonManagedCwd(
-    cwdOverride: string | null,
-    isSelectedCwd: boolean,
-  ): Promise<string> {
-    const paths = resolveAgentRuntimePaths({
-      browserosDir: this.browserosDir,
-      agentId: 'openclaw',
-      cwd: cwdOverride,
-    })
-    await ensureUsableCwd(paths.effectiveCwd, !isSelectedCwd)
-    return paths.effectiveCwd
-  }
-
   private async prepareRuntimeContext(
     input: AgentPromptInput,
     cwdOverride: string | null,
   ): Promise<PreparedRuntimeContext> {
-    const paths = resolveAgentRuntimePaths({
+    const prepared = await prepareAcpxAgentContext({
       browserosDir: this.browserosDir,
-      agentId: input.agent.id,
-      cwd: cwdOverride,
-    })
-    await ensureUsableCwd(paths.effectiveCwd, !input.cwd)
-    await ensureAgentHome(paths)
-    const skillNames = await ensureRuntimeSkills(paths.runtimeSkillsDir)
-    if (input.agent.adapter === 'codex') {
-      await materializeCodexHome({ paths, skillNames })
-    }
-    const promptPrefix = buildAcpxRuntimePromptPrefix({
       agent: input.agent,
-      paths,
-      skillNames,
-    })
-    const agentCommandEnv = buildAgentCommandEnv(input.agent, paths)
-    const commandIdentity = stableCommandIdentity(agentCommandEnv)
-    const runtimeSessionKey = deriveRuntimeSessionKey({
-      agentId: input.agent.id,
       sessionId: input.sessionId,
-      adapter: input.agent.adapter,
-      cwd: paths.effectiveCwd,
-      agentHome: paths.agentHome,
-      promptVersion: BROWSEROS_ACPX_OPERATING_PROMPT_VERSION,
-      skillIdentity: skillNames.join(','),
-      commandIdentity,
-    })
-    await saveLatestRuntimeState(paths.runtimeStatePath, {
-      sessionId: input.sessionId,
-      runtimeSessionKey,
-      cwd: paths.effectiveCwd,
-      agentHome: paths.agentHome,
-      updatedAt: Date.now(),
+      sessionKey: input.sessionKey,
+      cwdOverride,
+      isSelectedCwd: !!input.cwd,
+      message: input.message,
     })
     return {
-      cwd: paths.effectiveCwd,
-      runtimeSessionKey,
-      runPrompt: buildBrowserosAcpPrompt(promptPrefix, input.message),
-      agentCommandEnv,
-      commandIdentity,
+      cwd: prepared.cwd,
+      runtimeSessionKey: prepared.runtimeSessionKey,
+      runPrompt: prepared.runPrompt,
+      agentCommandEnv: prepared.commandEnv,
+      commandIdentity: prepared.commandIdentity,
+      useBrowserosMcp: prepared.useBrowserosMcp,
+      openclawSessionKey: prepared.openclawSessionKey,
     }
   }
 
@@ -312,6 +250,7 @@ export class AcpxRuntime implements AgentRuntime {
     nonInteractivePermissions: AcpRuntimeOptions['nonInteractivePermissions']
     commandEnv: Record<string, string>
     commandIdentity: string
+    useBrowserosMcp: boolean
     openclawSessionKey: string | null
   }): AcpxCoreRuntime {
     const key = JSON.stringify({
@@ -319,16 +258,12 @@ export class AcpxRuntime implements AgentRuntime {
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
       commandIdentity: input.commandIdentity,
+      useBrowserosMcp: input.useBrowserosMcp,
       openclawSessionKey: input.openclawSessionKey,
     })
     const existing = this.runtimes.get(key)
     if (existing) return existing
 
-    // OpenClaw exposes its provider tools through the gateway, not through
-    // ACP-side MCP servers. Forwarding the BrowserOS HTTP MCP to its bridge
-    // makes newSession fail because openclaw rejects unsupported transports.
-    // Claude/codex still need the BrowserOS MCP for browser tooling.
-    const isOpenclaw = input.openclawSessionKey !== null
     const runtime = this.runtimeFactory({
       cwd: input.cwd,
       sessionStore: this.sessionStore,
@@ -337,9 +272,9 @@ export class AcpxRuntime implements AgentRuntime {
         openclawSessionKey: input.openclawSessionKey,
         commandEnv: input.commandEnv,
       }),
-      mcpServers: isOpenclaw
-        ? []
-        : createBrowserosMcpServers(this.browserosServerPort),
+      mcpServers: input.useBrowserosMcp
+        ? createBrowserosMcpServers(this.browserosServerPort)
+        : [],
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
     })
@@ -351,6 +286,7 @@ export class AcpxRuntime implements AgentRuntime {
       nonInteractivePermissions: input.nonInteractivePermissions,
       browserosServerPort: this.browserosServerPort,
       commandIdentity: input.commandIdentity,
+      useBrowserosMcp: input.useBrowserosMcp,
       openclawSessionKey: input.openclawSessionKey,
     })
     return runtime
@@ -536,14 +472,16 @@ export function unwrapBrowserosAcpUserMessage(raw: string): string {
 }
 
 function stripOuterRoleEnvelope(value: string): string {
-  const prefix = `${BROWSEROS_ACP_AGENT_INSTRUCTIONS}
-
-<user_request>
-`
-  const suffix = `
-</user_request>`
-  if (!value.startsWith(prefix) || !value.endsWith(suffix)) return value
-  return value.slice(prefix.length, -suffix.length)
+  // Any `<role>…</role>\n\n<user_request>\n…\n</user_request>` envelope.
+  // Adapter-agnostic so both the BrowserOS multi-line role block and the
+  // openclaw single-line role block get unwrapped. TKT-774's exact-prefix
+  // match only covered the BrowserOS form, so the openclaw envelope
+  // (added when openclaw moved to its own prepare step) was landing
+  // unwrapped in history payloads.
+  const match = value.match(
+    /^<role\b[^>]*>[\s\S]*?<\/role>\n\n<user_request>\n([\s\S]*?)\n<\/user_request>$/,
+  )
+  return match ? match[1] : value
 }
 
 function stripOuterRuntimeEnvelope(value: string): string {
@@ -847,77 +785,6 @@ function resolveOpenclawAcpCommand(
     argv.push('--session', bridgeSessionKey)
   }
   return argv.join(' ')
-}
-
-async function ensureUsableCwd(
-  cwd: string,
-  isDefaultWorkspace: boolean,
-): Promise<void> {
-  if (isDefaultWorkspace) {
-    await mkdir(cwd, { recursive: true })
-    return
-  }
-  let info: Stats
-  try {
-    info = await stat(cwd)
-  } catch (err) {
-    if (isNotFoundError(err)) {
-      throw new Error(`Selected workspace does not exist: ${cwd}`)
-    }
-    throw err
-  }
-  if (!info.isDirectory()) {
-    throw new Error(`Selected workspace is not a directory: ${cwd}`)
-  }
-}
-
-function isNotFoundError(err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    err.code === 'ENOENT'
-  )
-}
-
-function buildAgentCommandEnv(
-  agent: AgentDefinition,
-  paths: AgentRuntimePaths,
-): Record<string, string> {
-  if (agent.adapter === 'codex') {
-    return {
-      AGENT_HOME: paths.agentHome,
-      CODEX_HOME: paths.codexHome,
-    }
-  }
-  if (agent.adapter === 'claude') {
-    return {
-      AGENT_HOME: paths.agentHome,
-    }
-  }
-  return {}
-}
-
-function stableCommandIdentity(env: Record<string, string>): string {
-  return Object.entries(env)
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join('\n')
-}
-
-function buildBrowserosAcpPrompt(prefix: string, message: string): string {
-  return `${prefix}
-
-<user_request>
-${escapePromptTagText(message)}
-</user_request>`
-}
-
-function escapePromptTagText(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
 }
 
 async function applyRuntimeControls(
