@@ -62,6 +62,13 @@ function toResolvedAgentConfig(
     accessKeyId: resolved.accessKeyId,
     secretAccessKey: resolved.secretAccessKey,
     sessionToken: resolved.sessionToken,
+    // ACP (acpx-ai-provider) — eval runs against ACP agents need
+    // these forwarded so the server's provider factory can construct
+    // the AcpxProvider. Without them an `acp`-typed agent in an eval
+    // config would fall back to the auto-scratch path with no agent.
+    acpAgentId: resolved.acpAgentId,
+    acpDefaultCwd: resolved.acpDefaultCwd,
+    acpPermissionMode: resolved.acpPermissionMode,
     workingDir: `/tmp/browseros-eval-${sessionPrefix}-${crypto.randomUUID()}`,
   }
 }

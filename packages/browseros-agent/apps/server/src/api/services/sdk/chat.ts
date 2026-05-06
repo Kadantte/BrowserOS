@@ -69,6 +69,10 @@ export class ChatService {
         accessKeyId: llmConfig.accessKeyId,
         secretAccessKey: llmConfig.secretAccessKey,
         sessionToken: llmConfig.sessionToken,
+        // ACP (acpx-ai-provider)
+        acpAgentId: llmConfig.acpAgentId,
+        acpDefaultCwd: llmConfig.acpDefaultCwd,
+        acpPermissionMode: llmConfig.acpPermissionMode,
         browserContext,
       }),
       signal,
