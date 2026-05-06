@@ -1252,69 +1252,16 @@ export class Browser {
 
     if (deltaX === 0 && deltaY === 0) return
 
-    let x: number
-    let y: number
     if (element !== undefined) {
       const center = await elements.getElementCenter(session, element)
-      x = center.x
-      y = center.y
-    } else {
-      const metrics = await session.Page.getLayoutMetrics()
-      const viewport = metrics.cssVisualViewport ?? metrics.cssLayoutViewport
-      x = viewport.clientWidth / 2
-      y = viewport.clientHeight / 2
+      await mouse.dispatchScroll(session, center.x, center.y, deltaX, deltaY)
+      return
     }
 
-    const beforeWindowPosition =
-      element === undefined
-        ? await this.getWindowScrollPosition(session)
-        : undefined
-
-    await mouse.dispatchScroll(session, x, y, deltaX, deltaY)
-
-    if (beforeWindowPosition === undefined) return
-
-    const afterWindowPosition = await this.getWindowScrollPosition(session)
-    const moved = this.didScrollInExpectedDirection(
-      beforeWindowPosition,
-      afterWindowPosition,
-      deltaX,
-      deltaY,
-    )
-    if (moved) return
-
-    await this.fallbackWindowScroll(session, deltaX, deltaY)
+    await this.scrollWindow(session, deltaX, deltaY)
   }
 
-  private async getWindowScrollPosition(
-    session: ProtocolApi,
-  ): Promise<{ x: number; y: number }> {
-    const result = await session.Runtime.evaluate({
-      expression:
-        '({ x: window.scrollX ?? window.pageXOffset ?? 0, y: window.scrollY ?? window.pageYOffset ?? 0 })',
-      returnByValue: true,
-    })
-    const value = (result.result?.value ?? {}) as { x?: number; y?: number }
-    return {
-      x: typeof value.x === 'number' ? value.x : 0,
-      y: typeof value.y === 'number' ? value.y : 0,
-    }
-  }
-
-  private didScrollInExpectedDirection(
-    before: { x: number; y: number },
-    after: { x: number; y: number },
-    deltaX: number,
-    deltaY: number,
-  ): boolean {
-    if (deltaX > 0 && after.x > before.x) return true
-    if (deltaX < 0 && after.x < before.x) return true
-    if (deltaY > 0 && after.y > before.y) return true
-    if (deltaY < 0 && after.y < before.y) return true
-    return false
-  }
-
-  private async fallbackWindowScroll(
+  private async scrollWindow(
     session: ProtocolApi,
     deltaX: number,
     deltaY: number,

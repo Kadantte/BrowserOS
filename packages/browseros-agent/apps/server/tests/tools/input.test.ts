@@ -644,6 +644,33 @@ describe('input tools', () => {
     })
   })
 
+  it('scroll moves the page viewport', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: FORM_PAGE })
+      const pageId = pageIdOf(newResult)
+
+      const result = await execute(scroll, {
+        page: pageId,
+        direction: 'down',
+        amount: 5,
+      })
+
+      assert.ok(!result.isError, textOf(result))
+      assert.ok(textOf(result).includes('Scrolled down'))
+
+      const position = await execute(evaluate_script, {
+        page: pageId,
+        expression: 'window.scrollY',
+      })
+      const data = structuredOf<{ value?: unknown }>(position)
+      const value = data.value
+      assert.strictEqual(typeof value, 'number')
+      assert.ok(value > 0)
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
   it('hover moves cursor via the GUI point model response', async () => {
     await withBrowser(async ({ browser, execute }) => {
       const newResult = await execute(new_page, { url: FORM_PAGE })
