@@ -302,6 +302,45 @@ export class AiSdkAgent {
       tools,
       stopWhen: [stepCountIs(AGENT_LIMITS.MAX_TURNS)],
       prepareStep,
+      onFinish: (event) => {
+        const previousStep = event.steps.at(-2)
+        const totalToolCalls = event.steps.reduce(
+          (sum, step) => sum + step.toolCalls.length,
+          0,
+        )
+        const totalToolResults = event.steps.reduce(
+          (sum, step) => sum + step.toolResults.length,
+          0,
+        )
+
+        logger.info('Agent tool loop finished', {
+          conversationId: config.resolvedConfig.conversationId,
+          provider: config.resolvedConfig.provider,
+          model: config.resolvedConfig.model,
+          finishReason: event.finishReason,
+          rawFinishReason: event.rawFinishReason,
+          stepNumber: event.stepNumber,
+          stepCount: event.steps.length,
+          finalTextLength: event.text.length,
+          emptyFinalText: event.text.trim().length === 0,
+          lastStepToolCallCount: event.toolCalls.length,
+          lastStepToolResultCount: event.toolResults.length,
+          previousStepFinishReason: previousStep?.finishReason,
+          previousStepToolCallCount: previousStep?.toolCalls.length,
+          previousStepToolResultCount: previousStep?.toolResults.length,
+          endedAfterToolResult:
+            event.toolCalls.length === 0 &&
+            (previousStep?.toolResults.length ?? 0) > 0,
+          totalToolCalls,
+          totalToolResults,
+          totalInputTokens: event.totalUsage.inputTokens,
+          totalOutputTokens: event.totalUsage.outputTokens,
+          totalTokens: event.totalUsage.totalTokens,
+          finalStepInputTokens: event.usage.inputTokens,
+          finalStepOutputTokens: event.usage.outputTokens,
+          finalStepTotalTokens: event.usage.totalTokens,
+        })
+      },
       ...(isChatGPTPro && {
         providerOptions: {
           openai: {

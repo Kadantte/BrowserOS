@@ -4,7 +4,11 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import { createAgentUIStreamResponse, type UIMessage } from 'ai'
+import {
+  createAgentUIStreamResponse,
+  type FinishReason,
+  type UIMessage,
+} from 'ai'
 import { AiSdkAgent } from '../../agent/ai-sdk-agent'
 import { formatUserMessage } from '../../agent/format-message'
 import {
@@ -272,6 +276,9 @@ export class ChatService {
 
     // Handle tool approval responses: patch the agent's messages and re-run
     if (request.toolApprovalResponses?.length) {
+      let finishReason: FinishReason | undefined
+      let rawFinishReason: string | undefined
+      let stepNumber: number | undefined
       this.applyToolApprovalResponses(
         session.agent.messages,
         request.toolApprovalResponses,
@@ -284,8 +291,21 @@ export class ChatService {
         agent: session.agent.toolLoopAgent,
         uiMessages: filterValidMessages(session.agent.messages),
         abortSignal,
+        onStepFinish: (step) => {
+          finishReason = step.finishReason
+          rawFinishReason = step.rawFinishReason
+          stepNumber = step.stepNumber
+        },
         onFinish: async ({ messages }: { messages: UIMessage[] }) => {
           session.agent.messages = filterValidMessages(messages)
+          logger.info('Agent execution complete', {
+            conversationId: request.conversationId,
+            totalMessages: messages.length,
+            finishReason,
+            rawFinishReason,
+            stepNumber,
+            isToolApprovalResponse: true,
+          })
         },
       })
     }
@@ -333,10 +353,19 @@ export class ChatService {
           : msg,
     )
 
+    let finishReason: FinishReason | undefined
+    let rawFinishReason: string | undefined
+    let stepNumber: number | undefined
+
     return createAgentUIStreamResponse({
       agent: session.agent.toolLoopAgent,
       uiMessages: promptUiMessages,
       abortSignal,
+      onStepFinish: (step) => {
+        finishReason = step.finishReason
+        rawFinishReason = step.rawFinishReason
+        stepNumber = step.stepNumber
+      },
       onFinish: async ({ messages }: { messages: UIMessage[] }) => {
         // The agent loop returns `messages` containing the prompt-
         // wrapped user text. Restore the raw form before persisting
@@ -354,6 +383,9 @@ export class ChatService {
         logger.info('Agent execution complete', {
           conversationId: request.conversationId,
           totalMessages: restored.length,
+          finishReason,
+          rawFinishReason,
+          stepNumber,
         })
 
         if (session?.hiddenPageId) {

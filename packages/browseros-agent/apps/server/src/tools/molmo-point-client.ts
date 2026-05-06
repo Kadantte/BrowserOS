@@ -67,13 +67,6 @@ export async function requestMolmoPoint(args: {
   const instructionTruncated =
     instructionLength > MOLMO_POINT_INSTRUCTION_LOG_MAX_CHARS
 
-  logger.info('Molmo point request started', {
-    endpoint,
-    instruction,
-    instructionLength,
-    instructionTruncated,
-  })
-
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -130,23 +123,6 @@ export async function requestMolmoPoint(args: {
   }
 
   const point = firstValidPoint(payload.points)
-  logger.info('Molmo point response received', {
-    endpoint,
-    instruction,
-    instructionLength,
-    instructionTruncated,
-    status: response.status,
-    statusText: response.statusText,
-    rawResponseText: truncateText(
-      rawResponseText,
-      MOLMO_POINT_RESPONSE_LOG_MAX_CHARS,
-    ),
-    rawResponseTextLength: rawResponseText.length,
-    rawResponseTextTruncated:
-      rawResponseText.length > MOLMO_POINT_RESPONSE_LOG_MAX_CHARS,
-    parsedPoint: point,
-  })
-
   if (!point) {
     throw new Error('Molmo point response did not include a valid point')
   }

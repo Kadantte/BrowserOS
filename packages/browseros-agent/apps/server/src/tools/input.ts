@@ -83,12 +83,10 @@ export const click = defineInputTool({
       return
     }
 
-    logger.info('GUI click dispatching', clickLog)
     await ctx.browser.clickAt(args.page, x, y, {
       button: args.button,
       clickCount: args.clickCount,
     })
-    logger.info('GUI click dispatched', clickLog)
     response.text('tool call executed successfully')
     response.data({
       action: 'click',
@@ -225,9 +223,7 @@ export const hover = defineInputTool({
       return
     }
 
-    logger.info('GUI hover dispatching', hoverLog)
     await ctx.browser.hoverAt(args.page, x, y)
-    logger.info('GUI hover dispatched', hoverLog)
     response.text('tool call executed successfully')
     response.data({
       action: 'hover',
