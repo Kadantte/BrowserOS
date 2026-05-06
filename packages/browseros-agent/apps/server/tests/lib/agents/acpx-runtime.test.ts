@@ -955,7 +955,59 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
     expect(command).toContain('/runtime/codex-home')
   })
 
-  it('resolves the Hermes adapter to a `hermes acp` pipeline with HERMES_HOME env', async () => {
+  it('resolves the Hermes adapter to a container `nerdctl exec hermes acp` command when a HermesGatewayAccessor is wired', async () => {
+    const browserosDir = await mkdtemp(
+      join(tmpdir(), 'browseros-acpx-browseros-'),
+    )
+    const stateDir = await mkdtemp(join(tmpdir(), 'browseros-acpx-state-'))
+    tempDirs.push(browserosDir, stateDir)
+    const calls: Array<{ method: string; input: unknown }> = []
+    const runtime = new AcpxRuntime({
+      browserosDir,
+      stateDir,
+      hermesGateway: {
+        getContainerName: () => 'browseros-hermes-hermes-agent-1',
+        getLimaHomeDir: () => '/Users/dev/.browseros-dev/lima',
+        getLimactlPath: () => '/opt/homebrew/bin/limactl',
+        getVmName: () => 'browseros-vm',
+      },
+      runtimeFactory: (options) => {
+        calls.push({ method: 'createRuntime', input: options })
+        return createFakeAcpRuntime(calls)
+      },
+    })
+    const agent = makeAgent({ id: 'agent-1', adapter: 'hermes' })
+
+    await collectStream(
+      await runtime.send({
+        agent,
+        sessionId: 'main',
+        sessionKey: agent.sessionKey,
+        message: 'hi',
+        permissionMode: 'approve-all',
+      }),
+    )
+
+    const command =
+      getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
+    // Container-spawn path uses limactl shell + nerdctl exec; no host-
+    // process bash/tee workaround (those were Phase A only).
+    expect(command).toContain('env LIMA_HOME=/Users/dev/.browseros-dev/lima')
+    expect(command).toContain(
+      '/opt/homebrew/bin/limactl shell --workdir / browseros-vm --',
+    )
+    expect(command).toContain('nerdctl exec -i')
+    expect(command).toContain('browseros-hermes-hermes-agent-1')
+    expect(command).toContain('hermes acp')
+    expect(command).toContain('HERMES_HOME=')
+    expect(command).not.toContain('bash -c')
+    expect(command).not.toContain('tee /dev/null')
+    expect(command).not.toContain('AGENT_HOME=')
+    expect(command).not.toContain('CODEX_HOME=')
+    expect(command).not.toContain('CLAUDE_CONFIG_DIR=')
+  })
+
+  it('falls back to a host-process `hermes acp` command when no HermesGatewayAccessor is wired', async () => {
     const browserosDir = await mkdtemp(
       join(tmpdir(), 'browseros-acpx-browseros-'),
     )
@@ -984,16 +1036,16 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
 
     const command =
       getCreateRuntimeOptions(calls).agentRegistry.resolve('hermes')
-    expect(command).toContain('env HERMES_HOME=')
-    // The shell wrapper exists to work around a Bun↔Python pipe bug;
-    // see comment in resolveHermesAcpCommand. Both the inner `hermes acp`
-    // exec and the `tee /dev/null` bridge must be present.
+    // Host-process fallback: bare `hermes acp` with HERMES_HOME injected
+    // via wrapCommandWithEnv. No limactl/nerdctl chain — used by tests
+    // and as a defensive escape hatch when the container service hasn't
+    // been wired yet.
     expect(command).toContain('hermes acp')
-    expect(command).toContain('tee /dev/null')
-    expect(command).toContain('bash -c')
-    expect(command).not.toContain('AGENT_HOME=')
-    expect(command).not.toContain('CODEX_HOME=')
-    expect(command).not.toContain('CLAUDE_CONFIG_DIR=')
+    expect(command).toContain('env HERMES_HOME=')
+    expect(command).not.toContain('limactl')
+    expect(command).not.toContain('nerdctl')
+    expect(command).not.toContain('bash -c')
+    expect(command).not.toContain('tee /dev/null')
   })
 
   it('does not reuse an Acpx runtime across different command identities', async () => {

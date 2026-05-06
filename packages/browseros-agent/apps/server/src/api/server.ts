@@ -42,6 +42,7 @@ import { createSoulRoutes } from './routes/soul'
 import { createStatusRoute } from './routes/status'
 import { createTerminalRoutes } from './routes/terminal'
 import { GlobalAclPolicyService } from './services/acl/global-acl-policy'
+import { getHermesContainerService } from './services/hermes/hermes-container'
 import {
   connectKlavisInBackground,
   type KlavisProxyRef,
@@ -160,6 +161,7 @@ export async function createHttpServer(config: HttpServerConfig) {
           },
           getStatus: () => getOpenClawService().getStatus(),
         },
+        hermesGateway: getHermesContainerService().getAccessor(),
       }),
     )
 

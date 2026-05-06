@@ -6,6 +6,7 @@
 
 import {
   AcpxRuntime,
+  type HermesGatewayAccessor,
   type OpenclawGatewayAccessor,
 } from '../../../lib/agents/acpx-runtime'
 import {
@@ -197,6 +198,7 @@ export class AgentHarnessService {
       openclawGateway?: OpenclawGatewayAccessor
       openclawGatewayChat?: OpenClawGatewayChatClient
       openclawProvisioner?: OpenClawProvisioner
+      hermesGateway?: HermesGatewayAccessor
       turnRegistry?: TurnRegistry
       messageQueue?: FileMessageQueue
       producedFilesStore?: ProducedFilesStore
@@ -209,6 +211,7 @@ export class AgentHarnessService {
         browserosServerPort: deps.browserosServerPort,
         openclawGateway: deps.openclawGateway,
         openclawGatewayChat: deps.openclawGatewayChat,
+        hermesGateway: deps.hermesGateway,
       })
     this.openclawProvisioner = deps.openclawProvisioner ?? null
     this.turnRegistry = deps.turnRegistry ?? new TurnRegistry()

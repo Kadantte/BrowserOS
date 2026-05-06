@@ -23,6 +23,14 @@ export interface PreparedAcpxAgentContext {
   commandEnv: Record<string, string>
   commandIdentity: string
   useBrowserosMcp: boolean
+  /**
+   * Hostname the agent should use to reach the BrowserOS HTTP MCP server.
+   * Default `127.0.0.1` is correct for host-process adapters (claude, codex,
+   * Phase A host-mode hermes). Container-spawned adapters override this to
+   * `host.containers.internal` so the URL injected into ACP newSession's
+   * mcpServers resolves from inside the container.
+   */
+  browserosMcpHost?: string
   openclawSessionKey: string | null
 }
 

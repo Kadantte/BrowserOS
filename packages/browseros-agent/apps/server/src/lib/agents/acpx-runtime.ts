@@ -66,6 +66,23 @@ export interface OpenclawGatewayAccessor {
   getVmName(): string
 }
 
+/**
+ * Live-getter access to the Hermes container runtime info. Required
+ * when spawning the hermes ACP adapter inside its long-running idle
+ * container; absent only in tests / dev fallback (where the harness
+ * still falls back to a host-process `hermes acp` spawn).
+ */
+export interface HermesGatewayAccessor {
+  /** Container name e.g. browseros-hermes-hermes-agent-1. */
+  getContainerName(): string
+  /** LIMA_HOME directory containing the browseros-vm instance. */
+  getLimaHomeDir(): string
+  /** Resolved path to the `limactl` binary (bundled or host). */
+  getLimactlPath(): string
+  /** VM name registered in LIMA_HOME (e.g. browseros-vm). */
+  getVmName(): string
+}
+
 type AcpxRuntimeOptions = {
   cwd?: string
   browserosDir?: string
@@ -85,6 +102,12 @@ type AcpxRuntimeOptions = {
    * the ACP path and the model never sees the image.
    */
   openclawGatewayChat?: OpenClawGatewayChatClient
+  /**
+   * Required for adapter='hermes' agents in production; absence falls
+   * back to a host-process `hermes acp` spawn (used by tests / dev
+   * before the container service is wired).
+   */
+  hermesGateway?: HermesGatewayAccessor
   runtimeFactory?: (options: AcpRuntimeOptions) => AcpxCoreRuntime
 }
 
@@ -95,6 +118,7 @@ interface PreparedRuntimeContext {
   agentCommandEnv: Record<string, string>
   commandIdentity: string
   useBrowserosMcp: boolean
+  browserosMcpHost?: string
   openclawSessionKey: string | null
 }
 
@@ -105,6 +129,7 @@ export class AcpxRuntime implements AgentRuntime {
   private readonly browserosServerPort: number
   private readonly openclawGateway: OpenclawGatewayAccessor | null
   private readonly openclawGatewayChat: OpenClawGatewayChatClient | null
+  private readonly hermesGateway: HermesGatewayAccessor | null
   private readonly runtimeFactory: (
     options: AcpRuntimeOptions,
   ) => AcpxCoreRuntime
@@ -122,6 +147,7 @@ export class AcpxRuntime implements AgentRuntime {
       options.browserosServerPort ?? DEFAULT_PORTS.server
     this.openclawGateway = options.openclawGateway ?? null
     this.openclawGatewayChat = options.openclawGatewayChat ?? null
+    this.hermesGateway = options.hermesGateway ?? null
     this.sessionStore = createRuntimeStore({ stateDir: this.stateDir })
     this.runtimeFactory = options.runtimeFactory ?? createAcpRuntime
   }
@@ -224,6 +250,7 @@ export class AcpxRuntime implements AgentRuntime {
       commandEnv: prepared.agentCommandEnv,
       commandIdentity: prepared.commandIdentity,
       useBrowserosMcp: prepared.useBrowserosMcp,
+      browserosMcpHost: prepared.browserosMcpHost,
       openclawSessionKey: prepared.openclawSessionKey,
     })
 
@@ -271,6 +298,7 @@ export class AcpxRuntime implements AgentRuntime {
       agentCommandEnv: prepared.commandEnv,
       commandIdentity: prepared.commandIdentity,
       useBrowserosMcp: prepared.useBrowserosMcp,
+      browserosMcpHost: prepared.browserosMcpHost,
       openclawSessionKey: prepared.openclawSessionKey,
     }
   }
@@ -282,14 +310,17 @@ export class AcpxRuntime implements AgentRuntime {
     commandEnv: Record<string, string>
     commandIdentity: string
     useBrowserosMcp: boolean
+    browserosMcpHost?: string
     openclawSessionKey: string | null
   }): AcpxCoreRuntime {
+    const mcpHost = input.browserosMcpHost ?? '127.0.0.1'
     const key = JSON.stringify({
       cwd: input.cwd,
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
       commandIdentity: input.commandIdentity,
       useBrowserosMcp: input.useBrowserosMcp,
+      browserosMcpHost: mcpHost,
       openclawSessionKey: input.openclawSessionKey,
     })
     const existing = this.runtimes.get(key)
@@ -301,10 +332,11 @@ export class AcpxRuntime implements AgentRuntime {
       agentRegistry: createBrowserosAgentRegistry({
         openclawGateway: this.openclawGateway,
         openclawSessionKey: input.openclawSessionKey,
+        hermesGateway: this.hermesGateway,
         commandEnv: input.commandEnv,
       }),
       mcpServers: input.useBrowserosMcp
-        ? createBrowserosMcpServers(this.browserosServerPort)
+        ? createBrowserosMcpServers(this.browserosServerPort, mcpHost)
         : [],
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
@@ -316,6 +348,7 @@ export class AcpxRuntime implements AgentRuntime {
       permissionMode: input.permissionMode,
       nonInteractivePermissions: input.nonInteractivePermissions,
       browserosServerPort: this.browserosServerPort,
+      browserosMcpHost: mcpHost,
       commandIdentity: input.commandIdentity,
       useBrowserosMcp: input.useBrowserosMcp,
       openclawSessionKey: input.openclawSessionKey,
@@ -696,12 +729,13 @@ function createAcpxEventStream(
 
 function createBrowserosMcpServers(
   browserosServerPort: number,
+  host = '127.0.0.1',
 ): NonNullable<AcpRuntimeOptions['mcpServers']> {
   return [
     {
       type: 'http',
       name: 'browseros',
-      url: `http://127.0.0.1:${browserosServerPort}/mcp`,
+      url: `http://${host}:${browserosServerPort}/mcp`,
       headers: [],
     },
   ]
@@ -710,6 +744,7 @@ function createBrowserosMcpServers(
 function createBrowserosAgentRegistry(input: {
   openclawGateway: OpenclawGatewayAccessor | null
   openclawSessionKey: string | null
+  hermesGateway: HermesGatewayAccessor | null
   commandEnv: Record<string, string>
 }): AcpRuntimeOptions['agentRegistry'] {
   const registry = createAgentRegistry()
@@ -737,26 +772,16 @@ function createBrowserosAgentRegistry(input: {
       }
 
       if (lower === 'hermes') {
-        // Phase A: Hermes runs as a host process. The user installs Hermes
-        // (e.g. via setup-hermes.sh) so `hermes` is on PATH, and configures
-        // it via `hermes setup` (config.yaml is the source of truth for the
-        // model). We spawn it with HERMES_HOME pointing at the per-agent
-        // BrowserOS-managed home. Phase A.5 will swap this to
-        // `nerdctl exec` into a Hermes container.
-        //
-        // The `bash -c "... | tee /dev/null"` wrapper is a workaround for
-        // a Bun↔Python pipe interop bug: Bun's child_process polyfill uses
-        // socketpair() for child stdio, but Python's
-        // asyncio.connect_write_pipe (used by hermes-agent's acp library)
-        // does not drain its writes onto a unix socket. With `tee` in the
-        // middle, hermes' stdout flows through a real pipe(2) that asyncio
-        // can drain, and tee then writes those bytes to bash's stdout (the
-        // socket Bun reads). Verified 2026-05-06 against `hermes-agent`
-        // 0.12.0; without it, hermes' stdout never reaches the harness.
-        return wrapCommandWithEnv(
-          `bash -c 'exec hermes acp | tee /dev/null'`,
-          input.commandEnv,
-        )
+        if (!input.hermesGateway) {
+          // No container service wired (tests, dev fallback). Spawn the
+          // host-side `hermes` binary if available. acpx's built-in
+          // hermes registry resolution is good enough — we just inject
+          // HERMES_HOME via the env wrapper so per-agent state still
+          // works. Production wires `hermesGateway` and goes through
+          // the container path below.
+          return wrapCommandWithEnv('hermes acp', input.commandEnv)
+        }
+        return resolveHermesAcpCommand(input.hermesGateway, input.commandEnv)
       }
 
       if (lower === 'claude' || lower === 'codex') {
@@ -766,6 +791,66 @@ function createBrowserosAgentRegistry(input: {
       return registry.resolve(agentName)
     },
   }
+}
+
+/**
+ * Builds the command string acpx will spawn for a `hermes` adapter.
+ * Runs `hermes acp` inside the long-running Hermes container via the
+ * bundled `limactl shell <vm> -- nerdctl exec -i ...` chain so the
+ * upstream image's `hermes` binary is reused; BrowserOS does not
+ * require a host-side hermes install.
+ *
+ * HERMES_HOME inside the container points at the per-agent home
+ * directory (translated from the host-side path by prepareHermesContext)
+ * so each BrowserOS agent stays isolated.
+ *
+ * Stdio: with `limactl shell -- nerdctl exec`, hermes' stdio inside the
+ * container is a real pipe(2), and bytes flow back through limactl/SSH
+ * to the harness. The Bun↔Python socketpair workaround that the
+ * Phase A host-process spawn needed (`bash -c "... | tee /dev/null"`) is
+ * unnecessary here because the multiple pipe→socket conversions
+ * naturally absorb the issue.
+ */
+function resolveHermesAcpCommand(
+  gateway: HermesGatewayAccessor,
+  commandEnv: Record<string, string>,
+): string {
+  const limactl = gateway.getLimactlPath()
+  const vm = gateway.getVmName()
+  const container = gateway.getContainerName()
+  const limaHome = gateway.getLimaHomeDir()
+
+  // Build `nerdctl exec -i -e <K=V> ... <container> hermes acp`. The
+  // commandEnv typically carries HERMES_HOME (a /data/... path inside
+  // the container set by prepareHermesContext); pass each value through
+  // `-e` so hermes sees them, even though the env itself was set on the
+  // host process. PYTHONUNBUFFERED is sticky on the container; we
+  // re-add it here for safety.
+  const argv = [
+    'env',
+    `LIMA_HOME=${limaHome}`,
+    limactl,
+    'shell',
+    '--workdir',
+    '/',
+    vm,
+    '--',
+    'nerdctl',
+    'exec',
+    '-i',
+    '-e',
+    'PYTHONUNBUFFERED=1',
+  ]
+  for (const [key, value] of Object.entries(commandEnv)) {
+    argv.push('-e', `${key}=${value}`)
+  }
+  // The upstream nousresearch/hermes-agent image installs hermes into
+  // /opt/hermes/.venv/bin (note the leading dot). It's not on PATH for
+  // arbitrary `nerdctl exec` calls — the image's own entrypoint script
+  // sets the PATH but we override the entrypoint to keep the container
+  // idle, so we use the absolute path here.
+  argv.push(container, '/opt/hermes/.venv/bin/hermes', 'acp')
+  return argv.join(' ')
 }
 
 /**

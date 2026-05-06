@@ -111,7 +111,7 @@ describe('prepareAcpxAgentContext', () => {
     expect(prepared.runPrompt).not.toContain('Available skills:')
   })
 
-  it('prepares Hermes with HERMES_HOME pointing at the BrowserOS-managed agent home', async () => {
+  it('prepares Hermes with HERMES_HOME pointing at the in-container agent home (translated from the host path)', async () => {
     const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
     tempDirs.push(browserosDir)
     const prepared = await prepareAcpxAgentContext({
@@ -124,7 +124,12 @@ describe('prepareAcpxAgentContext', () => {
       message: 'remember this',
     })
 
-    expect(prepared.commandEnv.HERMES_HOME).toContain('/hermes-agent/home')
+    // HERMES_HOME must be the *container-side* path (under /data) so the
+    // hermes binary running inside the container can actually open it.
+    // The host-side seeded files are reachable via the bind mount.
+    expect(prepared.commandEnv.HERMES_HOME).toBe(
+      '/data/agents/harness/hermes-agent/home',
+    )
     expect(prepared.commandEnv).not.toHaveProperty('AGENT_HOME')
     expect(prepared.commandEnv).not.toHaveProperty('CODEX_HOME')
     expect(prepared.commandEnv).not.toHaveProperty('CLAUDE_CONFIG_DIR')
