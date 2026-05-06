@@ -1,13 +1,14 @@
 import { useQuery } from '@tanstack/react-query'
 
+/** Categorical install state — mirrors the server's AcpInstallState. */
+export type AcpInstallState = 'installed' | 'npx-available' | 'not-installed'
+
 /** Server-shaped detection result. Mirrors `AcpAgentDetection` on the server. */
 export interface AcpAgentDetection {
   agentId: string
   displayName: string
-  installed: boolean
+  installState: AcpInstallState
   version: string | null
-  authenticated: boolean | 'unknown'
-  authHint: string | null
   installUrl: string
   acpReady: boolean
   npxBased: boolean

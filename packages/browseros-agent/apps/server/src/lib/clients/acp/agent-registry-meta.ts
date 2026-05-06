@@ -7,10 +7,10 @@
  *
  * The source of truth for *which* agents exist is `acpx/runtime`'s
  * `createAgentRegistry().list()`. This file adds the human-facing
- * details acpx itself doesn't ship (display name, install URL, auth
- * hint) keyed by the same agent id. New acpx built-ins automatically
- * surface in detection; they just lack the pretty overlay until
- * someone adds an entry here.
+ * details acpx itself doesn't ship (display name, install URL) keyed
+ * by the same agent id. New acpx built-ins automatically surface in
+ * detection; they just lack the pretty overlay until someone adds an
+ * entry here.
  */
 
 /** Display + install metadata for a single ACP built-in agent. */
@@ -19,14 +19,6 @@ export interface AcpAgentDisplayMeta {
   displayName: string
   /** Where to send the user to install. */
   installUrl: string
-  /** Short instruction shown when the binary is present but unauthenticated. */
-  authHint: string | null
-  /**
-   * Whether this agent's underlying ACP bridge supports a `runtime.doctor()`
-   * call we can introspect for auth state. Most don't; for those we only
-   * surface install + auth hint, never a definitive "authenticated" yes/no.
-   */
-  supportsDoctor: boolean
 }
 
 /**
@@ -37,98 +29,66 @@ export const ACP_AGENT_DISPLAY: Record<string, AcpAgentDisplayMeta> = {
   claude: {
     displayName: 'Claude Code',
     installUrl: 'https://docs.anthropic.com/en/docs/claude-code/overview',
-    authHint: 'Run `claude login`',
-    supportsDoctor: true,
   },
   codex: {
     displayName: 'Codex',
     installUrl: 'https://github.com/openai/codex',
-    authHint: 'Run `codex login`',
-    supportsDoctor: true,
   },
   gemini: {
     displayName: 'Gemini',
     installUrl: 'https://github.com/google-gemini/gemini-cli',
-    authHint: 'Run `gemini` and complete the auth flow',
-    supportsDoctor: false,
   },
   copilot: {
     displayName: 'GitHub Copilot',
     installUrl: 'https://docs.github.com/en/copilot/github-copilot-in-the-cli',
-    authHint: 'Run `gh auth login`',
-    supportsDoctor: false,
   },
   cursor: {
     displayName: 'Cursor',
     installUrl: 'https://cursor.com/cli',
-    authHint: 'Sign in to Cursor and ensure `cursor-agent` is on PATH',
-    supportsDoctor: false,
   },
   pi: {
     displayName: 'Pi',
     installUrl: 'https://www.npmjs.com/package/pi-acp',
-    authHint: null,
-    supportsDoctor: false,
   },
   openclaw: {
     displayName: 'OpenClaw',
     installUrl: 'https://docs.openclaw.ai/cli/acp',
-    authHint: null,
-    supportsDoctor: false,
   },
   droid: {
     displayName: 'Droid (Factory)',
     installUrl: 'https://docs.factory.ai/cli/getting-started',
-    authHint: 'Run `droid auth`',
-    supportsDoctor: false,
   },
   iflow: {
     displayName: 'iFlow',
     installUrl: 'https://github.com/iflow-ai/iflow-cli',
-    authHint: null,
-    supportsDoctor: false,
   },
   kilocode: {
     displayName: 'KiloCode',
     installUrl: 'https://www.npmjs.com/package/@kilocode/cli',
-    authHint: null,
-    supportsDoctor: false,
   },
   kimi: {
     displayName: 'Kimi',
     installUrl: 'https://platform.moonshot.ai/docs',
-    authHint: null,
-    supportsDoctor: false,
   },
   kiro: {
     displayName: 'Kiro',
     installUrl: 'https://kiro.dev',
-    authHint: null,
-    supportsDoctor: false,
   },
   opencode: {
     displayName: 'OpenCode',
     installUrl: 'https://www.npmjs.com/package/opencode-ai',
-    authHint: null,
-    supportsDoctor: false,
   },
   qoder: {
     displayName: 'Qoder',
     installUrl: 'https://qoder.com',
-    authHint: null,
-    supportsDoctor: false,
   },
   qwen: {
     displayName: 'Qwen',
     installUrl: 'https://github.com/QwenLM/qwen-code',
-    authHint: null,
-    supportsDoctor: false,
   },
   trae: {
     displayName: 'Trae',
     installUrl: 'https://docs.trae.ai',
-    authHint: null,
-    supportsDoctor: false,
   },
 }
 
@@ -139,8 +99,6 @@ export function getDisplayMeta(agentId: string): AcpAgentDisplayMeta {
   return {
     displayName: agentId,
     installUrl: 'https://github.com/DaniAkash/acpx',
-    authHint: null,
-    supportsDoctor: false,
   }
 }
 
@@ -152,10 +110,10 @@ export function getDisplayMeta(agentId: string): AcpAgentDisplayMeta {
  *   - `gemini` → `gemini --acp`
  *   - `openclaw` → `openclaw acp`
  *
- * For `npx`-fronted agents we never need a PATH probe (npx is always
- * present in a Node env and will fetch the package on first use).
- * For everything else, the first token is the binary that must be on
- * PATH for the agent to start.
+ * For `npx`-fronted agents we probe the npx cache (see `npx-cache.ts`)
+ * to know whether the package is on disk or will be fetched at first
+ * use. For everything else, the first token is the binary that must be
+ * on PATH for the agent to start.
  */
 export interface ParsedSpawnCommand {
   /** True when the agent runs via `npx <package>` and is auto-fetched. */
@@ -171,4 +129,37 @@ export function parseSpawnCommand(command: string): ParsedSpawnCommand {
     return { npxBased: true, bin: head }
   }
   return { npxBased: false, bin: head }
+}
+
+/**
+ * Extract the npm package name from an `npx`-fronted command.
+ *
+ * Examples:
+ *   `npx -y @agentclientprotocol/claude-agent-acp@^0.31.0`
+ *     → `@agentclientprotocol/claude-agent-acp`
+ *   `npx pi-acp@^0.0.26` → `pi-acp`
+ *   `npx -y @kilocode/cli acp` → `@kilocode/cli`
+ *   `npx -y opencode-ai acp` → `opencode-ai`
+ *   `gemini --acp` → null (not npx)
+ *
+ * Scoped names (leading `@`) keep the prefix. The trailing `@<spec>`
+ * version pin is stripped (only the *last* `@` in the token —
+ * `@scope/pkg` has its `@` at index 0 which we deliberately preserve).
+ */
+export function parseNpxPackageName(command: string): string | null {
+  const tokens = command.trim().split(/\s+/)
+  if (tokens[0] !== 'npx') return null
+  // First non-flag positional after `npx`. Skips -y / --yes / --silent
+  // / etc.
+  const pkgIndex = tokens.findIndex(
+    (token, idx) => idx > 0 && !token.startsWith('-'),
+  )
+  if (pkgIndex < 0) return null
+  const raw = tokens[pkgIndex] ?? ''
+  if (!raw) return null
+  // Strip a trailing version pin only — the leading `@` of a scoped
+  // name is always at index 0, so we look for an `@` at index > 0.
+  const lastAt = raw.lastIndexOf('@')
+  if (lastAt > 0) return raw.slice(0, lastAt)
+  return raw
 }

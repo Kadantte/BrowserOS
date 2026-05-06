@@ -1,10 +1,4 @@
-import {
-  AlertCircle,
-  CheckCircle2,
-  ExternalLink,
-  Loader2,
-  RefreshCw,
-} from 'lucide-react'
+import { AlertCircle, ExternalLink, Loader2, RefreshCw } from 'lucide-react'
 import type { FC } from 'react'
 import { useState } from 'react'
 import type { Control } from 'react-hook-form'
@@ -80,8 +74,10 @@ export const AcpProviderForm: FC<AcpProviderFormProps> = ({
     }
   }
 
-  const installed = agents.filter((a) => a.installed)
-  const notInstalled = agents.filter((a) => !a.installed)
+  const installed = agents.filter((a) => a.installState === 'installed')
+  const npxAvailable = agents.filter((a) => a.installState === 'npx-available')
+  const notInstalled = agents.filter((a) => a.installState === 'not-installed')
+  const hasAnyAvailable = installed.length > 0 || npxAvailable.length > 0
 
   return (
     <div className="space-y-4 rounded-lg border border-border bg-muted/30 p-4">
@@ -138,7 +134,7 @@ export const AcpProviderForm: FC<AcpProviderFormProps> = ({
 
                 {!detection.isLoading &&
                   !detection.isError &&
-                  installed.length === 0 && (
+                  !hasAnyAvailable && (
                     <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-amber-800 text-sm dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-200">
                       No installed ACP agents found on this machine. Install one
                       of the agents below, then click Refresh.
@@ -152,6 +148,31 @@ export const AcpProviderForm: FC<AcpProviderFormProps> = ({
                     </div>
                     <div className="space-y-1.5">
                       {installed.map((agent) => (
+                        <AgentRow
+                          key={agent.agentId}
+                          agent={agent}
+                          selected={field.value === agent.agentId}
+                          onSelect={() => {
+                            field.onChange(agent.agentId)
+                            onAgentSelected(agent.agentId, agent.displayName)
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {npxAvailable.length > 0 && (
+                  <div className="space-y-2">
+                    <div className="font-medium text-muted-foreground text-xs uppercase tracking-wider">
+                      Auto-installs via npx
+                    </div>
+                    <p className="text-muted-foreground text-xs">
+                      Not yet on disk. First chat will fetch the package (~10–30
+                      s).
+                    </p>
+                    <div className="space-y-1.5">
+                      {npxAvailable.map((agent) => (
                         <AgentRow
                           key={agent.agentId}
                           agent={agent}
@@ -279,7 +300,7 @@ const AgentRow: FC<AgentRowProps> = ({ agent, selected, onSelect }) => {
             : 'border-muted-foreground/40',
         )}
       />
-      <div className="flex-1 space-y-0.5">
+      <div className="flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm">{agent.displayName}</span>
           {agent.version && (
@@ -293,18 +314,6 @@ const AgentRow: FC<AgentRowProps> = ({ agent, selected, onSelect }) => {
             </span>
           )}
         </div>
-        {agent.authHint && (
-          <div className="flex items-center gap-1 text-amber-600 text-xs dark:text-amber-400">
-            <AlertCircle className="h-3 w-3" />
-            <span>{agent.authHint}</span>
-          </div>
-        )}
-        {!agent.authHint && (
-          <div className="flex items-center gap-1 text-emerald-600 text-xs dark:text-emerald-400">
-            <CheckCircle2 className="h-3 w-3" />
-            <span>Ready</span>
-          </div>
-        )}
       </div>
     </button>
   )

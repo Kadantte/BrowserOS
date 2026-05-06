@@ -7,17 +7,21 @@
  *
  * For each acpx built-in:
  *   - parse the spawn command from the agent registry,
- *   - probe the underlying binary with `command -v` (skipped for
- *     `npx`-fronted agents — npx auto-fetches them),
- *   - try `<bin> --version` for a version string (best-effort, may
- *     fail for agents with non-standard flags),
- *   - overlay display metadata (display name, install URL, auth hint)
- *     from `agent-registry-meta`.
+ *   - probe the underlying binary with `command -v` (PATH-based agents)
+ *     OR scan the npx cache for a cached install (npx-fronted agents),
+ *   - try `<bin> --version` for a version string when PATH-resolved
+ *     (best-effort; some CLIs use non-standard flags),
+ *   - overlay display metadata (display name, install URL) from
+ *     `agent-registry-meta`.
+ *
+ * Auth state is *not* probed here — it's the user's responsibility to
+ * be authenticated, and the dialog's Test button calls
+ * `provider.prepare()` which exercises the real ACP session bring-up
+ * with a definitive answer. Anything we'd compute here would be a
+ * fragile, per-agent, often-stale signal that disagrees with Test.
  *
  * Probes run in parallel under a global timeout so a misbehaving
- * binary cannot hang the response. Auth state is reported as
- * `'unknown'` here; callers wanting a definitive auth verdict use the
- * `/test-provider` flow which exercises the full session-prepare path.
+ * binary cannot hang the response.
  */
 
 import { spawn } from 'node:child_process'
@@ -26,22 +30,32 @@ import {
   ACP_AGENT_DISPLAY,
   type AcpAgentDisplayMeta,
   getDisplayMeta,
+  parseNpxPackageName,
   parseSpawnCommand,
 } from './agent-registry-meta'
+import { probeNpxCache } from './npx-cache'
 import { getSharedAcpAgentRegistry } from './runtime-singleton'
+
+/** Categorical install state — sorts the rows in the settings dialog. */
+export type AcpInstallState = 'installed' | 'npx-available' | 'not-installed'
 
 /** Per-agent detection result returned to clients. */
 export interface AcpAgentDetection {
   agentId: string
   displayName: string
+  installState: AcpInstallState
+  /**
+   * @deprecated Derived from `installState`. Kept for one release of
+   * back-compat with external consumers; new code should branch on
+   * `installState` directly.
+   */
   installed: boolean
+  /** Best-effort version string (PATH-resolved binaries only). */
   version: string | null
-  authenticated: boolean | 'unknown'
-  authHint: string | null
   installUrl: string
-  /** True when the agent is ready to start an ACP session right now. */
+  /** True when starting an ACP session right now is feasible — i.e. installState !== 'not-installed'. */
   acpReady: boolean
-  /** True when the agent runs via `npx` (auto-fetch on first use). */
+  /** True when the agent runs via `npx`. */
   npxBased: boolean
 }
 
@@ -51,12 +65,20 @@ export interface DetectAgentsOptions {
   /** Override the agent id → spawn command mapping (testing). */
   resolveOverride?: (agentId: string) => string
   /** Override the binary probe (testing). */
-  probeOverride?: (bin: string) => Promise<{
+  binProbeOverride?: (bin: string) => Promise<{
     found: boolean
     version: string | null
   }>
+  /** Override the npx-cache probe (testing). */
+  npxProbeOverride?: (packageName: string) => Promise<boolean>
   /** Override the timeout. */
   timeoutMs?: number
+}
+
+const STATE_ORDER: Record<AcpInstallState, number> = {
+  installed: 0,
+  'npx-available': 1,
+  'not-installed': 2,
 }
 
 export async function detectAcpAgents(
@@ -66,18 +88,22 @@ export async function detectAcpAgents(
   const ids = registry.list()
   const resolve =
     options.resolveOverride ?? ((id: string) => registry.resolve(id))
-  const probe = options.probeOverride ?? probeBinary
+  const binProbe = options.binProbeOverride ?? probeBinary
+  const npxProbe = options.npxProbeOverride ?? probeNpxCache
   const timeout = options.timeoutMs ?? PROBE_TIMEOUT_MS
 
   const results = await Promise.all(
-    ids.map(async (agentId) => probeAgent(agentId, resolve, probe, timeout)),
+    ids.map(async (agentId) =>
+      probeAgent(agentId, resolve, binProbe, npxProbe, timeout),
+    ),
   )
 
-  // Sort: installed first (alphabetical within), then not-installed
-  // (alphabetical), so the settings UI can render a sensible default
-  // grouping without re-sorting.
+  // Sort: installed first, then npx-available, then not-installed.
+  // Within each group, alphabetical by display name. Settings UI
+  // can render in three sections without re-sorting.
   return results.sort((a, b) => {
-    if (a.installed !== b.installed) return a.installed ? -1 : 1
+    const s = STATE_ORDER[a.installState] - STATE_ORDER[b.installState]
+    if (s !== 0) return s
     return a.displayName.localeCompare(b.displayName)
   })
 }
@@ -85,7 +111,8 @@ export async function detectAcpAgents(
 async function probeAgent(
   agentId: string,
   resolveCommand: (id: string) => string,
-  probe: NonNullable<DetectAgentsOptions['probeOverride']>,
+  binProbe: NonNullable<DetectAgentsOptions['binProbeOverride']>,
+  npxProbe: NonNullable<DetectAgentsOptions['npxProbeOverride']>,
   timeoutMs: number,
 ): Promise<AcpAgentDetection> {
   const overlay: AcpAgentDisplayMeta = getDisplayMeta(agentId)
@@ -97,30 +124,24 @@ async function probeAgent(
       agentId,
       error: err instanceof Error ? err.message : String(err),
     })
-    return notInstalled(agentId, overlay, false)
+    return buildResult(agentId, overlay, 'not-installed', null, false)
   }
 
   const parsed = parseSpawnCommand(command)
 
   if (parsed.npxBased) {
-    // npx-fronted agents are always "ready" — npx will fetch the
-    // package on first use. We can't know an exact version without
-    // actually running npx (slow + side-effects), so version stays
-    // null until the user runs the agent for real.
-    return {
+    const pkg = parseNpxPackageName(command)
+    const cached = pkg ? await npxProbe(pkg).catch(() => false) : false
+    return buildResult(
       agentId,
-      displayName: overlay.displayName,
-      installed: true,
-      version: null,
-      authenticated: 'unknown',
-      authHint: overlay.authHint,
-      installUrl: overlay.installUrl,
-      acpReady: true,
-      npxBased: true,
-    }
+      overlay,
+      cached ? 'installed' : 'npx-available',
+      null,
+      true,
+    )
   }
 
-  const result = await withTimeout(probe(parsed.bin), timeoutMs).catch(
+  const result = await withTimeout(binProbe(parsed.bin), timeoutMs).catch(
     (err) => {
       logger.debug('ACP binary probe errored', {
         agentId,
@@ -130,36 +151,30 @@ async function probeAgent(
       return { found: false, version: null }
     },
   )
-
-  if (!result.found) return notInstalled(agentId, overlay, false)
-
-  return {
+  return buildResult(
     agentId,
-    displayName: overlay.displayName,
-    installed: true,
-    version: result.version,
-    authenticated: 'unknown',
-    authHint: overlay.authHint,
-    installUrl: overlay.installUrl,
-    acpReady: true,
-    npxBased: false,
-  }
+    overlay,
+    result.found ? 'installed' : 'not-installed',
+    result.version,
+    false,
+  )
 }
 
-function notInstalled(
+function buildResult(
   agentId: string,
   overlay: AcpAgentDisplayMeta,
+  installState: AcpInstallState,
+  version: string | null,
   npxBased: boolean,
 ): AcpAgentDetection {
   return {
     agentId,
     displayName: overlay.displayName,
-    installed: false,
-    version: null,
-    authenticated: 'unknown',
-    authHint: overlay.authHint,
+    installState,
+    installed: installState !== 'not-installed',
+    version,
     installUrl: overlay.installUrl,
-    acpReady: false,
+    acpReady: installState !== 'not-installed',
     npxBased,
   }
 }
