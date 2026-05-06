@@ -71,6 +71,7 @@ import { type TestResult, testProvider } from '@/lib/llm-providers/testProvider'
 import type { LlmProviderConfig, ProviderType } from '@/lib/llm-providers/types'
 import { track } from '@/lib/metrics/track'
 import { cn } from '@/lib/utils'
+import { AcpProviderForm } from './AcpProviderForm'
 import { getModelContextLength, getModelsForProvider } from './models'
 
 const providerTypeEnum = z.enum([
@@ -116,6 +117,12 @@ export const providerFormSchema = z
     // ChatGPT Pro (Codex)
     reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
     reasoningSummary: z.enum(['auto', 'concise', 'detailed']).optional(),
+    // ACP (acpx-ai-provider)
+    acpAgentId: z.string().optional(),
+    acpDefaultCwd: z.string().optional(),
+    acpPermissionMode: z
+      .enum(['approve-all', 'approve-reads', 'deny-all'])
+      .optional(),
   })
   .superRefine((data, ctx) => {
     // Azure: require either resourceName or baseUrl
@@ -166,6 +173,16 @@ export const providerFormSchema = z
       data.type === 'qwen-code'
     ) {
       // No validation needed — OAuth tokens are on the server
+    }
+    // ACP: require an agent id; nothing else is mandatory.
+    else if (data.type === 'acp') {
+      if (!data.acpAgentId) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: 'Pick an installed ACP agent',
+          path: ['acpAgentId'],
+        })
+      }
     }
     // MiniMax: require baseUrl + apiKey
     else if (data.type === 'minimax') {
@@ -286,6 +303,10 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
       sessionToken: initialValues?.sessionToken || '',
       reasoningEffort: initialValues?.reasoningEffort || 'high',
       reasoningSummary: initialValues?.reasoningSummary || 'auto',
+      // ACP
+      acpAgentId: initialValues?.acpAgentId || undefined,
+      acpDefaultCwd: initialValues?.acpDefaultCwd || '',
+      acpPermissionMode: initialValues?.acpPermissionMode || 'approve-reads',
     },
   })
 
@@ -346,7 +367,19 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
     if (newType === 'minimax') {
       form.setValue('region', 'chinese')
     }
-    form.setValue('modelId', '')
+    if (newType === 'acp') {
+      // ACP doesn't expose a queryable model list — set a synthetic
+      // modelId to satisfy the schema's `min(1)` rule and bake in a
+      // sensible context-window default. supportsImages is conservative
+      // (false): some agents may pass image attachments through but it
+      // varies per agent and we don't probe.
+      form.setValue('modelId', 'acp:default')
+      form.setValue('contextWindow', 200000)
+      form.setValue('supportsImages', false)
+      form.setValue('acpPermissionMode', 'approve-reads')
+    } else {
+      form.setValue('modelId', '')
+    }
   }
 
   // Auto-fill context window when model changes (only for new providers)
@@ -387,6 +420,10 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
         sessionToken: initialValues.sessionToken || '',
         reasoningEffort: initialValues.reasoningEffort || 'high',
         reasoningSummary: initialValues.reasoningSummary || 'auto',
+        // ACP
+        acpAgentId: initialValues.acpAgentId || undefined,
+        acpDefaultCwd: initialValues.acpDefaultCwd || '',
+        acpPermissionMode: initialValues.acpPermissionMode || 'approve-reads',
       })
     }
   }, [initialValues, form])
@@ -413,6 +450,10 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
         sessionToken: '',
         reasoningEffort: 'high',
         reasoningSummary: 'auto',
+        // ACP
+        acpAgentId: undefined,
+        acpDefaultCwd: '',
+        acpPermissionMode: 'approve-reads',
       })
     }
     // Clear test result when dialog opens/closes
@@ -453,6 +494,12 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
   // Check if we have enough info to test the connection
   const canTest = (): boolean => {
     if (!watchedModelId) return false
+
+    // ACP: testable as soon as an agent is picked (the server probes
+    // install + auth via provider.prepare()).
+    if (watchedType === 'acp') {
+      return Boolean(form.watch('acpAgentId'))
+    }
 
     // OAuth providers: always testable (server has the OAuth token)
     if (
@@ -509,6 +556,9 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
           secretAccessKey: values.secretAccessKey,
           region: values.region,
           sessionToken: values.sessionToken,
+          acpAgentId: values.acpAgentId,
+          acpDefaultCwd: values.acpDefaultCwd,
+          acpPermissionMode: values.acpPermissionMode,
         },
         agentServerUrl,
       )
@@ -543,6 +593,27 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
   }
 
   const renderProviderSpecificFields = () => {
+    // ACP — locally-installed coding agents via acpx-ai-provider.
+    // No API key, no model picker; the agent list comes from the
+    // server's /acp/detect probe.
+    if (watchedType === 'acp') {
+      return (
+        <AcpProviderForm
+          control={form.control}
+          agentServerUrl={agentServerUrl}
+          onAgentSelected={(_agentId, displayName) => {
+            // Auto-fill the provider name with the agent's display
+            // name on first pick (don't overwrite a name the user
+            // already typed).
+            const currentName = form.getValues('name')
+            if (!currentName.trim()) {
+              form.setValue('name', `ACP — ${displayName}`)
+            }
+          }}
+        />
+      )
+    }
+
     // OAuth-only providers (no API key needed)
     if (watchedType === 'github-copilot' || watchedType === 'qwen-code') {
       const name = watchedType === 'github-copilot' ? 'GitHub' : 'Qwen Code'
@@ -960,228 +1031,237 @@ export const NewProviderDialog: FC<NewProviderDialogProps> = ({
 
             {renderProviderSpecificFields()}
 
-            {/* Model field - shown for all providers */}
-            <FormField
-              control={form.control}
-              name="modelId"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel>Model *</FormLabel>
-                  {modelInfoList.length === 0 ? (
-                    <FormControl>
-                      <Input
-                        placeholder={
-                          watchedType === 'azure'
-                            ? 'Enter your deployment name'
-                            : watchedType === 'bedrock'
-                              ? 'e.g., anthropic.claude-3-5-sonnet-20241022-v2:0'
-                              : 'Enter model ID'
-                        }
-                        {...field}
-                      />
-                    </FormControl>
-                  ) : (
-                    <Popover
-                      open={modelPickerOpen}
-                      onOpenChange={(isOpen) => {
-                        setModelPickerOpen(isOpen)
-                        if (!isOpen) setModelSearch('')
-                      }}
-                    >
-                      <PopoverTrigger asChild>
-                        <button
-                          type="button"
-                          className={cn(
-                            'flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs',
-                            field.value
-                              ? 'text-foreground'
-                              : 'text-muted-foreground',
-                          )}
-                        >
-                          <span className="truncate">
-                            {field.value || 'Select a model...'}
-                          </span>
-                          <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                        </button>
-                      </PopoverTrigger>
-                      <PopoverContent
-                        className="w-[var(--radix-popover-trigger-width)] p-0"
-                        align="start"
+            {/* Model field - shown for all providers EXCEPT ACP, which
+                has no queryable model list (model is configured inside
+                the agent's own CLI). */}
+            {watchedType !== 'acp' && (
+              <FormField
+                control={form.control}
+                name="modelId"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel>Model *</FormLabel>
+                    {modelInfoList.length === 0 ? (
+                      <FormControl>
+                        <Input
+                          placeholder={
+                            watchedType === 'azure'
+                              ? 'Enter your deployment name'
+                              : watchedType === 'bedrock'
+                                ? 'e.g., anthropic.claude-3-5-sonnet-20241022-v2:0'
+                                : 'Enter model ID'
+                          }
+                          {...field}
+                        />
+                      </FormControl>
+                    ) : (
+                      <Popover
+                        open={modelPickerOpen}
+                        onOpenChange={(isOpen) => {
+                          setModelPickerOpen(isOpen)
+                          if (!isOpen) setModelSearch('')
+                        }}
                       >
-                        <Command shouldFilter={false}>
-                          <CommandInput
-                            placeholder="Search models..."
-                            value={modelSearch}
-                            onValueChange={(v) => {
-                              setModelSearch(v)
-                              requestAnimationFrame(() => {
-                                modelListRef.current?.scrollTo(0, 0)
-                              })
-                            }}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' && modelSearch) {
-                                e.preventDefault()
-                                e.stopPropagation()
-                                form.setValue('modelId', modelSearch)
-                                track(MODEL_SELECTED_EVENT, {
-                                  provider_type: watchedType,
-                                  model_id: modelSearch,
-                                  is_custom_model: !modelInfoList.some(
-                                    (m) => m.modelId === modelSearch,
-                                  ),
-                                })
-                                setModelPickerOpen(false)
-                                setModelSearch('')
-                              }
-                            }}
-                          />
-                          <CommandList ref={modelListRef}>
-                            <CommandEmpty>
-                              No models found. Press Enter to use &quot;
-                              {modelSearch}&quot;
-                            </CommandEmpty>
-                            {showCustomEntry && (
-                              <CommandGroup forceMount>
-                                <CommandItem
-                                  forceMount
-                                  value={`custom:${modelSearch}`}
-                                  onSelect={() => {
-                                    form.setValue('modelId', modelSearch)
-                                    track(MODEL_SELECTED_EVENT, {
-                                      provider_type: watchedType,
-                                      model_id: modelSearch,
-                                      is_custom_model: true,
-                                    })
-                                    setModelPickerOpen(false)
-                                    setModelSearch('')
-                                  }}
-                                >
-                                  <span className="flex-1 truncate">
-                                    {modelSearch}
-                                  </span>
-                                  {field.value === modelSearch && (
-                                    <Check className="ml-2 h-4 w-4 shrink-0" />
-                                  )}
-                                </CommandItem>
-                              </CommandGroup>
+                        <PopoverTrigger asChild>
+                          <button
+                            type="button"
+                            className={cn(
+                              'flex h-9 w-full items-center justify-between rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-xs',
+                              field.value
+                                ? 'text-foreground'
+                                : 'text-muted-foreground',
                             )}
-                            {filteredModels.length > 0 && (
-                              <CommandGroup>
-                                {filteredModels.map((model) => (
+                          >
+                            <span className="truncate">
+                              {field.value || 'Select a model...'}
+                            </span>
+                            <ChevronDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                          </button>
+                        </PopoverTrigger>
+                        <PopoverContent
+                          className="w-[var(--radix-popover-trigger-width)] p-0"
+                          align="start"
+                        >
+                          <Command shouldFilter={false}>
+                            <CommandInput
+                              placeholder="Search models..."
+                              value={modelSearch}
+                              onValueChange={(v) => {
+                                setModelSearch(v)
+                                requestAnimationFrame(() => {
+                                  modelListRef.current?.scrollTo(0, 0)
+                                })
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && modelSearch) {
+                                  e.preventDefault()
+                                  e.stopPropagation()
+                                  form.setValue('modelId', modelSearch)
+                                  track(MODEL_SELECTED_EVENT, {
+                                    provider_type: watchedType,
+                                    model_id: modelSearch,
+                                    is_custom_model: !modelInfoList.some(
+                                      (m) => m.modelId === modelSearch,
+                                    ),
+                                  })
+                                  setModelPickerOpen(false)
+                                  setModelSearch('')
+                                }
+                              }}
+                            />
+                            <CommandList ref={modelListRef}>
+                              <CommandEmpty>
+                                No models found. Press Enter to use &quot;
+                                {modelSearch}&quot;
+                              </CommandEmpty>
+                              {showCustomEntry && (
+                                <CommandGroup forceMount>
                                   <CommandItem
-                                    key={model.modelId}
-                                    value={model.modelId}
+                                    forceMount
+                                    value={`custom:${modelSearch}`}
                                     onSelect={() => {
-                                      form.setValue('modelId', model.modelId)
+                                      form.setValue('modelId', modelSearch)
                                       track(MODEL_SELECTED_EVENT, {
                                         provider_type: watchedType,
-                                        model_id: model.modelId,
-                                        context_window: model.contextLength,
-                                        is_custom_model: !modelInfoList.some(
-                                          (m) => m.modelId === model.modelId,
-                                        ),
+                                        model_id: modelSearch,
+                                        is_custom_model: true,
                                       })
                                       setModelPickerOpen(false)
                                       setModelSearch('')
                                     }}
                                   >
                                     <span className="flex-1 truncate">
-                                      {model.modelId}
+                                      {modelSearch}
                                     </span>
-                                    {model.contextLength > 0 && (
-                                      <span className="ml-2 shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
-                                        {formatContextWindow(
-                                          model.contextLength,
-                                        )}
-                                      </span>
-                                    )}
-                                    {field.value === model.modelId && (
+                                    {field.value === modelSearch && (
                                       <Check className="ml-2 h-4 w-4 shrink-0" />
                                     )}
                                   </CommandItem>
-                                ))}
-                              </CommandGroup>
-                            )}
-                          </CommandList>
-                        </Command>
-                      </PopoverContent>
-                    </Popover>
-                  )}
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            {/* Model Configuration */}
-            <div className="space-y-4 border-border border-t pt-4">
-              <h4 className="font-medium text-sm">Model Configuration</h4>
-              <FormField
-                control={form.control}
-                name="supportsImages"
-                render={({ field }) => (
-                  <FormItem className="flex items-center gap-2 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormLabel className="font-normal">
-                      Supports Images
-                    </FormLabel>
+                                </CommandGroup>
+                              )}
+                              {filteredModels.length > 0 && (
+                                <CommandGroup>
+                                  {filteredModels.map((model) => (
+                                    <CommandItem
+                                      key={model.modelId}
+                                      value={model.modelId}
+                                      onSelect={() => {
+                                        form.setValue('modelId', model.modelId)
+                                        track(MODEL_SELECTED_EVENT, {
+                                          provider_type: watchedType,
+                                          model_id: model.modelId,
+                                          context_window: model.contextLength,
+                                          is_custom_model: !modelInfoList.some(
+                                            (m) => m.modelId === model.modelId,
+                                          ),
+                                        })
+                                        setModelPickerOpen(false)
+                                        setModelSearch('')
+                                      }}
+                                    >
+                                      <span className="flex-1 truncate">
+                                        {model.modelId}
+                                      </span>
+                                      {model.contextLength > 0 && (
+                                        <span className="ml-2 shrink-0 rounded-md bg-muted px-1.5 py-0.5 font-mono text-[10px] text-muted-foreground">
+                                          {formatContextWindow(
+                                            model.contextLength,
+                                          )}
+                                        </span>
+                                      )}
+                                      {field.value === model.modelId && (
+                                        <Check className="ml-2 h-4 w-4 shrink-0" />
+                                      )}
+                                    </CommandItem>
+                                  ))}
+                                </CommandGroup>
+                              )}
+                            </CommandList>
+                          </Command>
+                        </PopoverContent>
+                      </Popover>
+                    )}
+                    <FormMessage />
                   </FormItem>
                 )}
               />
-              <div className="grid gap-4 sm:grid-cols-2">
+            )}
+
+            {/* Model Configuration — hidden for ACP because the model
+                is set inside the agent's own CLI; supportsImages,
+                contextWindow, and temperature are all baked in to
+                sensible defaults during handleTypeChange. */}
+            {watchedType !== 'acp' && (
+              <div className="space-y-4 border-border border-t pt-4">
+                <h4 className="font-medium text-sm">Model Configuration</h4>
                 <FormField
                   control={form.control}
-                  name="contextWindow"
+                  name="supportsImages"
                   render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Context Window Size</FormLabel>
+                    <FormItem className="flex items-center gap-2 space-y-0">
                       <FormControl>
-                        <Input
-                          type="number"
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
+                        <Checkbox
+                          checked={field.value}
+                          onCheckedChange={field.onChange}
                         />
                       </FormControl>
-                      <FormDescription>
-                        Auto-filled based on model
-                      </FormDescription>
-                      <FormMessage />
+                      <FormLabel className="font-normal">
+                        Supports Images
+                      </FormLabel>
                     </FormItem>
                   )}
                 />
-                <FormField
-                  control={form.control}
-                  name="temperature"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Temperature (0-2)</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="number"
-                          step="0.1"
-                          min="0"
-                          max="2"
-                          {...field}
-                          onChange={(e) =>
-                            field.onChange(Number(e.target.value))
-                          }
-                        />
-                      </FormControl>
-                      <FormDescription>
-                        Controls response randomness
-                      </FormDescription>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <FormField
+                    control={form.control}
+                    name="contextWindow"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Context Window Size</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(Number(e.target.value))
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Auto-filled based on model
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={form.control}
+                    name="temperature"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Temperature (0-2)</FormLabel>
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            min="0"
+                            max="2"
+                            {...field}
+                            onChange={(e) =>
+                              field.onChange(Number(e.target.value))
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          Controls response randomness
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Test Result Banner */}
             {testResult && (

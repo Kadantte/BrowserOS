@@ -36,6 +36,10 @@ export async function testProvider(
         accessKeyId: provider.accessKeyId,
         secretAccessKey: provider.secretAccessKey,
         sessionToken: provider.sessionToken,
+        // ACP
+        acpAgentId: provider.acpAgentId,
+        acpDefaultCwd: provider.acpDefaultCwd,
+        acpPermissionMode: provider.acpPermissionMode,
       }),
     })
 
