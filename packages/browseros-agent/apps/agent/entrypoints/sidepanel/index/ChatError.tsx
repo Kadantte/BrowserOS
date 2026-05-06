@@ -32,6 +32,7 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderType, string> = {
   'github-copilot': 'GitHub Copilot',
   'qwen-code': 'Qwen Code',
   minimax: 'MiniMax',
+  acp: 'ACP',
 }
 
 const UPSTREAM_RATE_LIMIT_PATTERNS: Array<string | RegExp> = [

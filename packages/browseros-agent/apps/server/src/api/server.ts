@@ -20,6 +20,7 @@ import { initializeOAuth } from '../lib/clients/oauth'
 import { getDb } from '../lib/db'
 import { logger } from '../lib/logger'
 import { Sentry } from '../lib/sentry'
+import { createAcpRoutes } from './routes/acp'
 import { createChatRoutes } from './routes/chat'
 import { createCreditsRoutes } from './routes/credits'
 import { createHealthRoute } from './routes/health'
@@ -123,6 +124,7 @@ export async function createHttpServer(config: HttpServerConfig) {
     .route('/memory', createMemoryRoutes())
     .route('/skills', createSkillsRoutes())
     .route('/test-provider', createProviderRoutes({ browserosId }))
+    .route('/acp', createAcpRoutes())
     .route('/refine-prompt', createRefinePromptRoutes({ browserosId }))
     .route(
       '/oauth',

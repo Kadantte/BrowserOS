@@ -11,7 +11,7 @@ import {
   OpenRouter,
   Qwen,
 } from '@lobehub/icons'
-import { Bot, Github } from 'lucide-react'
+import { Bot, Github, Terminal } from 'lucide-react'
 import type { FC, SVGProps } from 'react'
 import ProductLogoSvg from '@/assets/product_logo.svg'
 import type { ProviderType } from './types'
@@ -38,6 +38,7 @@ const providerIconMap: Record<ProviderType, IconComponent | null> = {
   'github-copilot': Github,
   'qwen-code': Qwen,
   minimax: Minimax,
+  acp: Terminal,
 }
 
 interface ProviderIconProps {

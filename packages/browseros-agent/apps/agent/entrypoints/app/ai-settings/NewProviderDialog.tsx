@@ -89,6 +89,7 @@ const providerTypeEnum = z.enum([
   'github-copilot',
   'qwen-code',
   'minimax',
+  'acp',
 ])
 
 /**

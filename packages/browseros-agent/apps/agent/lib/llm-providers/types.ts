@@ -18,6 +18,10 @@ export type ProviderType =
   | 'github-copilot'
   | 'qwen-code'
   | 'minimax'
+  | 'acp'
+
+/** Permission policy passed to the ACP agent (acpx mode-based, not per-call). */
+export type AcpPermissionMode = 'approve-all' | 'approve-reads' | 'deny-all'
 
 /**
  * LLM Provider configuration
@@ -64,6 +68,14 @@ export interface LlmProviderConfig {
   // ChatGPT Pro (Codex) fields
   reasoningEffort?: 'none' | 'low' | 'medium' | 'high'
   reasoningSummary?: 'auto' | 'concise' | 'detailed'
+
+  // ACP (acpx-ai-provider) fields
+  /** acpx built-in agent id (e.g. 'claude', 'codex', 'gemini'). */
+  acpAgentId?: string
+  /** Optional default cwd used when no chat workspace is selected. */
+  acpDefaultCwd?: string
+  /** Permission mode handed to the ACP agent. Defaults to 'approve-reads'. */
+  acpPermissionMode?: AcpPermissionMode
 }
 
 /**

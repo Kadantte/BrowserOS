@@ -146,6 +146,20 @@ export const providerTemplates: ProviderTemplate[] = [
       'https://platform.minimax.io/user-center/basic-information/interface-key',
     setupGuideUrl: 'https://platform.minimax.io/docs/guides/models-intro',
   }),
+  {
+    // ACP — bridges any locally-installed coding agent (Claude Code,
+    // Codex, Gemini, Copilot, Cursor, …) into BrowserOS via
+    // acpx-ai-provider. The `defaultModelId` is a synthetic placeholder
+    // — ACP agents pick the model inside their own CLI; we never show a
+    // model picker for this category.
+    id: 'acp',
+    name: 'ACP — Local coding agent',
+    defaultBaseUrl: '',
+    defaultModelId: 'acp:default',
+    supportsImages: false,
+    contextWindow: 200000,
+    setupGuideUrl: 'https://github.com/DaniAkash/acpx#readme',
+  },
 ]
 
 export const MINIMAX_REGIONS = {
@@ -185,6 +199,7 @@ export const providerTypeOptions: { value: ProviderType; label: string }[] = [
   { value: 'bedrock', label: 'AWS Bedrock' },
   { value: 'browseros', label: 'BrowserOS' },
   { value: 'minimax', label: 'MiniMax' },
+  { value: 'acp', label: 'ACP — Local coding agent' },
 ]
 
 /**
@@ -217,6 +232,7 @@ export const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
   bedrock: '',
   browseros: '',
   minimax: MINIMAX_REGIONS.chinese.api,
+  acp: '',
 }
 
 /**

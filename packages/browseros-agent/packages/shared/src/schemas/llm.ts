@@ -28,6 +28,7 @@ export const LLM_PROVIDERS = {
   GITHUB_COPILOT: 'github-copilot',
   QWEN_CODE: 'qwen-code',
   MINIMAX: 'minimax',
+  ACP: 'acp',
 } as const
 
 /**
@@ -50,6 +51,7 @@ export const LLMProviderSchema: z.ZodEnum<
     'github-copilot',
     'qwen-code',
     'minimax',
+    'acp',
   ]
 > = z.enum([
   LLM_PROVIDERS.ANTHROPIC,
@@ -67,7 +69,19 @@ export const LLMProviderSchema: z.ZodEnum<
   LLM_PROVIDERS.GITHUB_COPILOT,
   LLM_PROVIDERS.QWEN_CODE,
   LLM_PROVIDERS.MINIMAX,
+  LLM_PROVIDERS.ACP,
 ])
+
+/**
+ * ACP-specific permission modes (matches acpx/runtime).
+ * Tools an ACP agent invokes go through one of three policies up
+ * front — there is no per-call interactive permission prompt.
+ */
+export const AcpPermissionModeSchema: z.ZodEnum<
+  ['approve-all', 'approve-reads', 'deny-all']
+> = z.enum(['approve-all', 'approve-reads', 'deny-all'])
+
+export type AcpPermissionMode = z.infer<typeof AcpPermissionModeSchema>
 
 export type LLMProvider = z.infer<typeof LLMProviderSchema>
 
@@ -87,6 +101,9 @@ export const LLMConfigSchema: z.ZodObject<{
   sessionToken: z.ZodOptional<z.ZodString>
   reasoningEffort: z.ZodOptional<z.ZodEnum<['none', 'low', 'medium', 'high']>>
   reasoningSummary: z.ZodOptional<z.ZodEnum<['auto', 'concise', 'detailed']>>
+  acpAgentId: z.ZodOptional<z.ZodString>
+  acpDefaultCwd: z.ZodOptional<z.ZodString>
+  acpPermissionMode: z.ZodOptional<typeof AcpPermissionModeSchema>
 }> = z.object({
   provider: LLMProviderSchema,
   model: z.string().optional(),
@@ -102,6 +119,10 @@ export const LLMConfigSchema: z.ZodObject<{
   // ChatGPT Pro (Codex)
   reasoningEffort: z.enum(['none', 'low', 'medium', 'high']).optional(),
   reasoningSummary: z.enum(['auto', 'concise', 'detailed']).optional(),
+  // ACP (acpx-ai-provider)
+  acpAgentId: z.string().optional(),
+  acpDefaultCwd: z.string().optional(),
+  acpPermissionMode: AcpPermissionModeSchema.optional(),
 })
 
 export type LLMConfig = z.infer<typeof LLMConfigSchema>
