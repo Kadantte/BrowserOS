@@ -47,7 +47,7 @@ import {
   connectKlavisInBackground,
   type KlavisProxyRef,
 } from './services/klavis/strata-proxy'
-import { OpenClawGatewayChatClient } from './services/openclaw/openclaw-gateway-chat-client'
+import { convertOpenClawHistoryToAgentHistory } from './services/openclaw/history-mapper'
 import { getOpenClawService } from './services/openclaw/openclaw-service'
 import type { Env, HttpServerConfig } from './types'
 import { defaultCorsConfig } from './utils/cors'
@@ -138,16 +138,11 @@ export async function createHttpServer(config: HttpServerConfig) {
         browserosServerPort: port,
         browser,
         openclawGateway: {
-          getGatewayToken: () => getOpenClawService().getGatewayToken(),
           getContainerName: () => OPENCLAW_GATEWAY_CONTAINER_NAME,
           getLimaHomeDir: () => getLimaHomeDir(),
           getLimactlPath: () => resolveBundledLimactl(resourcesDir),
           getVmName: () => VM_NAME,
         },
-        openclawGatewayChat: new OpenClawGatewayChatClient(
-          () => getOpenClawService().getPort(),
-          async () => getOpenClawService().getGatewayToken(),
-        ),
         openclawProvisioner: {
           createAgent: (input) => getOpenClawService().createAgent(input),
           removeAgent: (agentId) => getOpenClawService().removeAgent(agentId),
@@ -160,6 +155,23 @@ export async function createHttpServer(config: HttpServerConfig) {
             }))
           },
           getStatus: () => getOpenClawService().getStatus(),
+          getAgentHistory: async (agentId) => {
+            // Aggregated across the agent's main + every sub-session
+            // (cron / hook / channel) so autonomous turns surface in
+            // the chat panel alongside user-initiated ones.
+            const raw = await getOpenClawService().getSessionHistory(
+              `agent:${agentId}:main`,
+            )
+            return convertOpenClawHistoryToAgentHistory(agentId, raw)
+          },
+        },
+        onTurnLifecycle: (agent, event) => {
+          if (agent.adapter !== 'openclaw') return
+          getOpenClawService().recordAgentTurnEvent(
+            agent.id,
+            agent.sessionKey,
+            event,
+          )
         },
         hermesGateway: getHermesContainerService().getAccessor(),
       }),

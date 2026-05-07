@@ -19,13 +19,9 @@ import {
   createAgentRegistry,
   createRuntimeStore,
 } from 'acpx/runtime'
-import type { OpenClawGatewayChatClient } from '../../api/services/openclaw/openclaw-gateway-chat-client'
 import { getBrowserosDir } from '../browseros-dir'
 import { logger } from '../logger'
-import {
-  getAcpxAgentAdapter,
-  prepareAcpxAgentContext,
-} from './acpx-agent-adapter'
+import { prepareAcpxAgentContext } from './acpx-agent-adapter'
 import {
   resolveAgentRuntimePaths,
   wrapCommandWithEnv,
@@ -51,11 +47,10 @@ import type {
  * when spawning the openclaw ACP adapter inside the gateway container.
  *
  * Fields are getters (not snapshot values) so the harness picks up the
- * current token and VM/container paths at spawn time.
+ * current VM/container paths at spawn time. The bundled gateway runs
+ * with `gateway.auth.mode=none`, so no auth token is plumbed through.
  */
 export interface OpenclawGatewayAccessor {
-  /** Current gateway auth token. Passed to `openclaw acp --token`. */
-  getGatewayToken(): string
   /** Container name e.g. browseros-openclaw-openclaw-gateway-1. */
   getContainerName(): string
   /** LIMA_HOME directory containing the browseros-vm instance. */
@@ -94,15 +89,6 @@ type AcpxRuntimeOptions = {
    */
   openclawGateway?: OpenclawGatewayAccessor
   /**
-   * Optional. When wired, the runtime diverts OpenClaw turns that
-   * carry image attachments to the gateway's HTTP `/v1/chat/completions`
-   * endpoint (which accepts OpenAI-style `image_url` parts) instead of
-   * the ACP bridge — the bridge silently drops image content blocks.
-   * Without this client, image turns to OpenClaw agents fall through to
-   * the ACP path and the model never sees the image.
-   */
-  openclawGatewayChat?: OpenClawGatewayChatClient
-  /**
    * Required for adapter='hermes' agents in production; absence falls
    * back to a host-process `hermes acp` spawn (used by tests / dev
    * before the container service is wired).
@@ -128,7 +114,6 @@ export class AcpxRuntime implements AgentRuntime {
   private readonly stateDir: string
   private readonly browserosServerPort: number
   private readonly openclawGateway: OpenclawGatewayAccessor | null
-  private readonly openclawGatewayChat: OpenClawGatewayChatClient | null
   private readonly hermesGateway: HermesGatewayAccessor | null
   private readonly runtimeFactory: (
     options: AcpRuntimeOptions,
@@ -146,7 +131,6 @@ export class AcpxRuntime implements AgentRuntime {
     this.browserosServerPort =
       options.browserosServerPort ?? DEFAULT_PORTS.server
     this.openclawGateway = options.openclawGateway ?? null
-    this.openclawGatewayChat = options.openclawGatewayChat ?? null
     this.hermesGateway = options.hermesGateway ?? null
     this.sessionStore = createRuntimeStore({ stateDir: this.stateDir })
     this.runtimeFactory = options.runtimeFactory ?? createAcpRuntime
@@ -224,24 +208,6 @@ export class AcpxRuntime implements AgentRuntime {
       messageLength: input.message.length,
       imageAttachmentCount: imageAttachments.length,
     })
-
-    const adapter = getAcpxAgentAdapter(input.agent.adapter)
-    const adapterStream =
-      (await adapter.maybeHandleTurn?.({
-        prompt: input,
-        prepared: {
-          cwd: prepared.cwd,
-          runtimeSessionKey: prepared.runtimeSessionKey,
-          runPrompt: prepared.runPrompt,
-          commandEnv: prepared.agentCommandEnv,
-          commandIdentity: prepared.commandIdentity,
-          useBrowserosMcp: prepared.useBrowserosMcp,
-          openclawSessionKey: prepared.openclawSessionKey,
-        },
-        sessionStore: this.sessionStore,
-        openclawGatewayChat: this.openclawGatewayChat,
-      })) ?? null
-    if (adapterStream) return adapterStream
 
     const runtime = this.getRuntime({
       cwd,
@@ -860,8 +826,8 @@ function resolveHermesAcpCommand(
  * already installed alongside the gateway is reused; BrowserOS does
  * not require a host-side openclaw install.
  *
- * Auth: `openclaw acp --url ...` deliberately does not reuse implicit
- * env/config credentials, so pass the gateway token explicitly.
+ * Auth: BrowserOS configures the bundled gateway with `gateway.auth.mode=none`,
+ * so no gateway token flag is needed for the local ACP bridge.
  *
  * Banner output: OPENCLAW_HIDE_BANNER and OPENCLAW_SUPPRESS_NOTES
  * suppress non-JSON-RPC chatter on stdout that would otherwise corrupt
@@ -871,7 +837,6 @@ function resolveOpenclawAcpCommand(
   gateway: OpenclawGatewayAccessor,
   sessionKey: string | null,
 ): string {
-  const token = gateway.getGatewayToken()
   const limactl = gateway.getLimactlPath()
   const vm = gateway.getVmName()
   const container = gateway.getContainerName()
@@ -920,8 +885,6 @@ function resolveOpenclawAcpCommand(
     'acp',
     '--url',
     gatewayUrlInsideContainer,
-    '--token',
-    token,
   ]
   if (bridgeSessionKey) {
     argv.push('--session', bridgeSessionKey)

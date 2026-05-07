@@ -17,6 +17,7 @@ import {
   OPENCLAW_IMAGE,
 } from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
+import type { AgentStreamEvent } from '../../../lib/agents/types'
 import { getOpenClawDir } from '../../../lib/browseros-dir'
 import { logger } from '../../../lib/logger'
 import { withProcessLock } from '../../../lib/process-lock'
@@ -40,6 +41,7 @@ import {
   type OpenClawAgentRecord,
   OpenClawCliClient,
   type OpenClawConfigBatchEntry,
+  type OpenClawSessionEntry,
 } from './openclaw-cli-client'
 import {
   buildOpenClawCliProviderModelRef,
@@ -61,8 +63,8 @@ import {
   OpenClawHttpClient,
   type OpenClawSessionHistory,
   type OpenClawSessionHistoryEvent,
+  type OpenClawSessionHistoryMessage,
 } from './openclaw-http-client'
-import { OpenClawObserver } from './openclaw-observer'
 import {
   type ResolvedOpenClawProviderConfig,
   resolveSupportedOpenClawProvider,
@@ -234,6 +236,104 @@ function getOpenClawBrowserOSSessionPrefix(agentId: string): string {
   return `agent:${agentId}:openai-user:browseros:${agentId}:`
 }
 
+const MAIN_SESSION_KEY_PATTERN = /^agent:([^:]+):main$/
+
+/**
+ * Extract the agent id from a main-session key (e.g. `agent:research:main`
+ * → `research`). Returns null when the key isn't a top-level main session,
+ * which signals the caller to use the per-session fetch path.
+ */
+function extractAgentIdFromMainSessionKey(sessionKey: string): string | null {
+  const match = MAIN_SESSION_KEY_PATTERN.exec(sessionKey)
+  return match?.[1] ?? null
+}
+
+/**
+ * Classify a session key by its source. The pattern is `agent:<id>:<kind>:...`;
+ * the third segment identifies how the session was started.
+ */
+function parseSessionSource(
+  sessionKey: string,
+): NonNullable<OpenClawSessionHistoryMessage['source']> {
+  const parts = sessionKey.split(':')
+  if (parts[0] !== 'agent' || parts.length < 3) return 'other'
+  switch (parts[2]) {
+    case 'main':
+      return 'main'
+    case 'cron':
+      return 'cron'
+    case 'hook':
+      return 'hook'
+    case 'channel':
+      return 'channel'
+    default:
+      return 'other'
+  }
+}
+
+/**
+ * Per-session monotonic sequence. Gateway encodes it inside the
+ * `__openclaw` extension envelope; the legacy top-level `messageSeq`
+ * field exists in the type but is rarely populated.
+ */
+function resolveMessageSeq(msg: OpenClawSessionHistoryMessage): number | null {
+  const fromEnvelope = msg.__openclaw?.seq
+  if (typeof fromEnvelope === 'number' && Number.isFinite(fromEnvelope)) {
+    return fromEnvelope
+  }
+  if (typeof msg.messageSeq === 'number' && Number.isFinite(msg.messageSeq)) {
+    return msg.messageSeq
+  }
+  return null
+}
+
+/**
+ * Stable chronological order across sessions. Falls back to seq
+ * when timestamps tie or are missing, preserving intra-session order.
+ */
+function compareMessageOrder(
+  a: OpenClawSessionHistoryMessage,
+  b: OpenClawSessionHistoryMessage,
+): number {
+  const aTs = a.timestamp ?? 0
+  const bTs = b.timestamp ?? 0
+  if (aTs !== bTs) return aTs - bTs
+  return (resolveMessageSeq(a) ?? 0) - (resolveMessageSeq(b) ?? 0)
+}
+
+/**
+ * Compound cursor for the aggregated history endpoint. Maps each
+ * session key to either:
+ *   - a `messageSeq` to fetch BEFORE on the next page (more historical),
+ *   - or `null` meaning the session is exhausted and should be skipped.
+ *
+ * Encoded as base64url JSON for URL-safe transport in `?cursor=`.
+ */
+type CompoundCursor = Record<string, number | null>
+
+function decodeCompoundCursor(encoded: string | undefined): CompoundCursor {
+  if (!encoded) return {}
+  try {
+    const json = Buffer.from(encoded, 'base64url').toString('utf8')
+    const parsed = JSON.parse(json)
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const out: CompoundCursor = {}
+      for (const [k, v] of Object.entries(parsed)) {
+        if (typeof v === 'number' || v === null) out[k] = v
+      }
+      return out
+    }
+  } catch {
+    // Malformed cursors are treated as "first page" — preferable to
+    // erroring out the entire history fetch on a bad client cursor.
+  }
+  return {}
+}
+
+function encodeCompoundCursor(cursor: CompoundCursor): string {
+  return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url')
+}
+
 export interface AgentOverview {
   agentId: string
   status: AgentLiveStatus
@@ -260,8 +360,6 @@ export class OpenClawService {
   private httpClient: OpenClawHttpClient
   private openclawDir: string
   private hostPort = OPENCLAW_GATEWAY_CONTAINER_PORT
-  private token: string
-  private tokenLoaded = false
   private lastError: string | null = null
   private browserosServerPort: number
   private resourcesDir: string | null
@@ -272,7 +370,6 @@ export class OpenClawService {
   private stopLogTail: (() => void) | null = null
   private lifecycleLock: Promise<void> = Promise.resolve()
   private clawSession = new ClawSession()
-  private observer = new OpenClawObserver(this.clawSession)
 
   constructor(config: OpenClawServiceConfig = {}) {
     this.openclawDir = getOpenClawDir()
@@ -281,13 +378,9 @@ export class OpenClawService {
       projectDir: this.openclawDir,
       browserosRoot: config.browserosDir,
     })
-    this.token = crypto.randomUUID()
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
-    this.httpClient = new OpenClawHttpClient(
-      this.hostPort,
-      async () => this.token,
-    )
+    this.httpClient = new OpenClawHttpClient(this.hostPort)
     this.browserosServerPort =
       config.browserosServerPort ?? DEFAULT_PORTS.server
     this.resourcesDir = config.resourcesDir ?? null
@@ -323,19 +416,6 @@ export class OpenClawService {
     return this.hostPort
   }
 
-  /**
-   * Current gateway auth token. The token string is loaded from
-   * `gateway.auth.token` in the persisted openclaw.json during setup,
-   * with a freshly generated UUID as fallback. Exposed so the ACPx
-   * harness can pass it to spawned `openclaw acp` child processes via
-   * the documented `OPENCLAW_GATEWAY_TOKEN` env var (avoids both the
-   * `--token` process-listing leak and reliance on a token-file path
-   * that doesn't exist as a discrete file inside the container).
-   */
-  getGatewayToken(): string {
-    return this.token
-  }
-
   /** Subscribe to real-time agent status changes from the ClawSession state machine. */
   onAgentStatusChange(
     listener: (agentId: string, state: AgentSessionState) => void,
@@ -346,6 +426,70 @@ export class OpenClawService {
   /** Read the current ClawSession state for an agent (read-only snapshot). */
   getAgentState(agentId: string): AgentSessionState {
     return this.clawSession.getState(agentId)
+  }
+
+  /**
+   * Drive the live-status state machine from a turn lifecycle event the
+   * AgentHarnessService observed. Replaces the previous WS observer
+   * pipeline that re-tapped the same gateway events; the harness already
+   * sees them as ACP `session/update` notifications, so we forward those
+   * here. Caller passes the stream events verbatim.
+   *
+   * `tool_call` and `tool_call_update` populate `currentTool` so the
+   * dashboard SSE keeps its existing payload shape. `done` clears
+   * working state to `idle`; `error` keeps a sticky error badge.
+   */
+  recordAgentTurnEvent(
+    agentId: string,
+    sessionKey: string,
+    event:
+      | { type: 'turn_started' }
+      | { type: 'turn_event'; event: AgentStreamEvent }
+      | { type: 'turn_ended'; error?: string },
+  ): void {
+    if (event.type === 'turn_started') {
+      this.clawSession.transition(agentId, 'working', { sessionKey })
+      return
+    }
+    if (event.type === 'turn_ended') {
+      if (event.error !== undefined) {
+        this.clawSession.transition(agentId, 'error', {
+          sessionKey,
+          error: event.error,
+        })
+      } else {
+        this.clawSession.transition(agentId, 'idle', { sessionKey })
+      }
+      return
+    }
+    const inner = event.event
+    if (inner.type === 'tool_call') {
+      this.clawSession.transition(agentId, 'working', {
+        sessionKey,
+        currentTool: inner.title ?? null,
+      })
+      return
+    }
+    if (inner.type === 'error') {
+      this.clawSession.transition(agentId, 'error', {
+        sessionKey,
+        error: inner.message,
+      })
+      return
+    }
+    if (inner.type === 'done') {
+      this.clawSession.transition(agentId, 'idle', { sessionKey })
+      return
+    }
+    if (inner.type === 'text_delta') {
+      // Heartbeat — keep the existing `working` row fresh; preserve
+      // the last-known currentTool by passing it through.
+      const prev = this.clawSession.getState(agentId)
+      this.clawSession.transition(agentId, 'working', {
+        sessionKey,
+        currentTool: prev.currentTool,
+      })
+    }
   }
 
   // ── Lifecycle ────────────────────────────────────────────────────────
@@ -394,14 +538,13 @@ export class OpenClawService {
         providerKeyCount: Object.keys(provider.envValues).length,
       })
 
-      await this.refreshGatewayAuthToken()
       await this.ensureGatewayPortAllocated(logProgress)
 
       logProgress('Bootstrapping OpenClaw config...')
       await this.bootstrapCliClient.runOnboard({
         acceptRisk: true,
         authChoice: 'skip',
-        gatewayAuth: 'token',
+        gatewayAuth: 'none',
         gatewayBind: 'lan',
         gatewayPort: OPENCLAW_GATEWAY_CONTAINER_PORT,
         installDaemon: false,
@@ -417,8 +560,6 @@ export class OpenClawService {
 
       logProgress('Validating OpenClaw config...')
       await this.assertConfigValid(this.bootstrapCliClient)
-
-      await this.refreshGatewayAuthToken()
 
       logProgress('Starting OpenClaw gateway...')
       await this.runtime.startGateway(
@@ -478,8 +619,6 @@ export class OpenClawService {
 
       await this.runtime.ensureReady(logProgress)
 
-      logProgress('Refreshing gateway auth token...')
-      await this.refreshGatewayAuthToken()
       await this.ensureStateEnvFile()
 
       await this.ensureGatewayPortAllocated(logProgress)
@@ -533,7 +672,6 @@ export class OpenClawService {
     return this.withLifecycleLock('stop', async () => {
       logger.info('Stopping OpenClaw service', { hostPort: this.hostPort })
       this.controlPlaneStatus = 'disconnected'
-      this.observer.disconnect()
       this.stopGatewayLogTail()
       await this.runtime.stopGateway()
       logger.info('OpenClaw container stopped')
@@ -550,8 +688,6 @@ export class OpenClawService {
       this.controlPlaneStatus = 'reconnecting'
       await this.runtime.ensureReady(logProgress)
       this.stopGatewayLogTail()
-      logProgress('Refreshing gateway auth token...')
-      await this.refreshGatewayAuthToken()
       await this.ensureStateEnvFile()
       await this.ensureGatewayPortAllocated(logProgress)
       logProgress('Restarting OpenClaw gateway...')
@@ -596,8 +732,6 @@ export class OpenClawService {
         throw new Error('OpenClaw gateway is not ready')
       }
 
-      logProgress('Reloading gateway auth token...')
-      await this.refreshGatewayAuthToken()
       this.controlPlaneStatus = 'reconnecting'
       logProgress('Reconnecting control plane...')
       await this.runControlPlaneCall(() => this.cliClient.probe())
@@ -607,7 +741,6 @@ export class OpenClawService {
 
   async shutdown(): Promise<void> {
     this.controlPlaneStatus = 'disconnected'
-    this.observer.disconnect()
     this.stopGatewayLogTail()
     try {
       await this.runtime.stopGateway()
@@ -794,9 +927,155 @@ export class OpenClawService {
     input: { limit?: number; cursor?: string; signal?: AbortSignal } = {},
   ): Promise<OpenClawSessionHistory> {
     await this.assertGatewayReady()
-    return this.runControlPlaneCall(() =>
-      this.httpClient.getSessionHistory(sessionKey, input),
+    return this.runControlPlaneCall(async () => {
+      const agentId = extractAgentIdFromMainSessionKey(sessionKey)
+      if (!agentId) {
+        return this.httpClient.getSessionHistory(sessionKey, input)
+      }
+      return this.fetchAggregatedAgentHistory(sessionKey, agentId, input)
+    })
+  }
+
+  /**
+   * Aggregates the agent's main session and every sub-session (cron,
+   * hook, channel) into a single chronological response. The main
+   * session's own messages are included; each sub-session's messages
+   * are tagged with `source` and `subSessionKey` so the UI can
+   * distinguish autonomous turns from user-driven turns.
+   *
+   * Pagination uses a compound cursor that encodes a per-session seq
+   * for each session in scope (`{<sessionKey>: seq | null}`). Each page
+   * fetches each non-exhausted session with its own per-session cursor,
+   * merges messages across sessions by timestamp, slices to `limit`,
+   * and emits a fresh compound cursor reflecting where each session
+   * should resume on the next page. A session with `null` in the
+   * cursor is exhausted and skipped.
+   *
+   * Sub-session fetches that fail are logged and dropped — partial
+   * timelines are preferable to a hard failure that hides the main
+   * session.
+   */
+  private async fetchAggregatedAgentHistory(
+    mainSessionKey: string,
+    agentId: string,
+    input: { limit?: number; cursor?: string; signal?: AbortSignal },
+  ): Promise<OpenClawSessionHistory> {
+    const compoundIn = decodeCompoundCursor(input.cursor)
+    const sessions = await this.cliClient
+      .listSessions(agentId)
+      .catch((err): OpenClawSessionEntry[] => {
+        logger.warn(
+          'Failed to list OpenClaw sub-sessions; falling back to main only',
+          { agentId, error: err instanceof Error ? err.message : String(err) },
+        )
+        return []
+      })
+
+    // Build the candidate set from the agent's session directory plus
+    // the main key (which may not appear in `sessions.list` if the file
+    // hasn't been written yet for a fresh agent).
+    const targetKeys = new Set<string>([mainSessionKey])
+    for (const entry of sessions) {
+      if (entry.key?.startsWith(`agent:${agentId}:`)) {
+        targetKeys.add(entry.key)
+      }
+    }
+
+    // Only fetch sessions that aren't exhausted by the inbound cursor.
+    // A session with `null` in the cursor is fully read; skip it on
+    // subsequent pages.
+    const activeKeys = Array.from(targetKeys).filter(
+      (k) => compoundIn[k] !== null,
     )
+
+    const fetchedHistories = await Promise.all(
+      activeKeys.map(async (key) => {
+        const sessionCursor = compoundIn[key]
+        try {
+          const history = await this.httpClient.getSessionHistory(key, {
+            limit: input.limit,
+            cursor:
+              typeof sessionCursor === 'number'
+                ? String(sessionCursor)
+                : undefined,
+            signal: input.signal,
+          })
+          return { key, history }
+        } catch (err) {
+          logger.warn('Failed to fetch OpenClaw sub-session history', {
+            sessionKey: key,
+            error: err instanceof Error ? err.message : String(err),
+          })
+          return null
+        }
+      }),
+    )
+
+    type Annotated = OpenClawSessionHistoryMessage & { __sessionKey: string }
+    const merged: Annotated[] = []
+    let truncated = false
+    for (const result of fetchedHistories) {
+      if (!result) continue
+      const source = parseSessionSource(result.key)
+      const isMain = result.key === mainSessionKey
+      for (const msg of result.history.messages) {
+        merged.push({
+          ...msg,
+          source,
+          ...(isMain ? {} : { subSessionKey: result.key }),
+          __sessionKey: result.key,
+        })
+      }
+      if (result.history.truncated) truncated = true
+    }
+
+    merged.sort(compareMessageOrder)
+
+    // The merged window contains the latest portion fetched. We emit
+    // up to `limit` messages from the END (newest), and compute the
+    // resume position for each session as the seq of the EARLIEST
+    // emitted message that came from that session.
+    const limited =
+      typeof input.limit === 'number' && input.limit > 0
+        ? merged.slice(-input.limit)
+        : merged
+
+    const compoundOut: CompoundCursor = {}
+    // Carry forward exhausted sessions so subsequent pages keep skipping them.
+    for (const key of Array.from(targetKeys)) {
+      if (compoundIn[key] === null) {
+        compoundOut[key] = null
+      }
+    }
+    for (const result of fetchedHistories) {
+      if (!result) continue
+      const key = result.key
+      const earliestEmitted = limited.find((m) => m.__sessionKey === key)
+      const sessionFetchHasMore = Boolean(result.history.hasMore)
+      const droppedFromMerge =
+        result.history.messages.length >
+        limited.filter((m) => m.__sessionKey === key).length
+      const sessionHasMore = sessionFetchHasMore || droppedFromMerge
+      if (!sessionHasMore) {
+        compoundOut[key] = null
+        continue
+      }
+      const seq = earliestEmitted ? resolveMessageSeq(earliestEmitted) : null
+      compoundOut[key] = seq
+    }
+
+    const hasMore = Object.values(compoundOut).some(
+      (v) => typeof v === 'number',
+    )
+    const messages = limited.map(({ __sessionKey: _drop, ...rest }) => rest)
+
+    return {
+      sessionKey: mainSessionKey,
+      messages,
+      cursor: hasMore ? encodeCompoundCursor(compoundOut) : null,
+      hasMore,
+      truncated: truncated || limited.length < merged.length,
+    }
   }
 
   async streamSessionHistory(
@@ -871,7 +1150,6 @@ export class OpenClawService {
       try {
         await this.runtime.ensureReady()
 
-        await this.refreshGatewayAuthToken()
         await this.ensureStateEnvFile()
 
         const persistedPort = await readPersistedGatewayPort(this.openclawDir)
@@ -1001,10 +1279,7 @@ export class OpenClawService {
   private setPort(hostPort: number): void {
     if (hostPort === this.hostPort) return
     this.hostPort = hostPort
-    this.httpClient = new OpenClawHttpClient(
-      this.hostPort,
-      async () => this.token,
-    )
+    this.httpClient = new OpenClawHttpClient(this.hostPort)
   }
 
   private async ensureGatewayPortAllocated(
@@ -1037,25 +1312,13 @@ export class OpenClawService {
   }
 
   private async isGatewayAuthenticated(hostPort: number): Promise<boolean> {
-    if (!this.tokenLoaded) {
-      logger.debug(
-        'OpenClaw gateway port is ready before auth token is loaded',
-        {
-          hostPort,
-        },
-      )
-      return false
-    }
-
     const client =
       hostPort === this.hostPort
         ? this.httpClient
-        : new OpenClawHttpClient(hostPort, async () => this.token)
+        : new OpenClawHttpClient(hostPort)
     const authenticated = await client.isAuthenticated()
     if (!authenticated) {
-      logger.warn('OpenClaw gateway port rejected current auth token', {
-        hostPort,
-      })
+      logger.warn('OpenClaw gateway readiness probe failed', { hostPort })
     }
     return authenticated
   }
@@ -1096,12 +1359,10 @@ export class OpenClawService {
 
   private async runControlPlaneCall<T>(fn: () => Promise<T>): Promise<T> {
     try {
-      await this.ensureTokenLoaded()
       const result = await fn()
       this.controlPlaneStatus = 'connected'
       this.lastGatewayError = null
       this.lastRecoveryReason = null
-      this.ensureObserverConnected()
       return result
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -1113,20 +1374,10 @@ export class OpenClawService {
     }
   }
 
-  private ensureObserverConnected(): void {
-    if (this.observer.isConnected()) return
-    // ClawSession starts empty after the JSONL seed was removed; the WS
-    // observer fills in agent status as events arrive.
-    const url = `http://127.0.0.1:${this.hostPort}`
-    this.observer.connect(url, this.token)
-  }
-
   private classifyControlPlaneError(
     error: unknown,
   ): OpenClawGatewayRecoveryReason {
     const message = error instanceof Error ? error.message : String(error)
-    if (message.includes('Unauthorized')) return 'token_mismatch'
-    if (message.includes('token')) return 'token_mismatch'
     if (message.includes('not ready')) return 'container_not_ready'
     return 'unknown'
   }
@@ -1354,7 +1605,6 @@ export class OpenClawService {
       hostPort: this.hostPort,
       hostHome: this.openclawDir,
       envFilePath: this.getStateEnvPath(),
-      gatewayToken: this.tokenLoaded ? this.token : undefined,
       timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
     }
   }
@@ -1457,50 +1707,6 @@ export class OpenClawService {
       providerId: provider.customProvider.providerId,
     })
     return true
-  }
-
-  private async ensureTokenLoaded(): Promise<void> {
-    if (this.tokenLoaded) {
-      return
-    }
-    if (!existsSync(this.getStateConfigPath())) {
-      return
-    }
-
-    await this.loadTokenFromConfig()
-  }
-
-  private async refreshGatewayAuthToken(): Promise<void> {
-    this.tokenLoaded = false
-    if (!existsSync(this.getStateConfigPath())) {
-      return
-    }
-
-    await this.loadTokenFromConfig()
-  }
-
-  private async loadTokenFromConfig(): Promise<void> {
-    try {
-      const config = JSON.parse(
-        await readFile(this.getStateConfigPath(), 'utf-8'),
-      ) as {
-        gateway?: {
-          auth?: {
-            token?: unknown
-          }
-        }
-      }
-      const token = config.gateway?.auth?.token
-      if (typeof token === 'string' && token) {
-        this.token = token
-        this.tokenLoaded = true
-        logger.info('Loaded OpenClaw gateway token from mounted config')
-      }
-    } catch (err) {
-      logger.warn('Failed to load OpenClaw gateway token from mounted config', {
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
   }
 
   private createProgressLogger(

@@ -44,6 +44,24 @@ export interface OpenClawSessionHistoryMessage {
   messageId?: string
   messageSeq?: number
   timestamp?: number
+  /**
+   * OpenClaw extension envelope. The gateway records the per-session
+   * monotonic sequence on `__openclaw.seq` rather than the top-level
+   * `messageSeq` field, so cursor logic reads from here. `id` is the
+   * gateway's stable message id.
+   */
+  __openclaw?: { id?: string; seq?: number }
+  /**
+   * Origin of this message when the response merges multiple sessions.
+   * Absent on single-session responses for backward compatibility.
+   */
+  source?: 'main' | 'cron' | 'hook' | 'channel' | 'other'
+  /**
+   * The session key this message originated from. Differs from the
+   * top-level `sessionKey` when sub-sessions (e.g. cron runs) are merged
+   * into a parent agent's main-session response.
+   */
+  subSessionKey?: string
 }
 
 export interface OpenClawSessionHistory {
@@ -74,10 +92,7 @@ export type OpenClawSessionHistoryEvent =
   | { type: 'error'; data: { message: string } }
 
 export class OpenClawHttpClient {
-  constructor(
-    private readonly hostPort: number,
-    private readonly getToken: () => Promise<string>,
-  ) {}
+  constructor(private readonly hostPort: number) {}
 
   async getSessionHistory(
     sessionKey: string,
@@ -103,15 +118,9 @@ export class OpenClawHttpClient {
 
   async isAuthenticated(): Promise<boolean> {
     try {
-      const token = await this.getToken()
       const response = await fetch(
         `http://127.0.0.1:${this.hostPort}/v1/models`,
-        {
-          method: 'GET',
-          headers: {
-            Authorization: `Bearer ${token}`,
-          },
-        },
+        { method: 'GET' },
       )
       return response.ok
     } catch {
@@ -124,15 +133,11 @@ export class OpenClawHttpClient {
     input: OpenClawSessionHistoryInput,
     extraHeaders: Record<string, string>,
   ): Promise<Response> {
-    const token = await this.getToken()
     const response = await fetch(
       `http://127.0.0.1:${this.hostPort}${buildHistoryPath(sessionKey, input)}`,
       {
         method: 'GET',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          ...extraHeaders,
-        },
+        headers: extraHeaders,
         signal: input.signal,
       },
     )
