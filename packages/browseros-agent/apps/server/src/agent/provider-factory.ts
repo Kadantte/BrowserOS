@@ -37,6 +37,17 @@ import type { ResolvedAgentConfig } from './types'
  * Shape mirrors acpx's default `AGENT_REGISTRY` entries (the prefix
  * comes from acpx; we only append the `-c` config overrides).
  */
+/**
+ * Treat empty / whitespace-only strings as missing. The settings form
+ * stores optional text inputs as `""` (not `undefined`), so a default
+ * `??` chain on those values would happily pass `""` through.
+ */
+function nonEmpty(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
+
 function buildAgentRegistryOverrides(
   agentId: string,
   permissionMode: 'approve-all' | 'approve-reads' | 'deny-all',
@@ -252,9 +263,14 @@ function createAcpFactory(
   // The third level keeps zero-config chat working — most BrowserOS
   // chats are browser tasks where cwd is irrelevant; the agent
   // operates via the BrowserOS MCP, not via filesystem reads.
+  //
+  // The form persists optional text inputs as empty strings, not
+  // `undefined`. `??` only skips nullish, so without explicit
+  // empty-string handling an unset acpDefaultCwd would pass `""` down
+  // to codex-acp → "Invalid params" before any tool runs.
   const cwd =
-    config.workingDir ??
-    config.acpDefaultCwd ??
+    nonEmpty(config.workingDir) ??
+    nonEmpty(config.acpDefaultCwd) ??
     ensureAcpScratchDir(config.conversationId)
   // Session key keeps state distinct per (agent, cwd, conversation) so
   // workspace switches inside a chat correctly fork sessions and
