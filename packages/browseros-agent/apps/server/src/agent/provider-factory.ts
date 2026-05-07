@@ -7,7 +7,7 @@ import { createOpenAICompatible } from '@ai-sdk/openai-compatible'
 import { EXTERNAL_URLS } from '@browseros/shared/constants/urls'
 import { LLM_PROVIDERS } from '@browseros/shared/schemas/llm'
 import { createOpenRouter } from '@openrouter/ai-sdk-provider'
-import { createAcpxProvider } from 'acpx-ai-provider'
+import { type AcpxMcpServerConfig, createAcpxProvider } from 'acpx-ai-provider'
 import type { LanguageModel } from 'ai'
 import { createBrowserOSFetch } from '../lib/browseros-fetch'
 import { getBrowserOSMcpUrl } from '../lib/clients/acp/mcp-url'
@@ -17,6 +17,17 @@ import { createCopilotFetch } from '../lib/clients/oauth/copilot-fetch'
 import { logger } from '../lib/logger'
 import { createOpenRouterCompatibleFetch } from '../lib/openrouter-fetch'
 import type { ResolvedAgentConfig } from './types'
+
+/**
+ * Treat empty / whitespace-only strings as missing. The settings form
+ * stores optional text inputs as `""` (not `undefined`), so a default
+ * `??` chain on those values would happily pass `""` through.
+ */
+function nonEmpty(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : undefined
+}
 
 /**
  * Per-agent flag injection for `approve-all` mode.
@@ -37,17 +48,6 @@ import type { ResolvedAgentConfig } from './types'
  * Shape mirrors acpx's default `AGENT_REGISTRY` entries (the prefix
  * comes from acpx; we only append the `-c` config overrides).
  */
-/**
- * Treat empty / whitespace-only strings as missing. The settings form
- * stores optional text inputs as `""` (not `undefined`), so a default
- * `??` chain on those values would happily pass `""` through.
- */
-function nonEmpty(value: string | undefined): string | undefined {
-  if (value === undefined) return undefined
-  const trimmed = value.trim()
-  return trimmed.length > 0 ? trimmed : undefined
-}
-
 function buildAgentRegistryOverrides(
   agentId: string,
   permissionMode: 'approve-all' | 'approve-reads' | 'deny-all',
@@ -289,11 +289,20 @@ function createAcpFactory(
       // skipped for the ACP path (acpx-ai-provider doesn't plumb
       // them through), so this is the only seam by which ACP agents
       // gain access to BrowserOS capabilities.
+      //
+      // The ACP wire schema requires `headers: Array<HttpHeader>` on
+      // every HTTP MCP server (validated server-side; missing/wrong
+      // shape surfaces as a JSON-RPC `Invalid params` with no other
+      // signal). acpx-ai-provider's TS type spells `headers` as an
+      // optional Record, which is misleading — the runtime forwards
+      // the value verbatim to the ACP SDK which expects the array
+      // form. Pass an empty array and cast through.
       {
         type: 'http',
         name: 'browseros',
         url: getBrowserOSMcpUrl(),
-      },
+        headers: [],
+      } as unknown as AcpxMcpServerConfig,
     ],
     // Build a fresh runtime per conversation so the agent-registry
     // overrides above actually apply. acpx-ai-provider's
