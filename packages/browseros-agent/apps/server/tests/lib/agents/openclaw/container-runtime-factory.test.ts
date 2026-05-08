@@ -9,7 +9,7 @@ import { dirname, join } from 'node:path'
 import {
   buildContainerRuntime,
   migrateLegacyOpenClawDir,
-} from '../../../../src/api/services/openclaw/container-runtime-factory'
+} from '../../../../src/lib/agents/openclaw/container-runtime-factory'
 import { logger } from '../../../../src/lib/logger'
 
 describe('container-runtime factory', () => {

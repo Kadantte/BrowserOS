@@ -6,17 +6,17 @@
 
 import { cpSync, existsSync, mkdirSync } from 'node:fs'
 import { dirname, join } from 'node:path'
-import { getBrowserosDir } from '../../../lib/browseros-dir'
-import { ContainerCli, ImageLoader } from '../../../lib/container'
-import { logger } from '../../../lib/logger'
+import { getBrowserosDir } from '../../browseros-dir'
+import { ContainerCli, ImageLoader } from '../../container'
+import { logger } from '../../logger'
 import {
   getLimaHomeDir,
   resolveBundledLimactl,
   resolveBundledLimaTemplate,
   VM_NAME,
   VmRuntime,
-} from '../../../lib/vm'
-import { VM_TELEMETRY_EVENTS } from '../../../lib/vm/telemetry'
+} from '../../vm'
+import { VM_TELEMETRY_EVENTS } from '../../vm/telemetry'
 import { ContainerRuntime } from './container-runtime'
 
 const UNSUPPORTED_PLATFORM_MESSAGE =

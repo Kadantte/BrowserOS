@@ -18,13 +18,13 @@ import { randomUUID } from 'node:crypto'
 import { realpath, stat } from 'node:fs/promises'
 import { relative, resolve, sep } from 'node:path'
 import { and, desc, eq } from 'drizzle-orm'
-import { type BrowserOsDatabase, getDb } from '../../../lib/db'
+import { type BrowserOsDatabase, getDb } from '../../db'
 import {
   agentDefinitions,
   type NewProducedFileRow,
   type ProducedFileRow,
   producedFiles,
-} from '../../../lib/db/schema'
+} from '../../db/schema'
 import { walkWorkspace } from './produced-files-walker'
 
 const TURN_PROMPT_MAX_CHARS = 280

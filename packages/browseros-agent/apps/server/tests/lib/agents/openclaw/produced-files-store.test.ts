@@ -8,7 +8,7 @@ import { mkdtempSync } from 'node:fs'
 import { mkdir, rm, symlink, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { resolveSafeWorkspacePath } from '../../../../src/api/services/openclaw/produced-files-store'
+import { resolveSafeWorkspacePath } from '../../../../src/lib/agents/openclaw/produced-files-store'
 
 describe('resolveSafeWorkspacePath', () => {
   const tempDirs: string[] = []

@@ -8,7 +8,7 @@ import {
   getHostWorkspaceDir,
   isAgentWorkspaceNameSafe,
   mergeEnvContent,
-} from '../../../../src/api/services/openclaw/openclaw-env'
+} from '../../../../src/lib/agents/openclaw/openclaw-env'
 
 describe('isAgentWorkspaceNameSafe', () => {
   it('accepts plain slugs', () => {

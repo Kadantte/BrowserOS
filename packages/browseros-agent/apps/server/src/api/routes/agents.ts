@@ -30,6 +30,7 @@ import type {
   AgentAdapter,
   AgentDefinition,
 } from '../../lib/agents/agent-types'
+import type { FilePreview } from '../../lib/agents/openclaw'
 import type { AgentHistoryPage, AgentStreamEvent } from '../../lib/agents/types'
 import {
   type AgentDefinitionWithActivity,
@@ -46,7 +47,6 @@ import {
   TurnAlreadyActiveError,
   UnknownAgentError,
 } from '../services/agents/agent-harness-service'
-import type { FilePreview } from '../services/openclaw/file-preview'
 import type { Env } from '../types'
 import { resolveBrowserContextPageIds } from '../utils/resolve-browser-context-page-ids'
 

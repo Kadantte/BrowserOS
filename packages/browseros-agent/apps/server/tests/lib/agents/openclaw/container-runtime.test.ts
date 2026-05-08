@@ -8,7 +8,7 @@ import {
   OPENCLAW_GATEWAY_CONTAINER_NAME,
   OPENCLAW_IMAGE,
 } from '@browseros/shared/constants/openclaw'
-import { ContainerRuntime } from '../../../../src/api/services/openclaw/container-runtime'
+import { ContainerRuntime } from '../../../../src/lib/agents/openclaw/container-runtime'
 import { ContainerNameInUseError } from '../../../../src/lib/vm/errors'
 
 const PROJECT_DIR = '/tmp/openclaw'

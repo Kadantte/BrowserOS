@@ -21,12 +21,12 @@
  * resulting AgentHistoryToolCall has both input and output.
  */
 
-import { unwrapBrowserosAcpUserMessage } from '../../../lib/agents/acpx-runtime'
+import { unwrapBrowserosAcpUserMessage } from '../../agents/acpx-runtime'
 import type {
   AgentHistoryEntry,
   AgentHistoryToolCall,
-} from '../../../lib/agents/agent-types'
-import type { AgentHistoryPage } from '../../../lib/agents/types'
+} from '../../agents/agent-types'
+import type { AgentHistoryPage } from '../../agents/types'
 import type {
   OpenClawSessionHistory,
   OpenClawSessionHistoryMessage,

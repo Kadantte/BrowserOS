@@ -36,6 +36,15 @@ export {
 } from '../../../lib/agents/message-queue'
 
 import { basename } from 'node:path'
+import {
+  buildFilePreview,
+  detectMimeType,
+  type FilePreview,
+  type FileSnapshot,
+  getHostWorkspaceDir,
+  type ProducedFileRow,
+  ProducedFilesStore,
+} from '../../../lib/agents/openclaw'
 import type {
   AgentHistoryPage,
   AgentRowSnapshot,
@@ -44,17 +53,6 @@ import type {
 } from '../../../lib/agents/types'
 import { getOpenClawDir } from '../../../lib/browseros-dir'
 import { logger } from '../../../lib/logger'
-import {
-  buildFilePreview,
-  detectMimeType,
-  type FilePreview,
-} from '../openclaw/file-preview'
-import { getHostWorkspaceDir } from '../openclaw/openclaw-env'
-import {
-  type FileSnapshot,
-  type ProducedFileRow,
-  ProducedFilesStore,
-} from '../openclaw/produced-files-store'
 
 export type AgentLiveness = 'working' | 'idle' | 'asleep' | 'error'
 

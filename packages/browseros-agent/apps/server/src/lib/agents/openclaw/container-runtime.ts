@@ -16,15 +16,11 @@ import type {
   ContainerSpec,
   LogFn,
   WaitForContainerNameReleaseOptions,
-} from '../../../lib/container'
-import { isContainerNameInUse } from '../../../lib/container'
-import { logger } from '../../../lib/logger'
-import {
-  GUEST_VM_STATE,
-  hostPathToGuest,
-  type VmRuntime,
-} from '../../../lib/vm'
-import { ContainerNameInUseError } from '../../../lib/vm/errors'
+} from '../../container'
+import { isContainerNameInUse } from '../../container'
+import { logger } from '../../logger'
+import { GUEST_VM_STATE, hostPathToGuest, type VmRuntime } from '../../vm'
+import { ContainerNameInUseError } from '../../vm/errors'
 
 const GATEWAY_CONTAINER_HOME = '/home/node'
 const GATEWAY_STATE_DIR = `${GATEWAY_CONTAINER_HOME}/.openclaw`

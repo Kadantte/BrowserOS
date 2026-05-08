@@ -15,11 +15,11 @@ import {
 import {
   resolveSupportedOpenClawProvider,
   UnsupportedOpenClawProviderError,
-} from '../../../../src/api/services/openclaw/openclaw-provider-map'
+} from '../../../../src/lib/agents/openclaw/openclaw-provider-map'
 import {
   normalizeBrowserOSChatSessionKey,
   OpenClawService,
-} from '../../../../src/api/services/openclaw/openclaw-service'
+} from '../../../../src/lib/agents/openclaw/openclaw-service'
 
 type MutableOpenClawService = OpenClawService & {
   openclawDir: string

@@ -5,7 +5,7 @@
 
 import { describe, expect, it, mock } from 'bun:test'
 import { OPENCLAW_CONTAINER_HOME } from '@browseros/shared/constants/openclaw'
-import { OpenClawCliClient } from '../../../../src/api/services/openclaw/openclaw-cli-client'
+import { OpenClawCliClient } from '../../../../src/lib/agents/openclaw/openclaw-cli-client'
 
 describe('OpenClawCliClient', () => {
   it('passes real non-interactive onboarding flags through to the upstream cli', async () => {

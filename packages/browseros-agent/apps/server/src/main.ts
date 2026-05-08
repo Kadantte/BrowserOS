@@ -12,11 +12,6 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { EXIT_CODES } from '@browseros/shared/constants/exit-codes'
 import { createHttpServer } from './api/server'
-import {
-  configureOpenClawService,
-  configureVmRuntime,
-  getOpenClawService,
-} from './api/services/openclaw/openclaw-service'
 import { CdpBackend } from './browser/backends/cdp'
 import { Browser } from './browser/browser'
 import type { ServerConfig } from './config'
@@ -24,6 +19,11 @@ import { INLINED_ENV } from './env'
 import { configureClaudeRuntime } from './lib/agents/claude'
 import { configureCodexRuntime } from './lib/agents/codex'
 import { configureHermesRuntime, getHermesRuntime } from './lib/agents/hermes'
+import {
+  configureOpenClawService,
+  configureVmRuntime,
+  getOpenClawService,
+} from './lib/agents/openclaw'
 import {
   cleanOldSessions,
   ensureBrowserosDir,

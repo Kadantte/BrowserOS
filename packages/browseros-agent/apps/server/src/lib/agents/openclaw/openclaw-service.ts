@@ -17,10 +17,10 @@ import {
   OPENCLAW_IMAGE,
 } from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
-import type { AgentStreamEvent } from '../../../lib/agents/types'
-import { getOpenClawDir } from '../../../lib/browseros-dir'
-import { logger } from '../../../lib/logger'
-import { withProcessLock } from '../../../lib/process-lock'
+import type { AgentStreamEvent } from '../../agents/types'
+import { getOpenClawDir } from '../../browseros-dir'
+import { logger } from '../../logger'
+import { withProcessLock } from '../../process-lock'
 import {
   type AgentLiveStatus,
   type AgentSessionState,

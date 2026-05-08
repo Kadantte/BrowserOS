@@ -17,6 +17,10 @@ import { cors } from 'hono/cors'
 import type { ContentfulStatusCode } from 'hono/utils/http-status'
 import { HttpAgentError } from '../agent/errors'
 import { INLINED_ENV } from '../env'
+import {
+  convertOpenClawHistoryToAgentHistory,
+  getOpenClawService,
+} from '../lib/agents/openclaw'
 import { KlavisClient } from '../lib/clients/klavis/klavis-client'
 import { initializeOAuth, shutdownOAuth } from '../lib/clients/oauth'
 import { getDb } from '../lib/db'
@@ -46,8 +50,6 @@ import {
   connectKlavisInBackground,
   type KlavisProxyRef,
 } from './services/klavis/strata-proxy'
-import { convertOpenClawHistoryToAgentHistory } from './services/openclaw/history-mapper'
-import { getOpenClawService } from './services/openclaw/openclaw-service'
 import type { Env, HttpServerConfig } from './types'
 import { defaultCorsConfig } from './utils/cors'
 import { requireTrustedAppOrigin } from './utils/request-auth'

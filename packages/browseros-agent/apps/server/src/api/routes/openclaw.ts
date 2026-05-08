@@ -9,17 +9,17 @@
 
 import { Hono } from 'hono'
 import { stream } from 'hono/streaming'
-import { logger } from '../../lib/logger'
 import {
+  getOpenClawCliProvider,
+  getOpenClawService,
+  isUnsupportedOpenClawProviderError,
   OpenClawAgentAlreadyExistsError,
   OpenClawAgentNotFoundError,
   OpenClawInvalidAgentNameError,
   OpenClawProtectedAgentError,
   OpenClawSessionNotFoundError,
-} from '../services/openclaw/errors'
-import { getOpenClawCliProvider } from '../services/openclaw/openclaw-cli-providers/registry'
-import { isUnsupportedOpenClawProviderError } from '../services/openclaw/openclaw-provider-map'
-import { getOpenClawService } from '../services/openclaw/openclaw-service'
+} from '../../lib/agents/openclaw'
+import { logger } from '../../lib/logger'
 
 function getCreateAgentValidationError(body: { name?: string }): string | null {
   if (!body.name?.trim()) {

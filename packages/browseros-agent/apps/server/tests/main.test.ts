@@ -118,9 +118,7 @@ async function setupApplicationTest() {
   const apiServer = await import('../src/api/server')
   const browserModule = await import('../src/browser/browser')
   const cdpModule = await import('../src/browser/backends/cdp')
-  const openclawService = await import(
-    '../src/api/services/openclaw/openclaw-service'
-  )
+  const openclawService = await import('../src/lib/agents/openclaw')
   const claudeModule = await import('../src/lib/agents/claude')
   const codexModule = await import('../src/lib/agents/codex')
   const hermesModule = await import('../src/lib/agents/hermes')

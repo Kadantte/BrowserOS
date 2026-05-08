@@ -4,8 +4,8 @@
  */
 
 import { afterEach, describe, expect, it, mock } from 'bun:test'
-import { OpenClawSessionNotFoundError } from '../../../src/api/services/openclaw/errors'
-import { UnsupportedOpenClawProviderError } from '../../../src/api/services/openclaw/openclaw-provider-map'
+import { OpenClawSessionNotFoundError } from '../../../src/lib/agents/openclaw/errors'
+import { UnsupportedOpenClawProviderError } from '../../../src/lib/agents/openclaw/openclaw-provider-map'
 
 describe('createOpenClawRoutes', () => {
   afterEach(() => {
@@ -14,13 +14,13 @@ describe('createOpenClawRoutes', () => {
 
   it('returns 400 for unsupported provider payloads', async () => {
     const actualOpenClawService = await import(
-      '../../../src/api/services/openclaw/openclaw-service'
+      '../../../src/lib/agents/openclaw'
     )
     const updateProviderKeys = mock(async () => {
       throw new UnsupportedOpenClawProviderError('google')
     })
 
-    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+    mock.module('../../../src/lib/agents/openclaw', () => ({
       ...actualOpenClawService,
       getOpenClawService: () =>
         ({
@@ -54,14 +54,14 @@ describe('createOpenClawRoutes', () => {
 
   it('returns a non-restarting response when only the default model changes', async () => {
     const actualOpenClawService = await import(
-      '../../../src/api/services/openclaw/openclaw-service'
+      '../../../src/lib/agents/openclaw'
     )
     const updateProviderKeys = mock(async () => ({
       restarted: false,
       modelUpdated: true,
     }))
 
-    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+    mock.module('../../../src/lib/agents/openclaw', () => ({
       ...actualOpenClawService,
       getOpenClawService: () =>
         ({
@@ -109,7 +109,7 @@ describe('createOpenClawRoutes', () => {
 
   it('ignores role fields when creating agents', async () => {
     const actualOpenClawService = await import(
-      '../../../src/api/services/openclaw/openclaw-service'
+      '../../../src/lib/agents/openclaw'
     )
     const createAgent = mock(async () => ({
       agentId: 'research',
@@ -117,7 +117,7 @@ describe('createOpenClawRoutes', () => {
       workspace: '/home/node/.openclaw/workspace-research',
     }))
 
-    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+    mock.module('../../../src/lib/agents/openclaw', () => ({
       ...actualOpenClawService,
       getOpenClawService: () =>
         ({
@@ -162,7 +162,7 @@ describe('createOpenClawRoutes', () => {
 
   it('returns JSON history from the session history route and forwards query params', async () => {
     const actualOpenClawService = await import(
-      '../../../src/api/services/openclaw/openclaw-service'
+      '../../../src/lib/agents/openclaw'
     )
     const getSessionHistory = mock(async () => ({
       sessionKey: 'agent:main:main',
@@ -171,7 +171,7 @@ describe('createOpenClawRoutes', () => {
       hasMore: false,
     }))
 
-    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+    mock.module('../../../src/lib/agents/openclaw', () => ({
       ...actualOpenClawService,
       getOpenClawService: () => ({ getSessionHistory }) as never,
     }))
@@ -201,13 +201,13 @@ describe('createOpenClawRoutes', () => {
 
   it('returns 404 when the service reports a missing session', async () => {
     const actualOpenClawService = await import(
-      '../../../src/api/services/openclaw/openclaw-service'
+      '../../../src/lib/agents/openclaw'
     )
     const getSessionHistory = mock(async () => {
       throw new OpenClawSessionNotFoundError('missing')
     })
 
-    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+    mock.module('../../../src/lib/agents/openclaw', () => ({
       ...actualOpenClawService,
       getOpenClawService: () => ({ getSessionHistory }) as never,
     }))
@@ -227,7 +227,7 @@ describe('createOpenClawRoutes', () => {
 
   it('streams named SSE frames when Accept: text/event-stream', async () => {
     const actualOpenClawService = await import(
-      '../../../src/api/services/openclaw/openclaw-service'
+      '../../../src/lib/agents/openclaw'
     )
     const streamSessionHistory = mock(
       async () =>
@@ -255,7 +255,7 @@ describe('createOpenClawRoutes', () => {
         }),
     )
 
-    mock.module('../../../src/api/services/openclaw/openclaw-service', () => ({
+    mock.module('../../../src/lib/agents/openclaw', () => ({
       ...actualOpenClawService,
       getOpenClawService: () => ({ streamSessionHistory }) as never,
     }))

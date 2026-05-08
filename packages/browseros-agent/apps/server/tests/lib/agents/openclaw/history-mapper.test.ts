@@ -7,8 +7,8 @@ import { describe, expect, it } from 'bun:test'
 import {
   cleanHistoryUserText,
   convertOpenClawHistoryToAgentHistory,
-} from '../../../../src/api/services/openclaw/history-mapper'
-import type { OpenClawSessionHistory } from '../../../../src/api/services/openclaw/openclaw-http-client'
+} from '../../../../src/lib/agents/openclaw/history-mapper'
+import type { OpenClawSessionHistory } from '../../../../src/lib/agents/openclaw/openclaw-http-client'
 
 describe('cleanHistoryUserText', () => {
   it('extracts the cron payload and drops the trailer', () => {
