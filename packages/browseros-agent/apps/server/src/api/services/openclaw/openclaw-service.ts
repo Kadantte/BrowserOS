@@ -1123,6 +1123,13 @@ export class OpenClawService {
 
   async tryAutoStart(): Promise<void> {
     return this.withLifecycleLock('auto-start', async () => {
+      // Sync first so the UI sees an accurate state even when the
+      // gateway is already running from a previous server process
+      // and we'd otherwise short-circuit later. Optional-chained so
+      // tests that mock `service.runtime` with a partial fake don't
+      // crash here.
+      await this.runtime.syncState?.()
+
       const isSetUp = existsSync(this.getStateConfigPath())
       if (!isSetUp) return
 
@@ -1152,6 +1159,12 @@ export class OpenClawService {
             return
           }
         }
+
+        // Sync the runtime's state machine to whatever the actual
+        // container is doing — short-circuit branches above don't
+        // drive the state transitions, so without this the UI sees
+        // `not_installed` for a gateway that's actually running.
+        await this.runtime.syncState?.()
 
         await this.runControlPlaneCall(() => this.cliClient.probe())
         await this.ensureAllCliProvidersInstalled()

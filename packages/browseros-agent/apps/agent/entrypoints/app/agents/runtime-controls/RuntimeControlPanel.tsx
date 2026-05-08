@@ -63,11 +63,15 @@ export const RuntimeControlPanel: FC<RuntimeControlPanelProps> = ({
       </PanelCard>
     )
 
-  if (state === 'stopped' && caps.has('start'))
+  if ((state === 'stopped' || state === 'installed') && caps.has('start'))
     return (
       <PanelCard
-        title={`${data.descriptor.displayName} is stopped`}
-        description="Start the container to use this adapter."
+        title={`${data.descriptor.displayName} is ${state === 'installed' ? 'ready to start' : 'stopped'}`}
+        description={
+          state === 'installed'
+            ? 'Image is pulled. Start the container to use this adapter.'
+            : 'Start the container to use this adapter.'
+        }
       >
         <Primary
           icon={<Play className="mr-1.5 h-3.5 w-3.5" />}

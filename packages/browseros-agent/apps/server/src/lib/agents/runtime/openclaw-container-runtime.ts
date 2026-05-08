@@ -236,6 +236,36 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
     return this.readinessProbe()
   }
 
+  /** Sync internal state from the actual container — used at boot
+   *  when the gateway may already be running from a previous server
+   *  process and the runtime's state machine starts fresh. Without
+   *  this, the UI sees `not_installed` for an actively-running
+   *  gateway because nothing has driven the state transitions. */
+  async syncState(): Promise<void> {
+    try {
+      const info = await this.deps.cli.inspectContainer(
+        this.descriptor.containerName,
+      )
+      if (!info) {
+        if (this.state !== 'not_installed') this.setState('not_installed')
+        return
+      }
+      if (info.running) {
+        if (await fetchOk(`http://127.0.0.1:${this.hostPort}/readyz`)) {
+          this.setState('running')
+          return
+        }
+        this.setState('starting')
+        return
+      }
+      this.setState('stopped')
+    } catch (err) {
+      logger.warn('OpenClaw runtime syncState failed', {
+        error: err instanceof Error ? err.message : String(err),
+      })
+    }
+  }
+
   // ── Service-facing compat surface ────────────────────────────────
   // These wrap inherited lifecycle methods using the legacy method
   // names OpenClawService still uses. Keeping them lets the service
