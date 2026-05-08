@@ -372,16 +372,15 @@ export interface ConfigureOpenClawRuntimeOptions {
 }
 
 /** Build an OpenClawContainerRuntime with production deps and register
- *  it. Idempotent — repeat calls return the already-registered runtime. */
+ *  it. Idempotent — repeat calls return the already-registered runtime.
+ *  Constructs on every platform so service callers (and tests that
+ *  override `service.runtime` post-construction) work uniformly. The
+ *  descriptor's `platforms: ['darwin']` is the live signal for the UI
+ *  / adapter health, and `start()` itself fails at limactl-not-found
+ *  on non-darwin if anyone actually invokes it. */
 export function configureOpenClawRuntime(
   options: ConfigureOpenClawRuntimeOptions = {},
-): OpenClawContainerRuntime | null {
-  if (process.platform !== 'darwin') {
-    logger.warn('OpenClaw runtime skipped: unsupported platform', {
-      platform: process.platform,
-    })
-    return null
-  }
+): OpenClawContainerRuntime {
   const existing = getOpenClawRuntime()
   if (existing) return existing
 

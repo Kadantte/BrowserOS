@@ -1745,18 +1745,11 @@ async function fetchOk(url: string): Promise<boolean> {
 
 /** Resolve the OpenClawContainerRuntime, registering it lazily if
  *  main.ts didn't already do so (e.g. tests that build the service
- *  directly). Throws on non-darwin where the runtime can't run. */
+ *  directly). Always succeeds — the runtime constructs on every
+ *  platform; lifecycle calls fail at limactl-not-found on non-darwin. */
 function ensureOpenClawRuntime(opts: {
   resourcesDir?: string
   browserosDir?: string
 }): OpenClawContainerRuntime {
-  let runtime = getOpenClawRuntime()
-  if (runtime) return runtime
-  runtime = configureOpenClawRuntime(opts)
-  if (!runtime) {
-    throw new Error(
-      `OpenClaw runtime is not available on platform ${process.platform}`,
-    )
-  }
-  return runtime
+  return getOpenClawRuntime() ?? configureOpenClawRuntime(opts)
 }

@@ -246,13 +246,6 @@ describe('OpenClawContainerRuntime', () => {
       Object.defineProperty(process, 'platform', { value: originalPlatform })
     })
 
-    it('returns null on non-darwin and skips registration', () => {
-      originalPlatform = process.platform
-      Object.defineProperty(process, 'platform', { value: 'linux' })
-      expect(configureOpenClawRuntime()).toBeNull()
-      expect(getOpenClawRuntime()).toBeNull()
-    })
-
     it('registers on darwin and is idempotent across repeat calls', () => {
       originalPlatform = process.platform
       Object.defineProperty(process, 'platform', { value: 'darwin' })
@@ -262,6 +255,15 @@ describe('OpenClawContainerRuntime', () => {
       expect(first).toBeInstanceOf(OpenClawContainerRuntime)
       expect(second).toBe(first)
       expect(getAgentRuntimeRegistry().get('openclaw')).toBe(first)
+    })
+
+    it('also registers on non-darwin so callers get a real instance back; lifecycle ops fail at use time', () => {
+      originalPlatform = process.platform
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+      const browserosDir = mkTempDir()
+      const runtime = configureOpenClawRuntime({ browserosDir })
+      expect(runtime).toBeInstanceOf(OpenClawContainerRuntime)
+      expect(getOpenClawRuntime()).toBe(runtime)
     })
   })
 })
