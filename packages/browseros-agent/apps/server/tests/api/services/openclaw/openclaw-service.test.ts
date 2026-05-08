@@ -372,14 +372,7 @@ describe('OpenClawService', () => {
       model: undefined,
     })
     expect(steps).toEqual(['onboard', 'batch', 'validate', 'start', 'ready'])
-    expect(startGateway).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostPort: expect.any(Number),
-        hostHome: tempDir,
-        envFilePath: join(tempDir, '.openclaw', '.env'),
-      }),
-      expect.any(Function),
-    )
+    expect(startGateway).toHaveBeenCalledTimes(1)
     expect(startGateway.mock.calls[0]?.[0]).not.toHaveProperty('image')
     expect(restartGateway).not.toHaveBeenCalled()
   })
@@ -606,14 +599,7 @@ describe('OpenClawService', () => {
     await service.start()
 
     expect(ensureReady).toHaveBeenCalledTimes(1)
-    expect(startGateway).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostPort: expect.any(Number),
-        hostHome: tempDir,
-        envFilePath: join(tempDir, '.openclaw', '.env'),
-      }),
-      expect.any(Function),
-    )
+    expect(startGateway).toHaveBeenCalledTimes(1)
     expect(waitForReady).toHaveBeenCalledTimes(1)
     expect(probe).toHaveBeenCalledTimes(1)
   })
@@ -820,14 +806,7 @@ describe('OpenClawService', () => {
     await service.restart()
 
     expect(ensureReady).toHaveBeenCalledTimes(1)
-    expect(restartGateway).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostPort: expect.any(Number),
-        hostHome: tempDir,
-        envFilePath: join(tempDir, '.openclaw', '.env'),
-      }),
-      expect.any(Function),
-    )
+    expect(restartGateway).toHaveBeenCalledTimes(1)
     expect(waitForReady).toHaveBeenCalledTimes(1)
     expect(probe).toHaveBeenCalledTimes(1)
   })
@@ -870,12 +849,8 @@ describe('OpenClawService', () => {
 
     await service.restart()
 
-    expect(restartGateway).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostPort: occupiedPort,
-      }),
-      expect.any(Function),
-    )
+    expect(restartGateway).toHaveBeenCalledTimes(1)
+    expect(service.getPort()).toBe(occupiedPort)
     expect(ensureReady).toHaveBeenCalledTimes(1)
   })
 
@@ -906,7 +881,9 @@ describe('OpenClawService', () => {
     service.openclawDir = tempDir
     service.runtime = {
       ensureReady,
-      isReady: async (hostPort?: number) => hostPort === occupiedPort,
+      // Persisted port is reachable on the readiness probe; auth
+      // rejection drives the move-off branch.
+      isReady: async () => true,
       restartGateway,
       waitForReady,
     }
@@ -917,15 +894,8 @@ describe('OpenClawService', () => {
 
     await service.restart()
 
-    expect(restartGateway).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostPort: expect.any(Number),
-      }),
-      expect.any(Function),
-    )
-    expect(
-      (restartGateway.mock.calls[0]?.[0] as { hostPort: number }).hostPort,
-    ).not.toBe(occupiedPort)
+    expect(restartGateway).toHaveBeenCalledTimes(1)
+    expect(service.getPort()).not.toBe(occupiedPort)
     expect(ensureReady).toHaveBeenCalledTimes(1)
   })
 
@@ -1028,13 +998,7 @@ describe('OpenClawService', () => {
     await service.tryAutoStart()
 
     expect(ensureReady).toHaveBeenCalledTimes(1)
-    expect(startGateway).toHaveBeenCalledWith(
-      expect.objectContaining({
-        hostPort: expect.any(Number),
-        hostHome: tempDir,
-        envFilePath: join(tempDir, '.openclaw', '.env'),
-      }),
-    )
+    expect(startGateway).toHaveBeenCalledTimes(1)
     expect(waitForReady).toHaveBeenCalledTimes(1)
     expect(probe).toHaveBeenCalledTimes(1)
     expect(isReady).toHaveBeenCalledTimes(2)

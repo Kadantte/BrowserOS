@@ -24,6 +24,7 @@ import type { AgentDefinition } from '../../../src/lib/agents/agent-types'
 import {
   getAgentRuntimeRegistry,
   HermesContainerRuntime,
+  OpenClawContainerRuntime,
   resetAgentRuntimeRegistry,
 } from '../../../src/lib/agents/runtime'
 import type { AgentStreamEvent } from '../../../src/lib/agents/types'
@@ -1112,17 +1113,15 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
   })
 
   it('resolves the openclaw adapter to a lima/nerdctl exec command', async () => {
+    registerFakeOpenClawRuntime({
+      limactlPath: '/opt/homebrew/bin/limactl',
+      limaHome: '/Users/dev/.browseros-dev/lima',
+      vmName: 'browseros-vm',
+    })
     const calls: Array<{ method: string; input: unknown }> = []
     const runtime = new AcpxRuntime({
       cwd: '/tmp/browseros-acpx-runtime',
       stateDir: '/tmp/browseros-acpx-state',
-      openclawGateway: {
-        getGatewayToken: () => 'test-token-abc',
-        getContainerName: () => 'browseros-openclaw-openclaw-gateway-1',
-        getLimaHomeDir: () => '/Users/dev/.browseros-dev/lima',
-        getLimactlPath: () => '/opt/homebrew/bin/limactl',
-        getVmName: () => 'browseros-vm',
-      },
       runtimeFactory: (options) => {
         calls.push({ method: 'createRuntime', input: options })
         return createFakeAcpRuntime(calls)
@@ -1171,17 +1170,15 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
   })
 
   it('rewrites non-harness OpenClaw session keys onto the gateway main agent', async () => {
+    registerFakeOpenClawRuntime({
+      limactlPath: '/opt/homebrew/bin/limactl',
+      limaHome: '/Users/dev/.browseros-dev/lima',
+      vmName: 'browseros-vm',
+    })
     const calls: Array<{ method: string; input: unknown }> = []
     const runtime = new AcpxRuntime({
       cwd: '/tmp/browseros-acpx-runtime',
       stateDir: '/tmp/browseros-acpx-state',
-      openclawGateway: {
-        getGatewayToken: () => 'test-token-abc',
-        getContainerName: () => 'browseros-openclaw-openclaw-gateway-1',
-        getLimaHomeDir: () => '/Users/dev/.browseros-dev/lima',
-        getLimactlPath: () => '/opt/homebrew/bin/limactl',
-        getVmName: () => 'browseros-vm',
-      },
       runtimeFactory: (options) => {
         calls.push({ method: 'createRuntime', input: options })
         return createFakeAcpRuntime(calls)
@@ -1367,6 +1364,30 @@ Use the BrowserOS MCP server for all browser tasks, including browsing the web, 
     ).toEqual([1_000, 2_000])
   })
 })
+
+function registerFakeOpenClawRuntime(opts: {
+  limactlPath: string
+  limaHome: string
+  vmName: string
+}): OpenClawContainerRuntime {
+  resetAgentRuntimeRegistry()
+  const fakeDeps: ManagedContainerDeps = {
+    cli: {} as ManagedContainerDeps['cli'],
+    loader: {} as ManagedContainerDeps['loader'],
+    vm: {} as ManagedContainerDeps['vm'],
+    limactlPath: opts.limactlPath,
+    limaHome: opts.limaHome,
+    vmName: opts.vmName,
+    lockDir: '/tmp/openclaw-test-locks',
+  }
+  const runtime = new OpenClawContainerRuntime(fakeDeps, {
+    browserosDir: '/tmp/browseros-test',
+    openclawDir: '/tmp/browseros-test/vm/openclaw',
+  })
+  runtime.setHostPort(18789)
+  getAgentRuntimeRegistry().register(runtime)
+  return runtime
+}
 
 function makeAgent(input: {
   id: string

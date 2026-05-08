@@ -221,6 +221,9 @@ async function setupApplicationTest() {
   spyOn(runtimeModule, 'configureCodexRuntime').mockImplementation(
     () => ({}) as never,
   )
+  spyOn(runtimeModule, 'configureOpenClawRuntime').mockImplementation(
+    () => ({}) as never,
+  )
 
   const { Application } = await import('../src/main')
   return {

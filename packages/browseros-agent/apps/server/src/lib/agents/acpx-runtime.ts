@@ -5,7 +5,6 @@
  */
 
 import { join } from 'node:path'
-import { OPENCLAW_GATEWAY_CONTAINER_PORT } from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
 import {
   type AcpRuntimeEvent,
@@ -32,7 +31,7 @@ import type {
   AgentHistoryEntry,
   AgentHistoryToolCall,
 } from './agent-types'
-import { getHermesRuntime } from './runtime'
+import { getHermesRuntime, getOpenClawRuntime } from './runtime'
 import type {
   AgentHistoryPage,
   AgentPromptInput,
@@ -43,35 +42,11 @@ import type {
   AgentStreamEvent,
 } from './types'
 
-/**
- * Live-getter access to the OpenClaw gateway runtime info. Required
- * when spawning the openclaw ACP adapter inside the gateway container.
- *
- * Fields are getters (not snapshot values) so the harness picks up the
- * current VM/container paths at spawn time. The bundled gateway runs
- * with `gateway.auth.mode=none`, so no auth token is plumbed through.
- */
-export interface OpenclawGatewayAccessor {
-  /** Container name e.g. browseros-openclaw-openclaw-gateway-1. */
-  getContainerName(): string
-  /** LIMA_HOME directory containing the browseros-vm instance. */
-  getLimaHomeDir(): string
-  /** Resolved path to the `limactl` binary (bundled or host). */
-  getLimactlPath(): string
-  /** VM name registered in LIMA_HOME (e.g. browseros-vm). */
-  getVmName(): string
-}
-
 type AcpxRuntimeOptions = {
   cwd?: string
   browserosDir?: string
   stateDir?: string
   browserosServerPort?: number
-  /**
-   * Required for adapter='openclaw' agents; harmless when absent for
-   * claude/codex (their adapters spawn their own CLI binaries).
-   */
-  openclawGateway?: OpenclawGatewayAccessor
   runtimeFactory?: (options: AcpRuntimeOptions) => AcpxCoreRuntime
 }
 
@@ -91,7 +66,6 @@ export class AcpxRuntime implements AgentRuntime {
   private readonly browserosDir: string
   private readonly stateDir: string
   private readonly browserosServerPort: number
-  private readonly openclawGateway: OpenclawGatewayAccessor | null
   private readonly runtimeFactory: (
     options: AcpRuntimeOptions,
   ) => AcpxCoreRuntime
@@ -107,7 +81,6 @@ export class AcpxRuntime implements AgentRuntime {
       join(this.browserosDir, 'agents', 'acpx')
     this.browserosServerPort =
       options.browserosServerPort ?? DEFAULT_PORTS.server
-    this.openclawGateway = options.openclawGateway ?? null
     this.sessionStore = createRuntimeStore({ stateDir: this.stateDir })
     this.runtimeFactory = options.runtimeFactory ?? createAcpRuntime
   }
@@ -272,7 +245,6 @@ export class AcpxRuntime implements AgentRuntime {
       cwd: input.cwd,
       sessionStore: this.sessionStore,
       agentRegistry: createBrowserosAgentRegistry({
-        openclawGateway: this.openclawGateway,
         openclawSessionKey: input.openclawSessionKey,
         commandEnv: input.commandEnv,
       }),
@@ -683,7 +655,6 @@ function createBrowserosMcpServers(
 }
 
 function createBrowserosAgentRegistry(input: {
-  openclawGateway: OpenclawGatewayAccessor | null
   openclawSessionKey: string | null
   commandEnv: Record<string, string>
 }): AcpRuntimeOptions['agentRegistry'] {
@@ -697,18 +668,20 @@ function createBrowserosAgentRegistry(input: {
       const lower = agentName.trim().toLowerCase()
 
       if (lower === 'openclaw') {
-        if (!input.openclawGateway) {
-          // Fall back to acpx's built-in `openclaw` adapter, which assumes
-          // a host-side openclaw binary. BrowserOS doesn't install one on
-          // the host, so this branch will fail at spawn time with a
-          // descriptive error — the harness should be wired with a
-          // gateway accessor.
-          return registry.resolve(agentName)
+        const runtime = getOpenClawRuntime()
+        if (runtime) {
+          return runtime.buildExecArgv(
+            runtime.getAcpExecSpec({
+              commandEnv: input.commandEnv,
+              openclawSessionKey: input.openclawSessionKey,
+            }),
+          )
         }
-        return resolveOpenclawAcpCommand(
-          input.openclawGateway,
-          input.openclawSessionKey,
-        )
+        // Tests / non-darwin: fall back to acpx-core's built-in
+        // `openclaw` adapter, which assumes a host-side openclaw
+        // binary. BrowserOS doesn't install one on the host, so this
+        // branch fails at spawn time with a descriptive error.
+        return registry.resolve(agentName)
       }
 
       if (lower === 'hermes') {
@@ -734,79 +707,6 @@ function createBrowserosAgentRegistry(input: {
       return registry.resolve(agentName)
     },
   }
-}
-
-/**
- * Builds the command string acpx will spawn for an `openclaw` adapter.
- * Runs `openclaw acp` inside the gateway container via the bundled
- * `limactl shell <vm> -- nerdctl exec -i ...` chain so the binary
- * already installed alongside the gateway is reused; BrowserOS does
- * not require a host-side openclaw install.
- *
- * Auth: BrowserOS configures the bundled gateway with `gateway.auth.mode=none`,
- * so no gateway token flag is needed for the local ACP bridge.
- *
- * Banner output: OPENCLAW_HIDE_BANNER and OPENCLAW_SUPPRESS_NOTES
- * suppress non-JSON-RPC chatter on stdout that would otherwise corrupt
- * the ACP message stream.
- */
-function resolveOpenclawAcpCommand(
-  gateway: OpenclawGatewayAccessor,
-  sessionKey: string | null,
-): string {
-  const limactl = gateway.getLimactlPath()
-  const vm = gateway.getVmName()
-  const container = gateway.getContainerName()
-  const limaHome = gateway.getLimaHomeDir()
-  const gatewayUrlInsideContainer = `ws://127.0.0.1:${OPENCLAW_GATEWAY_CONTAINER_PORT}`
-
-  // `--session <key>` routes the bridge's newSession requests to the
-  // matching gateway agent. acpx does not pass sessionKey through ACP
-  // newSession params, so without this CLI flag the bridge falls back
-  // to a synthetic acp:<uuid> session that does not resolve to any
-  // provisioned gateway agent.
-  //
-  // Harness keys are `agent:<harness-id>:main`; the harness id matches
-  // a dual-created gateway agent name, so the bridge resolves directly.
-  // Any legacy non-agent key falls back to the always-provisioned
-  // `main` gateway agent with the original key encoded as a channel
-  // suffix.
-  const bridgeSessionKey = sessionKey
-    ? sessionKey.startsWith('agent:')
-      ? sessionKey
-      : `agent:main:${sessionKey.replace(/[^a-zA-Z0-9-]/g, '-')}`
-    : null
-  //
-  // Prefix `env LIMA_HOME=<path>` so the spawned limactl finds the
-  // BrowserOS-owned VM instance. The BrowserOS server doesn't set
-  // LIMA_HOME on its own process env (it injects per-spawn elsewhere),
-  // so the acpx-spawned subprocess won't inherit it without this hint.
-  const argv = [
-    'env',
-    `LIMA_HOME=${limaHome}`,
-    limactl,
-    'shell',
-    '--workdir',
-    '/',
-    vm,
-    '--',
-    'nerdctl',
-    'exec',
-    '-i',
-    '-e',
-    'OPENCLAW_HIDE_BANNER=1',
-    '-e',
-    'OPENCLAW_SUPPRESS_NOTES=1',
-    container,
-    'openclaw',
-    'acp',
-    '--url',
-    gatewayUrlInsideContainer,
-  ]
-  if (bridgeSessionKey) {
-    argv.push('--session', bridgeSessionKey)
-  }
-  return argv.join(' ')
 }
 
 async function applyRuntimeControls(

@@ -64,9 +64,6 @@ export interface OpenClawContainerRuntimeConfig {
   browserosDir: string
   /** OpenClaw state dir (`<browserosDir>/vm/openclaw`). */
   openclawDir: string
-  /** Returns the currently allocated host port. Read at spec-build time
-   *  so the service can update the port without re-creating the runtime. */
-  getHostPort: () => number
 }
 
 export class OpenClawContainerRuntime extends ContainerAgentRuntime {
@@ -81,6 +78,7 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
   }
 
   private readonly openclawConfig: OpenClawContainerRuntimeConfig
+  private hostPort: number = OPENCLAW_GATEWAY_CONTAINER_PORT
 
   constructor(
     deps: ManagedContainerDeps,
@@ -88,6 +86,15 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
   ) {
     super(deps)
     this.openclawConfig = config
+  }
+
+  /** Service owns port allocation; the runtime re-reads it at spec-build and probe time. */
+  setHostPort(port: number): void {
+    this.hostPort = port
+  }
+
+  getHostPort(): number {
+    return this.hostPort
   }
 
   // ── ManagedContainer abstracts ───────────────────────────────────
@@ -103,7 +110,7 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
   }
 
   protected async buildContainerSpec(): Promise<ContainerSpec> {
-    const hostPort = this.openclawConfig.getHostPort()
+    const hostPort = this.hostPort
     const envFilePath = getOpenClawStateEnvPath(this.openclawConfig.openclawDir)
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone
     const gateway = await this.deps.vm.getDefaultGateway()
@@ -142,7 +149,7 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
   }
 
   protected async readinessProbe(): Promise<boolean> {
-    const hostPort = this.openclawConfig.getHostPort()
+    const hostPort = this.hostPort
     try {
       const res = await fetch(`http://127.0.0.1:${hostPort}/readyz`)
       return res.ok
@@ -184,16 +191,12 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
 
   // ── OpenClaw-specific surface kept on the runtime ────────────────
 
-  /** Compatibility shim for `OpenClawCliClient`'s `ContainerExecutor`
-   *  interface — runs argv inside the gateway container and returns
-   *  the exit code. */
+  /** Run argv in the gateway container; satisfies OpenClawCliClient's ContainerExecutor. */
   async execInContainer(command: string[], onLog?: LogFn): Promise<number> {
     return this.deps.cli.exec(this.descriptor.containerName, command, onLog)
   }
 
-  /** Same as `getLogs(tail)` but routes through the underlying CLI's
-   *  raw command runner so callers that want both stdout + stderr in
-   *  one call can use this instead. */
+  /** Run argv in the gateway container with stdout + stderr captured separately. */
   async runInContainer(
     command: string[],
   ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
@@ -204,8 +207,12 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
     ])
   }
 
-  /** VM-level halt — kept on the runtime so `OpenClawService.shutdown`
-   *  has a single dependency to call. */
+  /** Standalone VM-ready entry point used by prewarm / auto-start gating. */
+  async ensureReady(onLog?: LogFn): Promise<void> {
+    await this.deps.vm.ensureReady(onLog)
+    await this.deps.vm.getDefaultGateway()
+  }
+
   async stopVm(): Promise<void> {
     await this.deps.vm.stopVm()
   }
@@ -219,7 +226,7 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
   }
 
   isHealthy(): Promise<boolean> {
-    const hostPort = this.openclawConfig.getHostPort()
+    const hostPort = this.hostPort
     return fetchOk(`http://127.0.0.1:${hostPort}/healthz`)
   }
 
@@ -227,6 +234,64 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
    *  reach into the protected method. */
   isReady(): Promise<boolean> {
     return this.readinessProbe()
+  }
+
+  // ── Service-facing compat surface ────────────────────────────────
+  // These wrap inherited lifecycle methods using the legacy method
+  // names OpenClawService still uses. Keeping them lets the service
+  // swap from the legacy `ContainerRuntime` to this class with
+  // minimal touch; a follow-up can rename the call sites to use
+  // `executeAction(...)` directly and drop these wrappers.
+
+  /** Pre-pull the gateway image without starting the container. */
+  async prewarmGatewayImage(onLog?: LogFn): Promise<void> {
+    await this.executeAction({ type: 'install' }, { onLog })
+  }
+
+  /** Start the gateway container with the runtime's own spec. */
+  async startGateway(_unused?: unknown, onLog?: LogFn): Promise<void> {
+    await this.executeAction({ type: 'start' }, { onLog })
+  }
+
+  async stopGateway(): Promise<void> {
+    await this.executeAction({ type: 'stop' })
+  }
+
+  async restartGateway(_unused?: unknown, onLog?: LogFn): Promise<void> {
+    await this.executeAction({ type: 'restart' }, { onLog })
+  }
+
+  /** Poll readiness until ready or timeout. Returns whether ready. */
+  async waitForReady(_hostPort?: number, timeoutMs = 30_000): Promise<boolean> {
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      if (await this.readinessProbe()) return true
+      await Bun.sleep(1000)
+    }
+    return false
+  }
+
+  async getGatewayLogs(tail = 50): Promise<string[]> {
+    return this.getLogs(tail)
+  }
+
+  tailGatewayLogs(onLine: LogFn): () => void {
+    return this.tailLogs(onLine)
+  }
+
+  isGatewayCurrent(): Promise<boolean> {
+    return this.isImageCurrent()
+  }
+
+  /** Run a one-shot command in a `<name>-setup` sibling container. */
+  async runGatewaySetupCommand(
+    command: string[],
+    _unused?: unknown,
+    onLog?: LogFn,
+  ): Promise<number> {
+    const argv = command[0] === 'node' ? command.slice(1) : command
+    const result = await this.runOneShot(['node', ...argv], { onLog })
+    return result.exitCode
   }
 
   // ── Internals ────────────────────────────────────────────────────
@@ -304,14 +369,12 @@ export async function prepareOpenClawContext(
 export interface ConfigureOpenClawRuntimeOptions {
   resourcesDir?: string
   browserosDir?: string
-  /** Required: the service-side port allocator. The runtime calls
-   *  this every time it builds a container spec or probes readiness. */
-  getHostPort: () => number
 }
 
-/** Build an OpenClawContainerRuntime with production deps and register it. */
+/** Build an OpenClawContainerRuntime with production deps and register
+ *  it. Idempotent — repeat calls return the already-registered runtime. */
 export function configureOpenClawRuntime(
-  options: ConfigureOpenClawRuntimeOptions,
+  options: ConfigureOpenClawRuntimeOptions = {},
 ): OpenClawContainerRuntime | null {
   if (process.platform !== 'darwin') {
     logger.warn('OpenClaw runtime skipped: unsupported platform', {
@@ -319,6 +382,8 @@ export function configureOpenClawRuntime(
     })
     return null
   }
+  const existing = getOpenClawRuntime()
+  if (existing) return existing
 
   const browserosDir = options.browserosDir ?? getBrowserosDir()
   const openclawDir = getOpenClawDir()
@@ -349,7 +414,7 @@ export function configureOpenClawRuntime(
       vmName: VM_NAME,
       lockDir: join(openclawDir, '.locks'),
     },
-    { browserosDir, openclawDir, getHostPort: options.getHostPort },
+    { browserosDir, openclawDir },
   )
 
   getAgentRuntimeRegistry().register(runtime)

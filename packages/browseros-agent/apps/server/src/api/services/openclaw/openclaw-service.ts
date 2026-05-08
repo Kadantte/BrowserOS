@@ -17,6 +17,11 @@ import {
   OPENCLAW_IMAGE,
 } from '@browseros/shared/constants/openclaw'
 import { DEFAULT_PORTS } from '@browseros/shared/constants/ports'
+import {
+  configureOpenClawRuntime,
+  getOpenClawRuntime,
+  type OpenClawContainerRuntime,
+} from '../../../lib/agents/runtime'
 import type { AgentStreamEvent } from '../../../lib/agents/types'
 import { getOpenClawDir } from '../../../lib/browseros-dir'
 import { logger } from '../../../lib/logger'
@@ -26,11 +31,6 @@ import {
   type AgentSessionState,
   ClawSession,
 } from './claw-session'
-import type {
-  ContainerRuntime,
-  GatewayContainerSpec,
-} from './container-runtime'
-import { buildContainerRuntime } from './container-runtime-factory'
 import {
   OpenClawAgentAlreadyExistsError,
   OpenClawAgentNotFoundError,
@@ -354,7 +354,7 @@ export interface DashboardResponse {
 }
 
 export class OpenClawService {
-  private runtime: ContainerRuntime
+  private runtime: OpenClawContainerRuntime
   private cliClient: OpenClawCliClient
   private bootstrapCliClient: OpenClawCliClient
   private httpClient: OpenClawHttpClient
@@ -373,11 +373,11 @@ export class OpenClawService {
 
   constructor(config: OpenClawServiceConfig = {}) {
     this.openclawDir = getOpenClawDir()
-    this.runtime = buildContainerRuntime({
+    this.runtime = ensureOpenClawRuntime({
       resourcesDir: config.resourcesDir,
-      projectDir: this.openclawDir,
-      browserosRoot: config.browserosDir,
+      browserosDir: config.browserosDir,
     })
+    this.runtime.setHostPort(this.hostPort)
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
     this.httpClient = new OpenClawHttpClient(this.hostPort)
@@ -392,23 +392,17 @@ export class OpenClawService {
       this.browserosServerPort = config.browserosServerPort
     }
 
-    let runtimeChanged = false
     if (
       config.resourcesDir !== undefined &&
       config.resourcesDir !== this.resourcesDir
     ) {
       this.resourcesDir = config.resourcesDir
-      runtimeChanged = true
     }
     if (
       config.browserosDir !== undefined &&
       config.browserosDir !== this.browserosDir
     ) {
       this.browserosDir = config.browserosDir
-      runtimeChanged = true
-    }
-    if (runtimeChanged) {
-      this.rebuildRuntimeClients()
     }
   }
 
@@ -562,10 +556,7 @@ export class OpenClawService {
       await this.assertConfigValid(this.bootstrapCliClient)
 
       logProgress('Starting OpenClaw gateway...')
-      await this.runtime.startGateway(
-        this.buildGatewayRuntimeSpec(),
-        logProgress,
-      )
+      await this.runtime.startGateway(undefined, logProgress)
       this.startGatewayLogTail()
       logProgress('Waiting for gateway readiness...')
       const ready = await this.runtime.waitForReady(
@@ -643,10 +634,7 @@ export class OpenClawService {
       }
 
       logProgress('Starting OpenClaw gateway...')
-      await this.runtime.startGateway(
-        this.buildGatewayRuntimeSpec(),
-        logProgress,
-      )
+      await this.runtime.startGateway(undefined, logProgress)
       this.startGatewayLogTail()
 
       logProgress('Waiting for gateway readiness...')
@@ -691,10 +679,7 @@ export class OpenClawService {
       await this.ensureStateEnvFile()
       await this.ensureGatewayPortAllocated(logProgress)
       logProgress('Restarting OpenClaw gateway...')
-      await this.runtime.restartGateway(
-        this.buildGatewayRuntimeSpec(),
-        logProgress,
-      )
+      await this.runtime.restartGateway(undefined, logProgress)
       this.startGatewayLogTail()
 
       logProgress('Waiting for gateway readiness...')
@@ -724,7 +709,7 @@ export class OpenClawService {
       })
 
       logProgress('Checking gateway readiness...')
-      const ready = await this.runtime.isReady(this.hostPort)
+      const ready = await this.runtime.isReady()
       if (!ready) {
         this.controlPlaneStatus = 'failed'
         this.lastGatewayError = 'OpenClaw gateway is not ready'
@@ -771,9 +756,7 @@ export class OpenClawService {
     }
 
     const machineStatus = await this.runtime.getMachineStatus()
-    const ready = machineStatus.running
-      ? await this.runtime.isReady(this.hostPort)
-      : false
+    const ready = machineStatus.running ? await this.runtime.isReady() : false
 
     let agentCount = 0
     if (ready) {
@@ -1159,7 +1142,7 @@ export class OpenClawService {
 
         if (!(await this.isCurrentGatewayAvailable(this.hostPort))) {
           await this.ensureGatewayPortAllocated()
-          await this.runtime.startGateway(this.buildGatewayRuntimeSpec())
+          await this.runtime.startGateway(undefined)
           const ready = await this.runtime.waitForReady(
             this.hostPort,
             READY_TIMEOUT_MS,
@@ -1257,28 +1240,17 @@ export class OpenClawService {
   private buildBootstrapCliClient(): OpenClawCliClient {
     return new OpenClawCliClient({
       execInContainer: (command, onLog) =>
-        this.runtime.runGatewaySetupCommand(
-          command,
-          this.buildGatewayRuntimeSpec(),
-          onLog,
-        ),
+        this.runtime.runGatewaySetupCommand(command, undefined, onLog),
     })
-  }
-
-  private rebuildRuntimeClients(): void {
-    this.stopGatewayLogTail()
-    this.runtime = buildContainerRuntime({
-      resourcesDir: this.resourcesDir ?? undefined,
-      projectDir: this.openclawDir,
-      browserosRoot: this.browserosDir,
-    })
-    this.cliClient = new OpenClawCliClient(this.runtime)
-    this.bootstrapCliClient = this.buildBootstrapCliClient()
   }
 
   private setPort(hostPort: number): void {
     if (hostPort === this.hostPort) return
     this.hostPort = hostPort
+    // Tests sometimes overwrite this.runtime with a partial mock that
+    // doesn't carry every method — guard so we don't crash when the
+    // mock omits setHostPort.
+    this.runtime.setHostPort?.(hostPort)
     this.httpClient = new OpenClawHttpClient(this.hostPort)
   }
 
@@ -1329,19 +1301,21 @@ export class OpenClawService {
   }
 
   private async isGatewayPortReady(hostPort: number): Promise<boolean> {
-    if (await this.runtime.isReady(hostPort)) return true
-
-    const runtime = this.runtime as {
-      isHealthy?: (port: number) => Promise<boolean>
+    // Route through the runtime's probe when the port matches its
+    // configured one — preserves the no-direct-fetch semantics the
+    // legacy adapter exposed (and that several tests rely on by
+    // mocking runtime.isReady but not the HTTP layer).
+    if (hostPort === this.hostPort) {
+      if (await this.runtime.isReady()) return true
+      const r = this.runtime as { isHealthy?: () => Promise<boolean> }
+      return r.isHealthy ? r.isHealthy() : false
     }
-    if (runtime.isHealthy) {
-      return runtime.isHealthy(hostPort)
-    }
-    return false
+    if (await fetchOk(`http://127.0.0.1:${hostPort}/readyz`)) return true
+    return fetchOk(`http://127.0.0.1:${hostPort}/healthz`)
   }
 
   private async assertGatewayReady(): Promise<void> {
-    const portReady = await this.runtime.isReady(this.hostPort)
+    const portReady = await this.runtime.isReady()
     logger.debug('Checking OpenClaw gateway readiness before use', {
       hostPort: this.hostPort,
       portReady,
@@ -1600,15 +1574,6 @@ export class OpenClawService {
     await writeFile(envPath, '', { mode: 0o600 })
   }
 
-  private buildGatewayRuntimeSpec(): GatewayContainerSpec {
-    return {
-      hostPort: this.hostPort,
-      hostHome: this.openclawDir,
-      envFilePath: this.getStateEnvPath(),
-      timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-    }
-  }
-
   private async writeStateEnv(
     values: Record<string, string>,
   ): Promise<boolean> {
@@ -1767,4 +1732,31 @@ export function configureVmRuntime(config: {
 export function getOpenClawService(): OpenClawService {
   if (!service) service = new OpenClawService()
   return service
+}
+
+async function fetchOk(url: string): Promise<boolean> {
+  try {
+    const res = await fetch(url)
+    return res.ok
+  } catch {
+    return false
+  }
+}
+
+/** Resolve the OpenClawContainerRuntime, registering it lazily if
+ *  main.ts didn't already do so (e.g. tests that build the service
+ *  directly). Throws on non-darwin where the runtime can't run. */
+function ensureOpenClawRuntime(opts: {
+  resourcesDir?: string
+  browserosDir?: string
+}): OpenClawContainerRuntime {
+  let runtime = getOpenClawRuntime()
+  if (runtime) return runtime
+  runtime = configureOpenClawRuntime(opts)
+  if (!runtime) {
+    throw new Error(
+      `OpenClaw runtime is not available on platform ${process.platform}`,
+    )
+  }
+  return runtime
 }

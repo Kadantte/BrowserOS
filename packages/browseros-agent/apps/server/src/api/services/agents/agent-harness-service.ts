@@ -4,10 +4,7 @@
  * SPDX-License-Identifier: AGPL-3.0-or-later
  */
 
-import {
-  AcpxRuntime,
-  type OpenclawGatewayAccessor,
-} from '../../../lib/agents/acpx-runtime'
+import { AcpxRuntime } from '../../../lib/agents/acpx-runtime'
 import {
   type ActiveTurnInfo,
   type TurnFrame,
@@ -232,7 +229,6 @@ export class AgentHarnessService {
       runtime?: AgentRuntime
       browserosServerPort?: number
       browserosDir?: string
-      openclawGateway?: OpenclawGatewayAccessor
       openclawProvisioner?: OpenClawProvisioner
       turnRegistry?: TurnRegistry
       messageQueue?: FileMessageQueue
@@ -244,7 +240,6 @@ export class AgentHarnessService {
       deps.runtime ??
       new AcpxRuntime({
         browserosServerPort: deps.browserosServerPort,
-        openclawGateway: deps.openclawGateway,
       })
     this.openclawProvisioner = deps.openclawProvisioner ?? null
     this.turnRegistry = deps.turnRegistry ?? new TurnRegistry()

@@ -14,7 +14,6 @@ import { stream } from 'hono/streaming'
 import { formatUserMessage } from '../../agent/format-message'
 import type { Browser } from '../../browser/browser'
 import { createAcpUIMessageStreamResponse } from '../../lib/agents/acp-ui-message-stream'
-import type { OpenclawGatewayAccessor } from '../../lib/agents/acpx-runtime'
 import type {
   ActiveTurnInfo,
   TurnFrame,
@@ -122,12 +121,6 @@ type AgentRouteDeps = {
   browser?: Pick<Browser, 'resolveTabIds'>
   browserosServerPort?: number
   /**
-   * Required when an `openclaw` adapter agent is in use; harmless when
-   * absent. Forwarded to the AcpxRuntime so it can spawn `openclaw acp`
-   * inside the gateway container.
-   */
-  openclawGateway?: OpenclawGatewayAccessor
-  /**
    * Optional. Enables the image-attachment carve-out for OpenClaw
    * Required to dual-create/delete `openclaw` adapter agents on the
    * gateway side. Without this, openclaw create requests fail with 503.
@@ -159,7 +152,6 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
     deps.service ??
     new AgentHarnessService({
       browserosServerPort: deps.browserosServerPort,
-      openclawGateway: deps.openclawGateway,
       openclawProvisioner: deps.openclawProvisioner,
     })
   if (deps.onTurnLifecycle && service instanceof AgentHarnessService) {

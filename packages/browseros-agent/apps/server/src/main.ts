@@ -25,6 +25,7 @@ import {
   configureClaudeRuntime,
   configureCodexRuntime,
   configureHermesRuntime,
+  configureOpenClawRuntime,
   getHermesRuntime,
 } from './lib/agents/runtime'
 import {
@@ -68,6 +69,7 @@ export class Application {
     configureVmRuntime({ resourcesDir })
     configureClaudeRuntime()
     configureCodexRuntime()
+    configureOpenClawRuntime({ resourcesDir })
     await this.initCoreServices()
 
     if (!this.config.cdpPort) {
