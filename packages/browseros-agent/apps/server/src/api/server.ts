@@ -36,6 +36,7 @@ import { createOAuthRoutes } from './routes/oauth'
 import { createOpenClawRoutes } from './routes/openclaw'
 import { createProviderRoutes } from './routes/provider'
 import { createRefinePromptRoutes } from './routes/refine-prompt'
+import { createRuntimeRoutes } from './routes/runtimes'
 import { createShutdownRoute } from './routes/shutdown'
 import { createSkillsRoutes } from './routes/skills'
 import { createSoulRoutes } from './routes/soul'
@@ -108,6 +109,10 @@ export async function createHttpServer(config: HttpServerConfig) {
   const clawRoutes = new Hono<Env>()
     .use('/*', requireTrustedAppOrigin())
     .route('/', createOpenClawRoutes())
+
+  const runtimeRoutes = new Hono<Env>()
+    .use('/*', requireTrustedAppOrigin())
+    .route('/', createRuntimeRoutes())
 
   const terminalRoutes = new Hono<Env>()
     .use('/*', requireTrustedAppOrigin())
@@ -237,6 +242,7 @@ export async function createHttpServer(config: HttpServerConfig) {
     )
     .route('/agents', agentRoutes)
     .route('/claw', clawRoutes)
+    .route('/runtimes', runtimeRoutes)
 
   // Error handler
   app.onError((err, c) => {
