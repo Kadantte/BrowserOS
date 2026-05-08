@@ -10,9 +10,11 @@ import { join } from 'node:path'
 import {
   CodexRuntime,
   configureCodexRuntime,
-  getAgentRuntimeRegistry,
   getCodexRuntime,
   prepareCodexContext,
+} from '../../../../src/lib/agents/codex'
+import {
+  getAgentRuntimeRegistry,
   resetAgentRuntimeRegistry,
 } from '../../../../src/lib/agents/runtime'
 

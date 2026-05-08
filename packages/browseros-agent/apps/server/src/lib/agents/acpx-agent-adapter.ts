@@ -5,12 +5,10 @@
  */
 
 import type { AgentDefinition } from './agent-types'
+import { prepareClaudeCodeContext } from './claude'
+import { prepareCodexContext } from './codex'
 import { prepareOpenClawContext } from './openclaw/prepare'
-import {
-  prepareClaudeCodeContext,
-  prepareCodexContext,
-  prepareHermesContext,
-} from './runtime'
+import { prepareHermesContext } from './runtime'
 
 export interface PreparedAcpxAgentContext {
   cwd: string

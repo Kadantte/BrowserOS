@@ -10,9 +10,11 @@ import { join } from 'node:path'
 import {
   ClaudeRuntime,
   configureClaudeRuntime,
-  getAgentRuntimeRegistry,
   getClaudeRuntime,
   prepareClaudeCodeContext,
+} from '../../../../src/lib/agents/claude'
+import {
+  getAgentRuntimeRegistry,
   resetAgentRuntimeRegistry,
 } from '../../../../src/lib/agents/runtime'
 

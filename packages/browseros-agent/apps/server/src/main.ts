@@ -21,12 +21,9 @@ import { CdpBackend } from './browser/backends/cdp'
 import { Browser } from './browser/browser'
 import type { ServerConfig } from './config'
 import { INLINED_ENV } from './env'
-import {
-  configureClaudeRuntime,
-  configureCodexRuntime,
-  configureHermesRuntime,
-  getHermesRuntime,
-} from './lib/agents/runtime'
+import { configureClaudeRuntime } from './lib/agents/claude'
+import { configureCodexRuntime } from './lib/agents/codex'
+import { configureHermesRuntime, getHermesRuntime } from './lib/agents/runtime'
 import {
   cleanOldSessions,
   ensureBrowserosDir,

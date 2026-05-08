@@ -121,6 +121,8 @@ async function setupApplicationTest() {
   const openclawService = await import(
     '../src/api/services/openclaw/openclaw-service'
   )
+  const claudeModule = await import('../src/lib/agents/claude')
+  const codexModule = await import('../src/lib/agents/codex')
   const runtimeModule = await import('../src/lib/agents/runtime')
   const browserosDir = await import('../src/lib/browseros-dir')
   const dbModule = await import('../src/lib/db')
@@ -215,10 +217,10 @@ async function setupApplicationTest() {
   spyOn(runtimeModule, 'getHermesRuntime').mockImplementation(
     () => fakeHermesRuntime,
   )
-  spyOn(runtimeModule, 'configureClaudeRuntime').mockImplementation(
+  spyOn(claudeModule, 'configureClaudeRuntime').mockImplementation(
     () => ({}) as never,
   )
-  spyOn(runtimeModule, 'configureCodexRuntime').mockImplementation(
+  spyOn(codexModule, 'configureCodexRuntime').mockImplementation(
     () => ({}) as never,
   )
 

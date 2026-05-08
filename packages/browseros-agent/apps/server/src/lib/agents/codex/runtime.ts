@@ -18,9 +18,9 @@ import {
   materializeCodexHome,
   resolveAgentRuntimePaths,
 } from '../acpx-runtime-context'
-import { HostProcessAgentRuntime } from './host-process-agent-runtime'
-import { getAgentRuntimeRegistry } from './registry'
-import type { RuntimeDescriptor } from './types'
+import { HostProcessAgentRuntime } from '../runtime/host-process-agent-runtime'
+import { getAgentRuntimeRegistry } from '../runtime/registry'
+import type { RuntimeDescriptor } from '../runtime/types'
 
 const CODEX_BINARY = 'codex'
 
