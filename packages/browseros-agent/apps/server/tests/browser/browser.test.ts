@@ -1,14 +1,5 @@
 import { describe, expect, it, mock } from 'bun:test'
 
-mock.module('@browseros/shared/constants/limits', () => ({
-  CONTENT_LIMITS: {
-    CONSOLE_BUFFER_MAX_ENTRIES: 500,
-    CONSOLE_DEFAULT_LIMIT: 50,
-    CONSOLE_MAX_LIMIT: 200,
-    CONSOLE_META_CHAR: 1_000,
-  },
-}))
-
 mock.module('../../src/lib/logger', () => ({
   logger: {
     debug: mock(() => {}),
