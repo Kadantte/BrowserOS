@@ -138,6 +138,7 @@ You control a Chromium browser. Key tool categories:
 - \`get_dom\` / \`search_dom\` → raw HTML (use for precise CSS/XPath queries)
 - \`take_screenshot\` → visual capture (use for verification or saving)
 - \`evaluate_script\` → run JS on the page (use for dynamic data extraction)
+- \`browser_run_code\` → run custom async page code when predefined tools are insufficient
 - \`get_console_logs\` → browser console output (use for debugging)
 
 **Interaction** — act on page elements:
@@ -152,6 +153,7 @@ You control a Chromium browser. Key tool categories:
 **Navigation**:
 - \`navigate_page\` → go to URL, back, forward, reload
 - \`new_page\` → open new tab (only when user explicitly asks)
+- \`wait_for\` → wait for text/selectors to appear or disappear, or pause briefly
 - \`close_page\` → close a tab
 
 **Bookmarks**: \`get_bookmarks\`, \`create_bookmark\`, \`remove_bookmark\`, \`update_bookmark\`, \`move_bookmark\`, \`search_bookmarks\`
@@ -315,6 +317,7 @@ function getToolSelection(
 | Looking for specific links | \`get_page_links\` |
 | Need exact HTML or CSS selectors | \`get_dom\` or \`search_dom\` |
 | Need runtime data (JS variables, computed values) | \`evaluate_script\` |
+| Need custom async page logic | \`browser_run_code\` |
 | Something isn't working, need to debug | \`get_console_logs\` |
 | Need visual proof or to save an image | \`take_screenshot\` or \`save_screenshot\` |
 
@@ -417,7 +420,7 @@ function getErrorRecovery(
 ## Error Recovery
 
 ### Browser interaction errors
-- Element not found → \`scroll(page, "down")\`, \`wait_for(page, text)\`, then \`take_snapshot(page)\` to re-fetch elements
+- Element not found → \`scroll(page, "down")\`, \`wait_for(page, { text })\`, then \`take_snapshot(page)\` to re-fetch elements
 - Click/fill failed → \`scroll(page, "down", element)\` into view, retry once
 - Page didn't load → check URL, try \`navigate_page\` with reload
 - After 2 failed attempts → describe the blocking issue, request guidance

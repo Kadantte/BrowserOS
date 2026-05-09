@@ -299,13 +299,29 @@ export const close_page = defineNavigationTool({
 export const wait_for = defineNavigationTool({
   name: 'wait_for',
   description:
-    'Wait for text or a CSS selector to appear on the page. Polls periodically up to a timeout.',
+    'Wait for text or a CSS selector to appear or disappear on the page, or wait for a fixed time. Polls periodically up to a timeout.',
   input: z.object({
     page: pageParam,
     text: z.string().optional().describe('Text to wait for on the page'),
+    textGone: z
+      .string()
+      .optional()
+      .describe('Text to wait for to disappear from the page'),
     selector: z.string().optional().describe('CSS selector to wait for'),
+    selectorGone: z
+      .string()
+      .optional()
+      .describe('CSS selector to wait for to disappear from the page'),
+    time: z
+      .number()
+      .min(0)
+      .max(120000)
+      .optional()
+      .describe('Fixed wait time in milliseconds'),
     timeout: z
       .number()
+      .min(0)
+      .max(120000)
       .default(10000)
       .describe('Maximum wait time in milliseconds'),
   }),
@@ -316,40 +332,76 @@ export const wait_for = defineNavigationTool({
     timeout: z.number(),
   }),
   handler: async (args, ctx, response) => {
-    if (!args.text && !args.selector) {
-      response.error('Provide either text or selector to wait for.')
+    const timeout = args.timeout ?? 10_000
+    const target =
+      args.text !== undefined
+        ? `text "${args.text}"`
+        : args.textGone !== undefined
+          ? `text "${args.textGone}" to disappear`
+          : args.selector !== undefined
+            ? `selector "${args.selector}"`
+            : args.selectorGone !== undefined
+              ? `selector "${args.selectorGone}" to disappear`
+              : args.time !== undefined
+                ? `${args.time}ms`
+                : ''
+
+    if (
+      !args.text &&
+      !args.textGone &&
+      !args.selector &&
+      !args.selectorGone &&
+      args.time === undefined
+    ) {
+      response.error(
+        'Provide text, textGone, selector, selectorGone, or time to wait for.',
+      )
+      return
+    }
+
+    if (
+      args.time !== undefined &&
+      !args.text &&
+      !args.textGone &&
+      !args.selector &&
+      !args.selectorGone
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, args.time))
+      response.text(`Waited ${args.time}ms.`)
+      response.data({
+        page: args.page,
+        found: true,
+        target,
+        timeout: args.time,
+      })
       return
     }
 
     const found = await ctx.browser.waitFor(args.page, {
       text: args.text,
+      textGone: args.textGone,
       selector: args.selector,
-      timeout: args.timeout,
+      selectorGone: args.selectorGone,
+      timeout,
     })
 
     if (found) {
-      const target = args.text
-        ? `text "${args.text}"`
-        : `selector "${args.selector}"`
       response.text(`Found ${target} on page.`)
       response.data({
         page: args.page,
         found,
         target,
-        timeout: args.timeout,
+        timeout,
       })
       response.includeSnapshot(args.page)
     } else {
-      const target = args.text
-        ? `text "${args.text}"`
-        : `selector "${args.selector}"`
       response.data({
         page: args.page,
         found,
         target,
-        timeout: args.timeout,
+        timeout,
       })
-      response.error(`Timed out after ${args.timeout}ms waiting for ${target}.`)
+      response.error(`Timed out after ${timeout}ms waiting for ${target}.`)
     }
   },
 })

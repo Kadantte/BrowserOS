@@ -657,16 +657,30 @@ export class Browser {
 
   async waitFor(
     page: number,
-    opts: { text?: string; selector?: string; timeout: number },
+    opts: {
+      text?: string
+      textGone?: string
+      selector?: string
+      selectorGone?: string
+      timeout: number
+    },
   ): Promise<boolean> {
     const session = await this.resolveSession(page)
     const deadline = Date.now() + opts.timeout
     const interval = 500
 
-    while (Date.now() < deadline) {
+    while (Date.now() <= deadline) {
       if (opts.text) {
         const result = await session.Runtime.evaluate({
           expression: `document.body?.innerText?.includes(${JSON.stringify(opts.text)}) ?? false`,
+          returnByValue: true,
+        })
+        if (result.result?.value === true) return true
+      }
+
+      if (opts.textGone) {
+        const result = await session.Runtime.evaluate({
+          expression: `!(document.body?.innerText?.includes(${JSON.stringify(opts.textGone)}) ?? false)`,
           returnByValue: true,
         })
         if (result.result?.value === true) return true
@@ -680,7 +694,17 @@ export class Browser {
         if (result.result?.value === true) return true
       }
 
-      await new Promise((r) => setTimeout(r, interval))
+      if (opts.selectorGone) {
+        const result = await session.Runtime.evaluate({
+          expression: `!document.querySelector(${JSON.stringify(opts.selectorGone)})`,
+          returnByValue: true,
+        })
+        if (result.result?.value === true) return true
+      }
+
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      await new Promise((r) => setTimeout(r, Math.min(interval, remaining)))
     }
 
     return false
@@ -920,6 +944,42 @@ export class Browser {
     description?: string
   }> {
     const session = await this.resolveSession(page)
+
+    const result = await session.Runtime.evaluate({
+      expression,
+      returnByValue: true,
+      awaitPromise: true,
+    })
+
+    if (result.exceptionDetails) {
+      return {
+        error:
+          result.exceptionDetails.exception?.description ??
+          result.exceptionDetails.text,
+      }
+    }
+
+    return {
+      value: result.result?.value,
+      description: result.result?.description,
+    }
+  }
+
+  async runCode(
+    page: number,
+    code: string,
+    args?: Record<string, unknown>,
+  ): Promise<{
+    value?: unknown
+    error?: string
+    description?: string
+  }> {
+    const session = await this.resolveSession(page)
+    const expression = `(
+      async (args) => {
+        ${code}
+      }
+    )(${JSON.stringify(args ?? {})})`
 
     const result = await session.Runtime.evaluate({
       expression,

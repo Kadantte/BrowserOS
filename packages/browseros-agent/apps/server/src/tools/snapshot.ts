@@ -246,3 +246,52 @@ export const evaluate_script = defineScriptTool({
     })
   },
 })
+
+export const browser_run_code = defineScriptTool({
+  name: 'browser_run_code',
+  description:
+    'Execute async custom JavaScript code in the page context. The code runs as an async function body with a serializable args object available and may use return to produce a result.',
+  input: z.object({
+    page: pageParam,
+    code: z
+      .string()
+      .describe(
+        'JavaScript function body to run in the page context. Use return to provide output.',
+      ),
+    args: z
+      .record(z.unknown())
+      .optional()
+      .describe('Serializable arguments available to the code as args'),
+  }),
+  output: z.object({
+    text: z.string(),
+    value: z.unknown().optional(),
+    description: z.string().optional(),
+  }),
+  handler: async (args, ctx, response) => {
+    const result = await ctx.browser.runCode(args.page, args.code, args.args)
+
+    if (result.error) {
+      response.error(`Code error: ${result.error}`)
+      return
+    }
+
+    const val = result.value
+    let text: string
+    if (val === undefined) {
+      text = result.description ?? 'undefined'
+      response.text(text)
+    } else if (typeof val === 'string') {
+      text = val
+      response.text(text)
+    } else {
+      text = JSON.stringify(val, null, 2)
+      response.text(text)
+    }
+    response.data({
+      text,
+      value: result.value,
+      description: result.description,
+    })
+  },
+})

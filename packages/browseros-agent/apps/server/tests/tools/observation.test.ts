@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { close_page, navigate_page, new_page } from '../../src/tools/navigation'
 import {
+  browser_run_code,
   evaluate_script,
   get_page_content,
   get_page_links,
@@ -150,6 +151,60 @@ describe('observation tools', () => {
       })
       assert.ok(evalResult.isError, 'Expected error result')
       assert.ok(textOf(evalResult).includes('test error'))
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('browser_run_code runs async custom code in the page', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: 'about:blank' })
+      const pageId = pageIdOf(newResult)
+
+      const runResult = await execute(browser_run_code, {
+        page: pageId,
+        args: {
+          id: 'browser-run-code-target',
+          text: 'custom code result',
+        },
+        code: `
+          const div = document.createElement('div')
+          div.id = args.id
+          div.textContent = await Promise.resolve(args.text)
+          document.body.appendChild(div)
+          return {
+            text: document.getElementById(args.id)?.textContent,
+            divCount: document.querySelectorAll('div').length,
+          }
+        `,
+      })
+
+      assert.ok(!runResult.isError, textOf(runResult))
+      const data = structuredOf<{
+        value: { text: string; divCount: number }
+        text: string
+      }>(runResult)
+      assert.deepStrictEqual(data.value, {
+        text: 'custom code result',
+        divCount: 1,
+      })
+      assert.ok(data.text.includes('custom code result'))
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('browser_run_code reports thrown errors', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: 'about:blank' })
+      const pageId = pageIdOf(newResult)
+
+      const runResult = await execute(browser_run_code, {
+        page: pageId,
+        code: 'throw new Error("custom failure")',
+      })
+      assert.ok(runResult.isError, 'Expected browser_run_code to fail')
+      assert.ok(textOf(runResult).includes('custom failure'))
 
       await execute(close_page, { page: pageId })
     })

@@ -20,6 +20,7 @@ const VERB_OVERRIDES: Record<string, string> = {
   get_active_page: 'Got active tab',
   move_page: 'Moved tab',
   group_tabs: 'Grouped tabs',
+  wait_for: 'Waited for page state',
 
   // Page reading
   take_snapshot: 'Captured page snapshot',
@@ -47,6 +48,7 @@ const VERB_OVERRIDES: Record<string, string> = {
 
   // Console / scripts
   evaluate_script: 'Ran script',
+  browser_run_code: 'Ran custom page code',
   get_console_logs: 'Read console logs',
 
   // History / bookmarks
@@ -292,12 +294,9 @@ function canonicalName(rawName: string): string {
 function humanizeToolName(rawName: string): string {
   const stripped = canonicalName(rawName)
   const words = stripped.split(/[_-]/).filter((w) => w.length > 0)
-  if (words.length === 0) return rawName
-  const first = words[0]!
-  return [
-    first.charAt(0).toUpperCase() + first.slice(1),
-    ...words.slice(1),
-  ].join(' ')
+  const [first, ...rest] = words
+  if (!first) return rawName
+  return [first.charAt(0).toUpperCase() + first.slice(1), ...rest].join(' ')
 }
 
 /**

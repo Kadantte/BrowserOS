@@ -43,12 +43,12 @@ import {
   new_hidden_page,
   new_page,
   show_page,
-  // biome-ignore lint/correctness/noUnusedImports: temporarily disabled
   wait_for,
 } from './navigation'
 import { suggest_app_connection, suggest_schedule } from './nudges'
 import { download_file, save_pdf, save_screenshot } from './page-actions'
 import {
+  browser_run_code,
   evaluate_script,
   get_page_content,
   get_page_links,
@@ -73,7 +73,7 @@ import {
 } from './windows'
 
 export const registry = createRegistry([
-  // Navigation (8)
+  // Navigation (9)
   get_active_page,
   list_pages,
   navigate_page,
@@ -82,9 +82,9 @@ export const registry = createRegistry([
   show_page,
   move_page,
   close_page,
-  // wait_for, // temporarily disabled
+  wait_for,
 
-  // Observation (9)
+  // Observation (10)
   take_snapshot,
   take_enhanced_snapshot,
   get_page_content,
@@ -93,6 +93,7 @@ export const registry = createRegistry([
   search_dom,
   take_screenshot,
   evaluate_script,
+  browser_run_code,
   get_console_logs,
 
   // Input (17)

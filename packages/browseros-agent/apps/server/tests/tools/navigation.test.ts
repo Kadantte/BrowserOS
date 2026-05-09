@@ -11,6 +11,7 @@ import {
   show_page,
   wait_for,
 } from '../../src/tools/navigation'
+import { evaluate_script } from '../../src/tools/snapshot'
 import { close_window, create_window } from '../../src/tools/windows'
 import { withBrowser } from '../__helpers__/with-browser'
 
@@ -115,6 +116,52 @@ describe('navigation tools', () => {
       const data = structuredOf<{ found: boolean; page: number }>(waitResult)
       assert.strictEqual(data.found, true)
       assert.strictEqual(data.page, pageId)
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('wait_for waits for text to disappear', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: 'about:blank' })
+      const pageId = structuredOf<{ pageId: number }>(newResult).pageId
+
+      await execute(evaluate_script, {
+        page: pageId,
+        expression: `
+          document.body.textContent = 'Loading complete'
+          setTimeout(() => {
+            document.body.textContent = 'Ready'
+          }, 100)
+        `,
+      })
+
+      const waitResult = await execute(wait_for, {
+        page: pageId,
+        textGone: 'Loading complete',
+        timeout: 5_000,
+      })
+      assert.ok(!waitResult.isError, textOf(waitResult))
+      const data = structuredOf<{ found: boolean; page: number }>(waitResult)
+      assert.strictEqual(data.found, true)
+      assert.strictEqual(data.page, pageId)
+
+      await execute(close_page, { page: pageId })
+    })
+  }, 60_000)
+
+  it('wait_for can wait for a fixed time', async () => {
+    await withBrowser(async ({ execute }) => {
+      const newResult = await execute(new_page, { url: 'about:blank' })
+      const pageId = structuredOf<{ pageId: number }>(newResult).pageId
+      const start = Date.now()
+
+      const waitResult = await execute(wait_for, {
+        page: pageId,
+        time: 50,
+      })
+      assert.ok(!waitResult.isError, textOf(waitResult))
+      assert.ok(Date.now() - start >= 40, 'Expected wait_for to delay')
 
       await execute(close_page, { page: pageId })
     })
