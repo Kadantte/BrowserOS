@@ -141,7 +141,7 @@ export type ScheduledTaskContextState =
   | { status: 'idle' }
   | { status: 'loading'; runId: string }
   | { status: 'ready'; runId: string; jobName: string }
-  | { status: 'error'; runId: string; error: string }
+  | { status: 'error'; runId: string; error: Error }
 
 const NEWTAB_SYSTEM_PROMPT = `IMPORTANT: The user is chatting from the New Tab page. When performing browser actions, ALWAYS open content in a NEW TAB rather than navigating the current tab. The user's new tab page should remain accessible.`
 
@@ -207,7 +207,7 @@ const buildRequestBrowserContext = ({
 
 type ScheduledTaskContextLoadResult =
   | { context: string; jobName: string }
-  | { error: string }
+  | { error: Error }
 
 const loadScheduledTaskContextForRun = async (
   runId: string,
@@ -219,13 +219,13 @@ const loadScheduledTaskContextForRun = async (
 
   const run = (runs ?? []).find((item) => item.id === runId)
   if (!run) {
-    return { error: 'Scheduled task result was not found.' }
+    return { error: new Error('Scheduled task result was not found.') }
   }
 
   const job = (jobs ?? []).find((item) => item.id === run.jobId)
   const context = buildScheduledTaskResultChatContext({ run, job })
   if (!context) {
-    return { error: 'Scheduled task result has no output.' }
+    return { error: new Error('Scheduled task result has no output.') }
   }
 
   return {
@@ -316,7 +316,7 @@ export const useChatSession = (options?: ChatSessionOptions) => {
       setScheduledTaskContext({
         status: 'error',
         runId: scheduledRunIdParam,
-        error: error instanceof Error ? error.message : String(error),
+        error: error instanceof Error ? error : new Error(String(error)),
       })
     })
 
