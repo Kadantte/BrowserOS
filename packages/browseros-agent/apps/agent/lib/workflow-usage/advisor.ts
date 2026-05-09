@@ -43,6 +43,11 @@ export function detectWorkflowAdvisorCommand(
     normalized.includes('usage pattern') ||
     normalized.includes('workflow pattern') ||
     normalized.includes('skill suggestion')
+  const mentionsWorkflowScope =
+    mentionsWorkflowData ||
+    normalized.includes('my workflow') ||
+    normalized.includes('my workflows') ||
+    normalized.includes('tool usage')
 
   if (
     mentionsWorkflowData &&
@@ -53,7 +58,8 @@ export function detectWorkflowAdvisorCommand(
 
   if (
     mentionsWorkflowData &&
-    /\b(show|view|list|display|what)\b/.test(normalized)
+    (/\b(show|view|list|display)\b/.test(normalized) ||
+      normalized.includes('what workflow usage data'))
   ) {
     return 'view'
   }
@@ -61,10 +67,11 @@ export function detectWorkflowAdvisorCommand(
   if (
     normalized.includes('analyze my workflow') ||
     normalized.includes('analyse my workflow') ||
-    normalized.includes('what patterns do you see') ||
-    normalized.includes('suggest skills') ||
+    (normalized.includes('what patterns do you see') &&
+      mentionsWorkflowScope) ||
+    (normalized.includes('suggest skills') && mentionsWorkflowScope) ||
     normalized.includes('find skill suggestions') ||
-    normalized.includes('what can be automated') ||
+    (normalized.includes('what can be automated') && mentionsWorkflowScope) ||
     normalized.includes('analyze workflow patterns') ||
     normalized.includes('analyse workflow patterns')
   ) {
@@ -117,8 +124,8 @@ function buildBenefit(pattern: string[]): string {
 }
 
 function compareSuggestions(
-  left: WorkflowSkillSuggestion,
-  right: WorkflowSkillSuggestion,
+  left: Omit<WorkflowSkillSuggestion, 'id'>,
+  right: Omit<WorkflowSkillSuggestion, 'id'>,
 ): number {
   return (
     right.runCount - left.runCount ||
@@ -153,10 +160,9 @@ export function analyzeWorkflowUsage(
 
   const suggestions = Array.from(groups.values())
     .filter((group) => group.runCount >= minRuns)
-    .map((group, index): WorkflowSkillSuggestion => {
+    .map((group): Omit<WorkflowSkillSuggestion, 'id'> => {
       const pattern = group.pattern
       return {
-        id: `workflow-${index + 1}`,
         title: buildSuggestionTitle(pattern),
         runCount: group.runCount,
         pattern,
@@ -166,6 +172,12 @@ export function analyzeWorkflowUsage(
     })
     .sort(compareSuggestions)
     .slice(0, limit)
+    .map((suggestion, index): WorkflowSkillSuggestion => {
+      return {
+        ...suggestion,
+        id: `workflow-${index + 1}`,
+      }
+    })
 
   return {
     totalRuns: records.length,

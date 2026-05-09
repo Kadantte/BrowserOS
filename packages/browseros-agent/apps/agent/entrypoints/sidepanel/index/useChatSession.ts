@@ -762,6 +762,12 @@ export const useChatSession = (options?: ChatSessionOptions) => {
   }, [dispatchMessage, isIntegrationsSynced])
 
   const sendMessage = (params: { text: string; action?: ChatAction }) => {
+    const workflowAdvisorCommand = detectWorkflowAdvisorCommand(params.text)
+    if (workflowAdvisorCommand) {
+      void handleWorkflowAdvisorCommand(params.text, workflowAdvisorCommand)
+      return
+    }
+
     const target = selectedChatTargetRef.current
     const llmTargetProvider = toLlmProviderConfig(target)
     const agentTarget = target?.kind === 'acp' ? target : undefined
@@ -779,12 +785,6 @@ export const useChatSession = (options?: ChatSessionOptions) => {
         llmTargetProvider?.modelId ??
         selectedLlmProvider?.modelId,
     })
-
-    const workflowAdvisorCommand = detectWorkflowAdvisorCommand(params.text)
-    if (workflowAdvisorCommand) {
-      void handleWorkflowAdvisorCommand(params.text, workflowAdvisorCommand)
-      return
-    }
 
     if (!isIntegrationsSyncedRef.current) {
       // Queue the message — will be sent when sync completes
