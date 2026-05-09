@@ -668,6 +668,7 @@ export class Browser {
     const session = await this.resolveSession(page)
     const deadline = Date.now() + opts.timeout
     const interval = 500
+    let textGoneWasPresent = false
     let selectorGoneWasPresent = false
 
     while (Date.now() <= deadline) {
@@ -681,10 +682,14 @@ export class Browser {
 
       if (opts.textGone) {
         const result = await session.Runtime.evaluate({
-          expression: `!(document.body?.innerText?.includes(${JSON.stringify(opts.textGone)}) ?? false)`,
+          expression: `document.body?.innerText?.includes(${JSON.stringify(opts.textGone)}) ?? false`,
           returnByValue: true,
         })
-        if (result.result?.value === true) return true
+        if (result.result?.value === true) {
+          textGoneWasPresent = true
+        } else if (textGoneWasPresent) {
+          return true
+        }
       }
 
       if (opts.selector) {

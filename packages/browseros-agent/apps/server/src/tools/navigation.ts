@@ -389,7 +389,11 @@ export const wait_for = defineNavigationTool({
     })
 
     if (found) {
-      response.text(`Found ${target} on page.`)
+      const foundMessage =
+        args.textGone !== undefined || args.selectorGone !== undefined
+          ? `Condition met: ${target}.`
+          : `Found ${target} on page.`
+      response.text(foundMessage)
       response.data({
         page: args.page,
         found,
