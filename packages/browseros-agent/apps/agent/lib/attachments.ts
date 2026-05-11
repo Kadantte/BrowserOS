@@ -100,7 +100,6 @@ export async function stageAttachment(
     try {
       const compressed = await compressImageIfNeeded(file)
       const dataUrl = await readAsDataUrl(compressed)
-      const encodedMediaType = compressed.type || mediaType
       // Rough byte ceiling — `data:image/png;base64,...` doubles size with
       // base64. Reject early so we never POST something the route will 400.
       if (dataUrl.length > MAX_IMAGE_BYTES * 2) {
@@ -119,12 +118,12 @@ export async function stageAttachment(
         attachment: {
           id: makeId(),
           kind: 'image',
-          mediaType: encodedMediaType,
+          mediaType,
           name: file.name || 'image',
           dataUrl,
           payload: {
             kind: 'image',
-            mediaType: encodedMediaType,
+            mediaType,
             dataUrl,
             name: file.name || undefined,
           },
