@@ -250,6 +250,7 @@ describe('OpenClawService', () => {
       isPodmanAvailable: async () => true,
       getMachineStatus: async () => ({ initialized: true, running: true }),
       isReady: async () => true,
+      getStatusSnapshot: () => ({ state: 'running' as const }),
     }
     service.cliClient = {
       getConfig: mock(async () => 'cli-token'),
@@ -280,6 +281,33 @@ describe('OpenClawService', () => {
       lastGatewayError: null,
       lastRecoveryReason: null,
     })
+  })
+
+  it('reports uninitialized when runtime state is not_installed, ignoring stale legacy fields', async () => {
+    tempDir = await mkdtemp(join(tmpdir(), 'openclaw-service-'))
+    await mkdir(join(tempDir, '.openclaw'), { recursive: true })
+    await writeFile(join(tempDir, '.openclaw', 'openclaw.json'), '{}')
+    const service = new OpenClawService() as MutableOpenClawService
+
+    service.openclawDir = tempDir
+    // In-memory legacy fields left over from a previous lifecycle —
+    // these must not leak into the response when the runtime says the
+    // container is gone.
+    service.controlPlaneStatus = 'connected'
+    service.lastGatewayError = 'stale error'
+    service.runtime = {
+      isPodmanAvailable: async () => true,
+      getMachineStatus: async () => ({ initialized: false, running: false }),
+      isReady: async () => false,
+      getStatusSnapshot: () => ({ state: 'not_installed' as const }),
+    }
+
+    const status = await service.getStatus()
+
+    expect(status.status).toBe('uninitialized')
+    expect(status.controlPlaneStatus).toBe('disconnected')
+    expect(status.lastGatewayError).toBeNull()
+    expect(status.port).toBeNull()
   })
 
   it('creates the main agent during setup when the gateway starts without one', async () => {

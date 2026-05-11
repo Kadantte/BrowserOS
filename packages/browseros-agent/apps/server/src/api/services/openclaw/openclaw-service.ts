@@ -105,6 +105,28 @@ export type OpenClawStatus =
   | 'stopped'
   | 'error'
 
+function mapRuntimeStateToLegacy(
+  state: string | null,
+  lastError: string | null,
+): OpenClawStatus {
+  switch (state) {
+    case 'not_installed':
+      return 'uninitialized'
+    case 'installing':
+    case 'starting':
+      return 'starting'
+    case 'running':
+      return 'running'
+    case 'errored':
+      return 'error'
+    case 'installed':
+    case 'stopped':
+    case null:
+    default:
+      return lastError ? 'error' : 'stopped'
+  }
+}
+
 export interface OpenClawStatusResponse {
   status: OpenClawStatus
   podmanAvailable: boolean
@@ -743,9 +765,15 @@ export class OpenClawService {
   // ── Status ───────────────────────────────────────────────────────────
 
   async getStatus(): Promise<OpenClawStatusResponse> {
+    // Runtime state is the source of truth for "is the container alive".
+    // Deriving the legacy status surface from it keeps the gateway block
+    // consistent with /runtimes/openclaw/status so the UI can't show two
+    // contradictory pills.
+    const runtimeState = this.runtime.getStatusSnapshot?.()?.state ?? null
     const isSetUp = existsSync(this.getStateConfigPath())
-    if (!isSetUp) {
-      const machineStatus = await this.runtime.getMachineStatus()
+    const machineStatus = await this.runtime.getMachineStatus()
+
+    if (!isSetUp || runtimeState === 'not_installed') {
       return {
         status: 'uninitialized',
         podmanAvailable: true,
@@ -754,16 +782,15 @@ export class OpenClawService {
         agentCount: 0,
         error: null,
         controlPlaneStatus: 'disconnected',
-        lastGatewayError: this.lastGatewayError,
-        lastRecoveryReason: this.lastRecoveryReason,
+        lastGatewayError: null,
+        lastRecoveryReason: null,
       }
     }
 
-    const machineStatus = await this.runtime.getMachineStatus()
-    const ready = machineStatus.running ? await this.runtime.isReady() : false
+    const runtimeRunning = runtimeState === 'running'
 
     let agentCount = 0
-    if (ready) {
+    if (runtimeRunning) {
       try {
         const agents = await this.runControlPlaneCall(() =>
           this.cliClient.listAgents(),
@@ -775,15 +802,17 @@ export class OpenClawService {
     }
 
     return {
-      status: ready ? 'running' : this.lastError ? 'error' : 'stopped',
+      status: mapRuntimeStateToLegacy(runtimeState, this.lastError),
       podmanAvailable: true,
       machineReady: machineStatus.running,
       port: this.hostPort,
       agentCount,
       error: this.lastError,
-      controlPlaneStatus: ready ? this.controlPlaneStatus : 'disconnected',
-      lastGatewayError: this.lastGatewayError,
-      lastRecoveryReason: this.lastRecoveryReason,
+      controlPlaneStatus: runtimeRunning
+        ? this.controlPlaneStatus
+        : 'disconnected',
+      lastGatewayError: runtimeRunning ? this.lastGatewayError : null,
+      lastRecoveryReason: runtimeRunning ? this.lastRecoveryReason : null,
     }
   }
 
