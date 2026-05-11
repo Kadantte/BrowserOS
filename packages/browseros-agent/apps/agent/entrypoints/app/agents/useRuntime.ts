@@ -56,6 +56,24 @@ export const RUNTIME_QUERY_KEYS = {
   logs: (adapter: RuntimeAdapterId) => ['runtime-logs', adapter] as const,
 } as const
 
+export function useRuntimes(opts: { pollMs?: number } = {}) {
+  const rpcClient = useRpcClient()
+  return useQuery<RuntimeView[], Error>({
+    queryKey: [RUNTIME_QUERY_KEYS.list],
+    queryFn: async () => {
+      const res = await rpcClient.runtimes.$get()
+      if (!res.ok) {
+        const body = (await res.json()) as { error?: string }
+        throw new Error(body.error ?? 'runtimes list fetch failed')
+      }
+      const { runtimes } = (await res.json()) as { runtimes: RuntimeView[] }
+      return runtimes
+    },
+    refetchInterval: opts.pollMs ?? 5_000,
+    retry: false,
+  })
+}
+
 export function useRuntime(
   adapter: RuntimeAdapterId,
   opts: { pollMs?: number; enabled?: boolean } = {},

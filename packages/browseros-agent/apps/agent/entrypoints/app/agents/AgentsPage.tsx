@@ -28,8 +28,7 @@ import {
 } from './agents-page-utils'
 import { NewAgentDialog } from './NewAgentDialog'
 import { InlineErrorAlert } from './OpenClawControls'
-import { RuntimeControlPanel } from './runtime-controls/RuntimeControlPanel'
-import { RuntimeStatusBar } from './runtime-controls/RuntimeStatusBar'
+import { RuntimesSection } from './runtime-controls/RuntimesSection'
 import { SetupOpenClawDialog } from './SetupOpenClawDialog'
 import {
   useAgentAdapters,
@@ -261,13 +260,6 @@ export const AgentsPage: FC = () => {
     )
   }
 
-  // Bar only makes sense when the gateway is running AND there's at
-  // least one OpenClaw agent in the merged list. Hide it for
-  // Claude/Codex-only setups so the page stays uncluttered.
-  const showGatewayStatusBar =
-    openClawRunning &&
-    (visibleOpenClawAgents.length > 0 ||
-      harnessAgents.some((agent) => agent.adapter === 'openclaw'))
   // Setup CTA appears when the runtime is healthy but the user has not
   // yet configured a provider (no openclaw.json on disk → runtime is
   // running but agent CRUD will fail). For now: surface it whenever the
@@ -287,36 +279,31 @@ export const AgentsPage: FC = () => {
           />
         ) : null}
 
-        <RuntimeControlPanel
-          adapter="openclaw"
-          extras={
-            showSetupCta ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setSetupOpen(true)}
-              >
-                Configure provider…
-              </Button>
-            ) : null
-          }
+        <RuntimesSection
+          extras={{
+            openclaw: {
+              panelExtras: showSetupCta ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setSetupOpen(true)}
+                >
+                  Configure provider…
+                </Button>
+              ) : null,
+              statusBarExtraActions: (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowTerminal(true)}
+                >
+                  <TerminalIcon className="mr-1.5 h-3.5 w-3.5" />
+                  Terminal
+                </Button>
+              ),
+            },
+          }}
         />
-
-        {showGatewayStatusBar ? (
-          <RuntimeStatusBar
-            adapter="openclaw"
-            extraActions={
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setShowTerminal(true)}
-              >
-                <TerminalIcon className="mr-1.5 h-3.5 w-3.5" />
-                Terminal
-              </Button>
-            }
-          />
-        ) : null}
 
         <AgentList
           agents={agentListItems}
