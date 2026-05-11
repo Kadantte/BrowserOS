@@ -8,7 +8,7 @@
  * is reused across restarts when it's still free.
  */
 
-import { existsSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
@@ -46,18 +46,39 @@ export async function readPersistedGatewayPort(
     const parsed = JSON.parse(
       await readFile(path, 'utf-8'),
     ) as Partial<RuntimeState>
-    if (
-      typeof parsed.gatewayPort === 'number' &&
-      Number.isInteger(parsed.gatewayPort) &&
-      parsed.gatewayPort > 0 &&
-      parsed.gatewayPort <= MAX_TCP_PORT
-    ) {
-      return parsed.gatewayPort
-    }
-    return null
+    return validateGatewayPort(parsed)
   } catch {
     return null
   }
+}
+
+/** Sync sibling for callers that need the persisted port at construction
+ *  time (i.e. the runtime constructor, which can't await). */
+export function readPersistedGatewayPortSync(
+  openclawDir: string,
+): number | null {
+  const path = getRuntimeStatePath(openclawDir)
+  if (!existsSync(path)) return null
+  try {
+    const parsed = JSON.parse(
+      readFileSync(path, 'utf-8'),
+    ) as Partial<RuntimeState>
+    return validateGatewayPort(parsed)
+  } catch {
+    return null
+  }
+}
+
+function validateGatewayPort(parsed: Partial<RuntimeState>): number | null {
+  if (
+    typeof parsed.gatewayPort === 'number' &&
+    Number.isInteger(parsed.gatewayPort) &&
+    parsed.gatewayPort > 0 &&
+    parsed.gatewayPort <= MAX_TCP_PORT
+  ) {
+    return parsed.gatewayPort
+  }
+  return null
 }
 
 export async function writePersistedGatewayPort(

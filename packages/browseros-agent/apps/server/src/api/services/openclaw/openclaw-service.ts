@@ -69,11 +69,6 @@ import {
   type ResolvedOpenClawProviderConfig,
   resolveSupportedOpenClawProvider,
 } from './openclaw-provider-map'
-import {
-  allocateGatewayPort,
-  readPersistedGatewayPort,
-  writePersistedGatewayPort,
-} from './runtime-state'
 
 const READY_TIMEOUT_MS = 30_000
 const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/
@@ -324,9 +319,7 @@ export class OpenClawService {
   private runtime: OpenClawContainerRuntime
   private cliClient: OpenClawCliClient
   private bootstrapCliClient: OpenClawCliClient
-  private httpClient: OpenClawHttpClient
   private openclawDir: string
-  private hostPort = OPENCLAW_GATEWAY_CONTAINER_PORT
   private lastError: string | null = null
   private browserosServerPort: number
   private resourcesDir: string | null
@@ -341,14 +334,18 @@ export class OpenClawService {
       resourcesDir: config.resourcesDir,
       browserosDir: config.browserosDir,
     })
-    this.runtime.setHostPort(this.hostPort)
     this.cliClient = new OpenClawCliClient(this.runtime)
     this.bootstrapCliClient = this.buildBootstrapCliClient()
-    this.httpClient = new OpenClawHttpClient(this.hostPort)
     this.browserosServerPort =
       config.browserosServerPort ?? DEFAULT_PORTS.server
     this.resourcesDir = config.resourcesDir ?? null
     this.browserosDir = config.browserosDir
+  }
+
+  /** Lazy HTTP client — port can drift via runtime.syncState, so we
+   *  never cache the URL. Cheap to construct (just a port-bound object). */
+  private get httpClient(): OpenClawHttpClient {
+    return new OpenClawHttpClient(this.runtime.getHostPort())
   }
 
   configure(config: OpenClawServiceConfig): void {
@@ -371,7 +368,7 @@ export class OpenClawService {
   }
 
   getPort(): number {
-    return this.hostPort
+    return this.runtime.getHostPort()
   }
 
   /** Subscribe to real-time agent status changes from the ClawSession state machine. */
@@ -474,7 +471,7 @@ export class OpenClawService {
       const logProgress = this.createProgressLogger(onLog)
       const provider = this.resolveProviderForAgent(input)
       logger.info('Starting OpenClaw setup', {
-        hostPort: this.hostPort,
+        hostPort: this.runtime.getHostPort(),
         browserosServerPort: this.browserosServerPort,
         providerType: input.providerType,
         providerName: input.providerName,
@@ -495,8 +492,6 @@ export class OpenClawService {
       logger.info('Updated OpenClaw state env', {
         providerKeyCount: Object.keys(provider.envValues).length,
       })
-
-      await this.ensureGatewayPortAllocated(logProgress)
 
       logProgress('Bootstrapping OpenClaw config...')
       await this.bootstrapCliClient.runOnboard({
@@ -524,7 +519,7 @@ export class OpenClawService {
       this.startGatewayLogTail()
       logProgress('Waiting for gateway readiness...')
       const ready = await this.runtime.waitForReady(
-        this.hostPort,
+        this.runtime.getHostPort(),
         READY_TIMEOUT_MS,
       )
       if (!ready) {
@@ -558,9 +553,11 @@ export class OpenClawService {
 
       this.lastError = null
       logProgress(
-        `OpenClaw gateway running at http://127.0.0.1:${this.hostPort}`,
+        `OpenClaw gateway running at http://127.0.0.1:${this.runtime.getHostPort()}`,
       )
-      logger.info('OpenClaw setup complete', { hostPort: this.hostPort })
+      logger.info('OpenClaw setup complete', {
+        hostPort: this.runtime.getHostPort(),
+      })
     })
   }
 
@@ -905,51 +902,21 @@ export class OpenClawService {
   async tryAutoStart(): Promise<void> {
     return this.withLifecycleLock('auto-start', async () => {
       // Sync first so the UI sees an accurate state even when the
-      // gateway is already running from a previous server process
-      // and we'd otherwise short-circuit later. Optional-chained so
-      // tests that mock `service.runtime` with a partial fake don't
-      // crash here.
+      // gateway is already running from a previous server process.
       await this.runtime.syncState?.()
-      await this.adoptRuntimeHostPort()
 
       const isSetUp = existsSync(this.getStateConfigPath())
       if (!isSetUp) return
 
       logger.info('Attempting OpenClaw auto-start', {
-        hostPort: this.hostPort,
+        hostPort: this.runtime.getHostPort(),
       })
 
       try {
-        await this.runtime.ensureReady()
-
-        await this.ensureStateEnvFile()
-
-        const persistedPort = await readPersistedGatewayPort(this.openclawDir)
-        if (persistedPort !== null) {
-          this.setPort(persistedPort)
+        if (this.runtime.getStatusSnapshot().state !== 'running') {
+          await this.runtime.executeAction({ type: 'start' })
         }
-
-        if (!(await this.isCurrentGatewayAvailable(this.hostPort))) {
-          await this.ensureGatewayPortAllocated()
-          await this.runtime.startGateway(undefined)
-          const ready = await this.runtime.waitForReady(
-            this.hostPort,
-            READY_TIMEOUT_MS,
-          )
-          if (!ready) {
-            logger.warn('OpenClaw gateway failed to become ready on auto-start')
-            return
-          }
-        }
-
-        // Sync the runtime's state machine to whatever the actual
-        // container is doing — short-circuit branches above don't
-        // drive the state transitions, so without this the UI sees
-        // `not_installed` for a gateway that's actually running.
-        await this.runtime.syncState?.()
-        await this.adoptRuntimeHostPort()
-
-        await this.runControlPlaneCall(() => this.cliClient.probe())
+        await this.cliClient.probe()
         await this.ensureAllCliProvidersInstalled()
         logger.info('OpenClaw gateway auto-started')
       } catch (err) {
@@ -1040,120 +1007,6 @@ export class OpenClawService {
     })
   }
 
-  private setPort(hostPort: number): void {
-    if (hostPort === this.hostPort) return
-    this.hostPort = hostPort
-    // Tests sometimes overwrite this.runtime with a partial mock that
-    // doesn't carry every method — guard so we don't crash when the
-    // mock omits setHostPort.
-    this.runtime.setHostPort?.(hostPort)
-    this.httpClient = new OpenClawHttpClient(this.hostPort)
-  }
-
-  /**
-   * If runtime.syncState reconciled the host port from the live
-   * container mapping, adopt it on the service side and rewrite
-   * runtime-state.json so subsequent boots don't drift again.
-   */
-  private async adoptRuntimeHostPort(): Promise<void> {
-    const runtimePort = this.runtime.getHostPort?.()
-    if (typeof runtimePort !== 'number' || runtimePort === this.hostPort) {
-      return
-    }
-    logger.info('Adopting reconciled OpenClaw gateway host port', {
-      previous: this.hostPort,
-      actual: runtimePort,
-    })
-    this.setPort(runtimePort)
-    try {
-      await writePersistedGatewayPort(this.openclawDir, runtimePort)
-    } catch (err) {
-      logger.warn('Failed to persist reconciled OpenClaw gateway port', {
-        port: runtimePort,
-        error: err instanceof Error ? err.message : String(err),
-      })
-    }
-  }
-
-  private async ensureGatewayPortAllocated(
-    logProgress?: (msg: string) => void,
-  ): Promise<void> {
-    const persistedPort = await readPersistedGatewayPort(this.openclawDir)
-    if (persistedPort !== null) {
-      this.setPort(persistedPort)
-    }
-    const currentPortReady = await this.isGatewayPortReady(this.hostPort)
-    if (
-      currentPortReady &&
-      (await this.isGatewayAuthenticated(this.hostPort))
-    ) {
-      return
-    }
-    if (currentPortReady) {
-      // Port is reachable but auth rejected — a stale gateway from a
-      // previous boot or token rotation owns it. Stop our container
-      // first so the upcoming start cycle actually creates a fresh
-      // one: ManagedContainer.start no-ops when state==='running',
-      // so without this the realloc would bump the persisted port
-      // while leaving the old container still bound to the old one.
-      logProgress?.('Stopping stale OpenClaw gateway before re-allocating port')
-      logger.info('Stopping stale OpenClaw gateway before re-allocating port', {
-        hostPort: this.hostPort,
-      })
-      try {
-        await this.runtime.stopGateway?.()
-      } catch (err) {
-        logger.warn('Failed to stop stale OpenClaw gateway before realloc', {
-          error: err instanceof Error ? err.message : String(err),
-        })
-      }
-    }
-    const hostPort = await allocateGatewayPort(this.openclawDir, {
-      excludePort: currentPortReady ? this.hostPort : undefined,
-    })
-    if (hostPort !== this.hostPort) {
-      logProgress?.(`Allocated OpenClaw gateway host port ${hostPort}`)
-      logger.info('Allocated OpenClaw gateway host port', { hostPort })
-      this.setPort(hostPort)
-    }
-  }
-
-  private async isGatewayAvailable(hostPort: number): Promise<boolean> {
-    if (!(await this.isGatewayPortReady(hostPort))) return false
-    return this.isGatewayAuthenticated(hostPort)
-  }
-
-  private async isGatewayAuthenticated(hostPort: number): Promise<boolean> {
-    const client =
-      hostPort === this.hostPort
-        ? this.httpClient
-        : new OpenClawHttpClient(hostPort)
-    const authenticated = await client.isAuthenticated()
-    if (!authenticated) {
-      logger.warn('OpenClaw gateway readiness probe failed', { hostPort })
-    }
-    return authenticated
-  }
-
-  private async isCurrentGatewayAvailable(hostPort: number): Promise<boolean> {
-    if (!(await this.isGatewayAvailable(hostPort))) return false
-    return this.runtime.isGatewayCurrent()
-  }
-
-  private async isGatewayPortReady(hostPort: number): Promise<boolean> {
-    // Route through the runtime's probe when the port matches its
-    // configured one — preserves the no-direct-fetch semantics the
-    // legacy adapter exposed (and that several tests rely on by
-    // mocking runtime.isReady but not the HTTP layer).
-    if (hostPort === this.hostPort) {
-      if (await this.runtime.isReady()) return true
-      const r = this.runtime as { isHealthy?: () => Promise<boolean> }
-      return r.isHealthy ? r.isHealthy() : false
-    }
-    if (await fetchOk(`http://127.0.0.1:${hostPort}/readyz`)) return true
-    return fetchOk(`http://127.0.0.1:${hostPort}/healthz`)
-  }
-
   private async assertGatewayReady(): Promise<void> {
     if (await this.runtime.isReady()) return
     throw new Error('OpenClaw gateway is not ready')
@@ -1219,8 +1072,8 @@ export class OpenClawService {
       {
         path: 'gateway.controlUi.allowedOrigins',
         value: [
-          `http://127.0.0.1:${this.hostPort}`,
-          `http://localhost:${this.hostPort}`,
+          `http://127.0.0.1:${this.runtime.getHostPort()}`,
+          `http://localhost:${this.runtime.getHostPort()}`,
         ],
       },
       {
@@ -1341,7 +1194,7 @@ export class OpenClawService {
 
   private async waitForGatewayAfterCliMutation(): Promise<void> {
     const ready = await this.runtime.waitForReady(
-      this.hostPort,
+      this.runtime.getHostPort(),
       READY_TIMEOUT_MS,
     )
     if (!ready) {
@@ -1529,15 +1382,6 @@ export function configureVmRuntime(config: {
 export function getOpenClawService(): OpenClawService {
   if (!service) service = new OpenClawService()
   return service
-}
-
-async function fetchOk(url: string): Promise<boolean> {
-  try {
-    const res = await fetch(url)
-    return res.ok
-  } catch {
-    return false
-  }
 }
 
 /** Resolve the OpenClawContainerRuntime, registering it lazily if

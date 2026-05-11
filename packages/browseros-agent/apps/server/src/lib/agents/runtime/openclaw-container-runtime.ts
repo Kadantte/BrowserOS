@@ -13,6 +13,10 @@ import {
   OPENCLAW_IMAGE,
 } from '@browseros/shared/constants/openclaw'
 import { getOpenClawStateEnvPath } from '../../../api/services/openclaw/openclaw-env'
+import {
+  readPersistedGatewayPortSync,
+  writePersistedGatewayPort,
+} from '../../../api/services/openclaw/runtime-state'
 import { getBrowserosDir, getOpenClawDir } from '../../browseros-dir'
 import { ContainerCli } from '../../container/container-cli'
 import { ImageLoader } from '../../container/image-loader'
@@ -88,15 +92,25 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
   ) {
     super(deps)
     this.openclawConfig = config
-  }
-
-  /** Service owns port allocation; the runtime re-reads it at spec-build and probe time. */
-  setHostPort(port: number): void {
-    this.hostPort = port
+    // Seed hostPort from the persisted runtime-state.json so the
+    // gateway comes up on the same port across server restarts (and
+    // Lima's port-forward keeps pointing at the same Mac-side port).
+    // syncState reconciles further drift at runtime.
+    const persisted = readPersistedGatewayPortSync(
+      this.openclawConfig.openclawDir,
+    )
+    if (persisted !== null) this.hostPort = persisted
   }
 
   getHostPort(): number {
     return this.hostPort
+  }
+
+  /** Test-only override; production reads/writes the port via the
+   *  persisted runtime-state.json (seeded in the constructor and
+   *  rewritten by syncState when the live container drifts). */
+  setHostPort(port: number): void {
+    this.hostPort = port
   }
 
   // ── ManagedContainer abstracts ───────────────────────────────────
@@ -274,6 +288,17 @@ export class OpenClawContainerRuntime extends ContainerAgentRuntime {
             actual: mapped.hostPort,
           })
           this.hostPort = mapped.hostPort
+          try {
+            await writePersistedGatewayPort(
+              this.openclawConfig.openclawDir,
+              mapped.hostPort,
+            )
+          } catch (err) {
+            logger.warn('Failed to persist reconciled OpenClaw gateway port', {
+              port: mapped.hostPort,
+              error: err instanceof Error ? err.message : String(err),
+            })
+          }
         }
         if (await fetchOk(`http://127.0.0.1:${this.hostPort}/readyz`)) {
           this.setState('running')
