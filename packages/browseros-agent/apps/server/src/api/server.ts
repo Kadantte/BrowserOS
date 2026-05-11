@@ -152,7 +152,6 @@ export async function createHttpServer(config: HttpServerConfig) {
               model: agent.model,
             }))
           },
-          getStatus: () => getOpenClawService().getStatus(),
           getAgentHistory: async (agentId) => {
             // Aggregated across the agent's main + every sub-session
             // (cron / hook / channel) so autonomous turns surface in

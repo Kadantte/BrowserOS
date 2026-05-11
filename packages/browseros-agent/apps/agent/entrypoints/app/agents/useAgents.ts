@@ -11,16 +11,9 @@ import {
   type HarnessQueuedMessage,
   mapHarnessAgentToEntry,
 } from './agent-harness-types'
-import type { OpenClawStatus } from './useOpenClaw'
 
-/**
- * Combined response shape of `GET /agents`. The page polls this once
- * and consumes both fields, replacing the dedicated `/claw/status`
- * poll the previous design carried.
- */
 interface HarnessAgentsResponse {
   agents: HarnessAgent[]
-  gateway: OpenClawStatus | null
 }
 
 export type { AgentHarnessStreamEvent }
@@ -94,10 +87,7 @@ export function useHarnessAgents(enabled = true) {
         baseUrl as string,
         '/',
       )
-      return {
-        agents: data.agents ?? [],
-        gateway: data.gateway ?? null,
-      }
+      return { agents: data.agents ?? [] }
     },
     enabled: Boolean(baseUrl) && !urlLoading && enabled,
     // Poll every 5s so the per-agent liveness state (working / idle /
@@ -111,7 +101,6 @@ export function useHarnessAgents(enabled = true) {
   return {
     agents: (query.data?.agents ?? []).map(mapHarnessAgentToEntry),
     harnessAgents: query.data?.agents ?? [],
-    gateway: query.data?.gateway ?? null,
     loading: query.isLoading || urlLoading,
     error: query.error ?? urlError,
     refetch: query.refetch,

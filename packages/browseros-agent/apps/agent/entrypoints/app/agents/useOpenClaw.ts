@@ -9,6 +9,11 @@ export interface AgentEntry {
   source?: 'openclaw' | 'agent-harness'
 }
 
+/**
+ * Vestige type kept so the legacy UI helpers in agents-page-utils +
+ * OpenClawControls + agents-page-types still compile. Those files are
+ * the next deletion target — once they're gone this can vanish too.
+ */
 export interface OpenClawStatus {
   status: 'uninitialized' | 'starting' | 'running' | 'stopped' | 'error'
   podmanAvailable: boolean
@@ -62,7 +67,6 @@ export function getModelDisplayName(model: unknown): string | undefined {
 }
 
 export const OPENCLAW_QUERY_KEYS = {
-  status: 'openclaw-status',
   agents: 'openclaw-agents',
 } as const
 
@@ -92,10 +96,6 @@ async function clawFetch<T>(
   return res.json() as Promise<T>
 }
 
-async function fetchOpenClawStatus(baseUrl: string): Promise<OpenClawStatus> {
-  return clawFetch<OpenClawStatus>(baseUrl, '/status')
-}
-
 async function fetchOpenClawAgents(baseUrl: string): Promise<AgentEntry[]> {
   const data = await clawFetch<{ agents: AgentEntry[] }>(baseUrl, '/agents')
   return (data.agents ?? []).map((agent) => ({
@@ -107,32 +107,9 @@ async function fetchOpenClawAgents(baseUrl: string): Promise<AgentEntry[]> {
 async function invalidateOpenClawQueries(
   queryClient: ReturnType<typeof useQueryClient>,
 ): Promise<void> {
-  await Promise.all([
-    queryClient.invalidateQueries({ queryKey: [OPENCLAW_QUERY_KEYS.status] }),
-    queryClient.invalidateQueries({ queryKey: [OPENCLAW_QUERY_KEYS.agents] }),
-  ])
-}
-
-export function useOpenClawStatus(pollMs = 5000) {
-  const {
-    baseUrl,
-    isLoading: urlLoading,
-    error: urlError,
-  } = useAgentServerUrl()
-
-  const query = useQuery<OpenClawStatus, Error>({
-    queryKey: [OPENCLAW_QUERY_KEYS.status, baseUrl],
-    queryFn: () => fetchOpenClawStatus(baseUrl as string),
-    enabled: !!baseUrl && !urlLoading,
-    refetchInterval: pollMs,
+  await queryClient.invalidateQueries({
+    queryKey: [OPENCLAW_QUERY_KEYS.agents],
   })
-
-  return {
-    status: query.data ?? null,
-    loading: query.isLoading || urlLoading,
-    error: query.error ?? urlError,
-    refetch: query.refetch,
-  }
 }
 
 export function useOpenClawAgents(enabled = true) {

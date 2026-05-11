@@ -123,15 +123,6 @@ export interface OpenClawProvisioner {
     Array<{ agentId: string; name: string; model?: string }>
   >
   /**
-   * Optional. When wired, the harness exposes the gateway lifecycle
-   * snapshot through `GET /agents` so the agents page can render
-   * Running / Control plane connected pills without a separate
-   * `/claw/status` poll. Returns the same shape as the legacy
-   * endpoint; `null` when the snapshot can't be fetched (e.g. the
-   * gateway is not configured at all).
-   */
-  getStatus?(): Promise<GatewayStatusSnapshot | null>
-  /**
    * Optional. When wired, the harness uses this for `getHistory` on
    * openclaw-adapter agents so the chat panel sees autonomous
    * (cron / hook / channel) turns alongside user-typed turns. Without
@@ -309,25 +300,6 @@ export class AgentHarnessService {
         queue: queueSnapshot[agent.id] ?? [],
       }
     })
-  }
-
-  /**
-   * Read the gateway lifecycle snapshot through the wired provisioner.
-   * Returns null if no provisioner is configured or it doesn't expose
-   * `getStatus`; route-layer callers should treat that as "no gateway,
-   * skip rendering OpenClaw-only chrome." Errors get logged + swallowed
-   * so a transient gateway issue doesn't 500 the listing endpoint.
-   */
-  async getGatewayStatus(): Promise<GatewayStatusSnapshot | null> {
-    if (!this.openclawProvisioner?.getStatus) return null
-    try {
-      return await this.openclawProvisioner.getStatus()
-    } catch (err) {
-      logger.warn('Failed to fetch gateway status for /agents listing', {
-        error: err instanceof Error ? err.message : String(err),
-      })
-      return null
-    }
   }
 
   /**

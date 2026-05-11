@@ -80,64 +80,6 @@ const AGENT_NAME_PATTERN = /^[a-z][a-z0-9-]*$/
 const OPENCLAW_BROWSEROS_USER_SESSION_PATTERN =
   /^agent:[^:]+:openai-user:browseros:[^:]+:(.+)$/
 
-export type OpenClawControlPlaneStatus =
-  | 'disconnected'
-  | 'connecting'
-  | 'connected'
-  | 'reconnecting'
-  // Retained for extension compatibility while the UI still branches on it.
-  | 'recovering'
-  | 'failed'
-
-export type OpenClawGatewayRecoveryReason =
-  // Retained for extension compatibility while the UI still renders these reasons.
-  | 'transient_disconnect'
-  | 'signature_expired'
-  | 'pairing_required'
-  | 'token_mismatch'
-  | 'container_not_ready'
-  | 'unknown'
-
-export type OpenClawStatus =
-  | 'uninitialized'
-  | 'starting'
-  | 'running'
-  | 'stopped'
-  | 'error'
-
-function mapRuntimeStateToLegacy(
-  state: string | null,
-  lastError: string | null,
-): OpenClawStatus {
-  switch (state) {
-    case 'not_installed':
-      return 'uninitialized'
-    case 'installing':
-    case 'starting':
-      return 'starting'
-    case 'running':
-      return 'running'
-    case 'errored':
-      return 'error'
-    // 'installed' / 'stopped' / null / unknown all map to stopped (or error
-    // when the service has a sticky lastError).
-    default:
-      return lastError ? 'error' : 'stopped'
-  }
-}
-
-export interface OpenClawStatusResponse {
-  status: OpenClawStatus
-  podmanAvailable: boolean
-  machineReady: boolean
-  port: number | null
-  agentCount: number
-  error: string | null
-  controlPlaneStatus: OpenClawControlPlaneStatus
-  lastGatewayError: string | null
-  lastRecoveryReason: OpenClawGatewayRecoveryReason | null
-}
-
 export type OpenClawAgentEntry = OpenClawAgentRecord
 
 export interface SetupInput {
@@ -389,9 +331,6 @@ export class OpenClawService {
   private browserosServerPort: number
   private resourcesDir: string | null
   private browserosDir: string | undefined
-  private controlPlaneStatus: OpenClawControlPlaneStatus = 'disconnected'
-  private lastGatewayError: string | null = null
-  private lastRecoveryReason: OpenClawGatewayRecoveryReason | null = null
   private stopLogTail: (() => void) | null = null
   private lifecycleLock: Promise<void> = Promise.resolve()
   private clawSession = new ClawSession()
@@ -595,7 +534,6 @@ export class OpenClawService {
         throw new Error(this.lastError)
       }
 
-      this.controlPlaneStatus = 'connecting'
       logProgress('Probing OpenClaw control plane...')
       await this.runControlPlaneCall(() => this.cliClient.probe())
 
@@ -624,60 +562,6 @@ export class OpenClawService {
       )
       logger.info('OpenClaw setup complete', { hostPort: this.hostPort })
     })
-  }
-
-  // ── Status ───────────────────────────────────────────────────────────
-
-  async getStatus(): Promise<OpenClawStatusResponse> {
-    // Runtime state is the source of truth for "is the container alive".
-    // Deriving the legacy status surface from it keeps the gateway block
-    // consistent with /runtimes/openclaw/status so the UI can't show two
-    // contradictory pills.
-    const runtimeState = this.runtime.getStatusSnapshot?.()?.state ?? null
-    const isSetUp = existsSync(this.getStateConfigPath())
-    const machineStatus = await this.runtime.getMachineStatus()
-
-    if (!isSetUp || runtimeState === 'not_installed') {
-      return {
-        status: 'uninitialized',
-        podmanAvailable: true,
-        machineReady: machineStatus.running,
-        port: null,
-        agentCount: 0,
-        error: null,
-        controlPlaneStatus: 'disconnected',
-        lastGatewayError: null,
-        lastRecoveryReason: null,
-      }
-    }
-
-    const runtimeRunning = runtimeState === 'running'
-
-    let agentCount = 0
-    if (runtimeRunning) {
-      try {
-        const agents = await this.runControlPlaneCall(() =>
-          this.cliClient.listAgents(),
-        )
-        agentCount = agents.length
-      } catch {
-        // latest control plane error is captured by runControlPlaneCall
-      }
-    }
-
-    return {
-      status: mapRuntimeStateToLegacy(runtimeState, this.lastError),
-      podmanAvailable: true,
-      machineReady: machineStatus.running,
-      port: this.hostPort,
-      agentCount,
-      error: this.lastError,
-      controlPlaneStatus: runtimeRunning
-        ? this.controlPlaneStatus
-        : 'disconnected',
-      lastGatewayError: runtimeRunning ? this.lastGatewayError : null,
-      lastRecoveryReason: runtimeRunning ? this.lastRecoveryReason : null,
-    }
   }
 
   // ── Agent Management (via CLI) ──────────────────────────────────────
@@ -1271,45 +1155,12 @@ export class OpenClawService {
   }
 
   private async assertGatewayReady(): Promise<void> {
-    const portReady = await this.runtime.isReady()
-    logger.debug('Checking OpenClaw gateway readiness before use', {
-      hostPort: this.hostPort,
-      portReady,
-      controlPlaneStatus: this.controlPlaneStatus,
-    })
-    if (portReady) {
-      return
-    }
-
-    this.controlPlaneStatus = 'failed'
-    this.lastGatewayError = 'OpenClaw gateway is not ready'
-    this.lastRecoveryReason = 'container_not_ready'
+    if (await this.runtime.isReady()) return
     throw new Error('OpenClaw gateway is not ready')
   }
 
   private async runControlPlaneCall<T>(fn: () => Promise<T>): Promise<T> {
-    try {
-      const result = await fn()
-      this.controlPlaneStatus = 'connected'
-      this.lastGatewayError = null
-      this.lastRecoveryReason = null
-      return result
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
-      const reason = this.classifyControlPlaneError(error)
-      this.controlPlaneStatus = 'failed'
-      this.lastGatewayError = message
-      this.lastRecoveryReason = reason
-      throw error
-    }
-  }
-
-  private classifyControlPlaneError(
-    error: unknown,
-  ): OpenClawGatewayRecoveryReason {
-    const message = error instanceof Error ? error.message : String(error)
-    if (message.includes('not ready')) return 'container_not_ready'
-    return 'unknown'
+    return fn()
   }
 
   private startGatewayLogTail(): void {

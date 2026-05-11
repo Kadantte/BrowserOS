@@ -33,7 +33,6 @@ import type { AgentHistoryPage, AgentStreamEvent } from '../../lib/agents/types'
 import {
   type AgentDefinitionWithActivity,
   AgentHarnessService,
-  type GatewayStatusSnapshot,
   HermesProviderConfigInvalidError,
   InvalidAgentUpdateError,
   MessageQueueFullError,
@@ -52,7 +51,6 @@ import { resolveBrowserContextPageIds } from '../utils/resolve-browser-context-p
 type AgentRouteService = {
   listAgents(): Promise<AgentDefinition[]>
   listAgentsWithActivity(): Promise<AgentDefinitionWithActivity[]>
-  getGatewayStatus(): Promise<GatewayStatusSnapshot | null>
   createAgent(input: {
     name: string
     adapter: AgentAdapter
@@ -173,15 +171,10 @@ export function createAgentRoutes(deps: AgentRouteDeps = {}) {
         return c.json({ adapters })
       })
       .get('/', async (c) => {
-        // Single round-trip the agents page consumes: enriched agents
-        // (status + lastUsedAt) plus the gateway lifecycle snapshot the
-        // GatewayStatusBar / GatewayStateCards / ControlPlaneAlert used
-        // to fetch from `/claw/status`. Lets the page poll one endpoint.
-        const [agents, gateway] = await Promise.all([
-          service.listAgentsWithActivity(),
-          service.getGatewayStatus(),
-        ])
-        return c.json({ agents, gateway })
+        // Enriched agents (status + lastUsedAt) in a single round-trip;
+        // gateway lifecycle now reads from /runtimes/openclaw/status.
+        const agents = await service.listAgentsWithActivity()
+        return c.json({ agents })
       })
       .post('/', async (c) => {
         const parsed = await parseCreateAgentBody(c)

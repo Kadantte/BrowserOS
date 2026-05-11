@@ -1,10 +1,8 @@
 import { Loader2, Terminal as TerminalIcon } from 'lucide-react'
 import { type FC, useMemo, useState } from 'react'
 import { useNavigate } from 'react-router'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { useLlmProviders } from '@/lib/llm-providers/useLlmProviders'
-import { cn } from '@/lib/utils'
 import { AgentList } from './AgentList'
 import { AgentsHeader } from './AgentsHeader'
 import { AgentTerminal } from './AgentTerminal'
@@ -22,9 +20,7 @@ import {
   DEFAULT_HARNESS_ADAPTER,
 } from './agents-page-types'
 import {
-  canManageOpenClawAgents,
   getAgentsLoading,
-  getGatewayUiState,
   getInlineError,
   getVisibleOpenClawAgents,
   toHarnessListItem,
@@ -43,6 +39,7 @@ import {
   useUpdateHarnessAgent,
 } from './useAgents'
 import { useOpenClawAgents, useOpenClawMutations } from './useOpenClaw'
+import { useRuntime } from './useRuntime'
 
 export const AgentsPage: FC = () => {
   const navigate = useNavigate()
@@ -53,19 +50,15 @@ export const AgentsPage: FC = () => {
     error: adaptersError,
   } = useAgentAdapters()
 
-  // The harness listing now carries the gateway lifecycle snapshot
-  // alongside the agents — one polling source for everything the
-  // agents page renders. The legacy `/claw/status` poll is dead from
-  // this surface; the chat-panel layout still uses it for now.
   const {
     harnessAgents,
-    gateway: status,
     loading: harnessAgentsLoading,
     error: harnessAgentsError,
   } = useHarnessAgents()
+  const { data: openClawRuntime } = useRuntime('openclaw')
+  const openClawRunning = openClawRuntime?.status.state === 'running'
 
-  const openClawAgentsEnabled =
-    status?.status === 'running' && status.controlPlaneStatus === 'connected'
+  const openClawAgentsEnabled = openClawRunning
   const {
     agents: openClawAgents,
     loading: openClawAgentsLoading,
@@ -142,15 +135,10 @@ export const AgentsPage: FC = () => {
     setHarnessReasoningEffort,
   })
 
-  // Lifecycle pending used to track legacy /claw/start /stop /restart /reconnect
-  // mutations. Those routes are gone — RuntimeControlPanel renders its own
-  // spinner on the action buttons.
-  const lifecyclePending = false
-  const gatewayUiState = useMemo(() => getGatewayUiState(status), [status])
-  const openClawManageable = canManageOpenClawAgents(
-    gatewayUiState,
-    lifecyclePending,
-  )
+  // Can the user create / modify OpenClaw agents? Yes when the runtime
+  // is running. The legacy gatewayUiState/controlPlaneStatus gating is
+  // gone — runtime state is the source of truth.
+  const openClawManageable = openClawRunning
   const visibleOpenClawAgents = getVisibleOpenClawAgents(
     openClawAgentsEnabled,
     openClawAgents,
@@ -203,7 +191,7 @@ export const AgentsPage: FC = () => {
     return map
   }, [harnessAgents])
   const inlineError = getInlineError({
-    lifecyclePending,
+    lifecyclePending: false,
     pageError,
     openClawAgentsError,
     adaptersError,
@@ -265,7 +253,7 @@ export const AgentsPage: FC = () => {
 
   // First-paint loader: until the harness listing has resolved at
   // least once we don't know which adapters / agents to render.
-  if (harnessAgentsLoading && !status) {
+  if (harnessAgentsLoading && !openClawRuntime) {
     return (
       <div className="flex items-center justify-center py-20">
         <Loader2 className="size-6 animate-spin text-muted-foreground" />
@@ -273,17 +261,19 @@ export const AgentsPage: FC = () => {
     )
   }
 
-  // showControlPlaneDegraded gating was removed alongside ControlPlaneAlert
-  // — the new RuntimeControlPanel surfaces degraded state directly via the
-  // runtime status pill and CTAs.
-
-  // Bar only makes sense when the gateway is meaningfully alive AND
-  // there's at least one OpenClaw agent in the merged list. Hide it
-  // for Claude/Codex-only setups so the page stays uncluttered.
+  // Bar only makes sense when the gateway is running AND there's at
+  // least one OpenClaw agent in the merged list. Hide it for
+  // Claude/Codex-only setups so the page stays uncluttered.
   const showGatewayStatusBar =
-    status?.status === 'running' &&
+    openClawRunning &&
     (visibleOpenClawAgents.length > 0 ||
       harnessAgents.some((agent) => agent.adapter === 'openclaw'))
+  // Setup CTA appears when the runtime is healthy but the user has not
+  // yet configured a provider (no openclaw.json on disk → runtime is
+  // running but agent CRUD will fail). For now: surface it whenever the
+  // runtime isn't ready, so a fresh user sees both Install + Configure
+  // affordances. A future server endpoint can tell us "is setup done".
+  const showSetupCta = !openClawRunning
 
   return (
     <div className="min-h-full bg-background px-6 py-8">
@@ -300,7 +290,7 @@ export const AgentsPage: FC = () => {
         <RuntimeControlPanel
           adapter="openclaw"
           extras={
-            status?.status === 'uninitialized' ? (
+            showSetupCta ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -315,11 +305,6 @@ export const AgentsPage: FC = () => {
         {showGatewayStatusBar ? (
           <RuntimeStatusBar
             adapter="openclaw"
-            extraPill={
-              status ? (
-                <ControlPlanePill status={status.controlPlaneStatus} />
-              ) : null
-            }
             extraActions={
               <Button
                 variant="ghost"
@@ -356,7 +341,6 @@ export const AgentsPage: FC = () => {
             })
           }}
         />
-
         <SetupOpenClawDialog
           defaultProviderId={defaultProviderId}
           open={setupOpen}
@@ -368,7 +352,6 @@ export const AgentsPage: FC = () => {
           onProviderChange={setSetupProviderId}
           onSetup={() => void handleSetup()}
         />
-
         <NewAgentDialog
           adapters={adapters}
           canManageOpenClaw={openClawManageable}
@@ -410,54 +393,4 @@ export const AgentsPage: FC = () => {
       </div>
     </div>
   )
-}
-
-const ControlPlanePill: FC<{ status: string }> = ({ status }) => {
-  const pill = pillForControlPlane(status)
-  return (
-    <Badge variant={pill.variant} className={cn('gap-1.5', pill.className)}>
-      <span className={cn('inline-block h-1.5 w-1.5 rounded-full', pill.dot)} />
-      {pill.label}
-    </Badge>
-  )
-}
-
-interface ControlPlanePillKind {
-  variant: 'default' | 'secondary' | 'outline' | 'destructive'
-  label: string
-  dot: string
-  className?: string
-}
-
-function pillForControlPlane(status: string): ControlPlanePillKind {
-  switch (status) {
-    case 'connected':
-      return {
-        variant: 'secondary',
-        label: 'Control plane connected',
-        dot: 'bg-emerald-500',
-        className: 'bg-emerald-50 text-emerald-900 hover:bg-emerald-50',
-      }
-    case 'connecting':
-    case 'reconnecting':
-    case 'recovering':
-      return {
-        variant: 'secondary',
-        label: 'Connecting',
-        dot: 'bg-amber-500 animate-pulse',
-        className: 'bg-amber-50 text-amber-900 hover:bg-amber-50',
-      }
-    case 'failed':
-      return {
-        variant: 'destructive',
-        label: 'Needs attention',
-        dot: 'bg-destructive-foreground',
-      }
-    default:
-      return {
-        variant: 'outline',
-        label: 'Disconnected',
-        dot: 'bg-muted-foreground/40',
-      }
-  }
 }

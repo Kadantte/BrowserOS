@@ -30,11 +30,6 @@ function getCreateAgentValidationError(body: { name?: string }): string | null {
 
 export function createOpenClawRoutes() {
   return new Hono()
-    .get('/status', async (c) => {
-      const status = await getOpenClawService().getStatus()
-      return c.json(status)
-    })
-
     .get('/providers/:providerId/auth-status', async (c) => {
       const { providerId } = c.req.param()
       const provider = getOpenClawCliProvider(providerId)

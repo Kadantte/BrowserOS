@@ -97,7 +97,7 @@ export const AgentCommandHome: FC = () => {
   // from the layout context (handles legacy /claw/agents entries that
   // haven't yet been backfilled into the harness store). The Recent
   // Agents grid below reads the richer harness payload directly.
-  const { agents: legacyAgents, status } = useAgentCommandData()
+  const { agents: legacyAgents, openClawReady } = useAgentCommandData()
   const { harnessAgents } = useHarnessAgents()
   const { adapters } = useAgentAdapters()
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
@@ -146,10 +146,13 @@ export const AgentCommandHome: FC = () => {
     (agent) => agent.agentId === selectedAgentId,
   )
   const selectedAgentReady = selectedAgent
-    ? selectedAgent.source === 'agent-harness' || status?.status === 'running'
+    ? selectedAgent.source === 'agent-harness' || openClawReady
     : false
-  const selectedAgentStatus =
-    selectedAgent?.source === 'agent-harness' ? 'running' : status?.status
+  const selectedAgentStatus = selectedAgent
+    ? selectedAgent.source === 'agent-harness' || openClawReady
+      ? 'running'
+      : 'stopped'
+    : undefined
   const selectedAgentName =
     selectedAgent?.name ?? orderedAgents[0]?.name ?? 'your agent'
 
