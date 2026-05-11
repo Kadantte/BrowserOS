@@ -161,6 +161,12 @@ describe('HermesContainerRuntime', () => {
       browserosDir: '/host/browseros',
       hermesHarnessHostDir: '/host/browseros/vm/hermes/harness',
     })
+    // Tight budget so the polling loop doesn't drag the test out for
+    // the full 30s readinessProbe.timeoutMs.
+    ;(runtime.descriptor as { readinessProbe?: unknown }).readinessProbe = {
+      timeoutMs: 100,
+      intervalMs: 10,
+    }
     await expect(runtime.start()).rejects.toThrow(/probe failed/i)
     expect(runtime.getState()).toBe('errored')
   })

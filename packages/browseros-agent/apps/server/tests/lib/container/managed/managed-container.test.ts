@@ -48,6 +48,8 @@ class TestContainer extends ManagedContainer {
     defaultImage: 'docker.io/test:latest',
     containerName: 'test-container',
     platforms: ['darwin' as NodeJS.Platform],
+    // Snappy budget so probe-fails tests don't drag the suite.
+    readinessProbe: { timeoutMs: 100, intervalMs: 10 },
   }
 
   probeOutcome: boolean | Error = true
@@ -168,6 +170,51 @@ describe('ManagedContainer', () => {
       await expect(c.start()).rejects.toThrow(/probe failed/i)
       expect(c.getState()).toBe('errored')
       expect(c.getStatusSnapshot().lastError).toMatch(/probe failed/i)
+    })
+
+    it('polls the readiness probe until it succeeds within the descriptor budget', async () => {
+      const lockDir = mkTempDir()
+      const deps = makeFakeDeps({ lockDir })
+      const c = new TestContainer(deps)
+      // Tight budget so the test stays snappy even on slow CI.
+      ;(c.descriptor as { readinessProbe?: unknown }).readinessProbe = {
+        timeoutMs: 200,
+        intervalMs: 20,
+      }
+      // Probe fails the first two calls (mimics the HTTP-listener race
+      // openclaw's /readyz hits), then flips to success.
+      c.probeOutcome = false
+      let calls = 0
+      const original = c.readinessProbe.bind(c)
+      ;(
+        c as unknown as { readinessProbe: () => Promise<boolean> }
+      ).readinessProbe = async () => {
+        calls += 1
+        if (calls < 3) return false
+        return original.call(c)
+      }
+      c.probeOutcome = true
+
+      await c.start()
+
+      expect(c.getState()).toBe('running')
+      expect(calls).toBeGreaterThanOrEqual(3)
+    })
+
+    it('times out when the probe never succeeds, with errored state', async () => {
+      const lockDir = mkTempDir()
+      const deps = makeFakeDeps({ lockDir })
+      const c = new TestContainer(deps)
+      ;(c.descriptor as { readinessProbe?: unknown }).readinessProbe = {
+        timeoutMs: 80,
+        intervalMs: 20,
+      }
+      c.probeOutcome = false
+
+      await expect(c.start()).rejects.toThrow(/probe failed/i)
+      expect(c.getState()).toBe('errored')
+      // Should have polled multiple times within the budget, not just once.
+      expect(c.probeCalls).toBeGreaterThanOrEqual(2)
     })
 
     it('stop() force-transitions to stopped even from errored', async () => {

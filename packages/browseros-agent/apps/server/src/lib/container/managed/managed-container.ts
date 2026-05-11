@@ -200,14 +200,20 @@ export abstract class ManagedContainer {
         })
         await this.deps.cli.createContainer(spec, log)
         await this.deps.cli.startContainer(spec.name, log)
+        await this.deps.cli.waitForContainerRunning(spec.name)
+        // Poll the subclass-defined readiness probe within the
+        // descriptor's budget. The container being "Up" in containerd
+        // only means the entrypoint process spawned — for HTTP probes
+        // (e.g. openclaw's /readyz) the listener can take a few hundred
+        // ms after that to bind. For deterministic probes (e.g. hermes'
+        // `--version` exec) the first call succeeds and the loop exits
+        // immediately. Subclasses without a transient-readiness phase
+        // pay nothing extra.
         const probeOpts = this.descriptor.readinessProbe
-        await this.deps.cli.waitForContainerRunning(spec.name, {
+        const probeOk = await this.pollReadinessProbe({
           timeoutMs: probeOpts?.timeoutMs ?? 30_000,
           intervalMs: probeOpts?.intervalMs ?? 500,
         })
-        // Run the subclass-defined probe — usually a `--version` exec
-        // or HTTP /readyz call. Failing this is errored, not stopped.
-        const probeOk = await this.readinessProbe()
         if (!probeOk) {
           this.setState(
             'errored',
@@ -226,6 +232,26 @@ export abstract class ManagedContainer {
         throw err
       }
     })
+  }
+
+  /** Poll the subclass `readinessProbe` until it returns true, errors
+   *  swallowed (treated as not-yet-ready), or the timeout elapses. */
+  private async pollReadinessProbe(opts: {
+    timeoutMs: number
+    intervalMs: number
+  }): Promise<boolean> {
+    const startedAt = Date.now()
+    while (Date.now() - startedAt <= opts.timeoutMs) {
+      try {
+        if (await this.readinessProbe()) return true
+      } catch {
+        // Treat thrown probes as transient — keep polling within budget.
+      }
+      const remainingMs = opts.timeoutMs - (Date.now() - startedAt)
+      if (remainingMs <= 0) break
+      await Bun.sleep(Math.min(opts.intervalMs, remainingMs))
+    }
+    return false
   }
 
   /** Stop and remove the container. Image and per-agent data preserved. */
