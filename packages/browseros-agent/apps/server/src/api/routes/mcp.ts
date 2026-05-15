@@ -31,7 +31,10 @@ interface McpRouteDeps {
 function parseOptionalNumber(value: string | undefined): number | undefined {
   if (value === undefined) return undefined
   const n = Number(value)
-  return Number.isFinite(n) ? n : undefined
+  // CDP window ids are integers; `Number.isFinite('1.5')` would be true
+  // and silently route to a non-integer that CDP rejects with an opaque
+  // protocol error. Require an integer at the parse boundary.
+  return Number.isInteger(n) ? n : undefined
 }
 
 export function createMcpRoutes(deps: McpRouteDeps) {
