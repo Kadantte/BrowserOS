@@ -137,7 +137,9 @@ export const set_window_visibility = defineManagementTool({
     activate: z
       .boolean()
       .optional()
-      .describe('Activate (focus) the window after showing it'),
+      .describe(
+        'Activate (focus) the window after making it visible. Has no effect when visible is false.',
+      ),
   }),
   output: z.object({
     action: z.literal('set_window_visibility'),

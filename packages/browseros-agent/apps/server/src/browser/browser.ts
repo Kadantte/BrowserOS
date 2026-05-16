@@ -1466,7 +1466,7 @@ export class Browser {
   }
 
   /**
-   * Changes a window between hidden and visible states and refreshes cached page metadata.
+   * Changes a window between hidden and visible states.
    * BrowserOS may replace the underlying window, so callers must use the returned window ID.
    */
   async setWindowVisibility(
@@ -1478,7 +1478,6 @@ export class Browser {
       visible: opts.visible,
       ...(opts.activate !== undefined && { activate: opts.activate }),
     })
-    await this.listPages()
     return {
       window: result.window as WindowInfo,
       replaced: result.replaced,

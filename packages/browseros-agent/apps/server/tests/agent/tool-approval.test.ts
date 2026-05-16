@@ -31,7 +31,7 @@ describe('tool approval enforcement', () => {
     assert.deepStrictEqual(approvedToolNames.sort(), registry.names().sort())
   })
 
-  it('exposes window visibility as browser management', () => {
+  it('exposes window visibility as data-modification', () => {
     const tool = registry.get('set_window_visibility')
 
     assert.ok(tool, 'Expected set_window_visibility to be registered')
