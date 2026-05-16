@@ -1,8 +1,8 @@
 diff --git a/chrome/browser/devtools/protocol/browser_handler.cc b/chrome/browser/devtools/protocol/browser_handler.cc
-index 30bd52d09c3fc..1515fd382c2b7 100644
+index 30bd52d09c3fc..5ef348c475174 100644
 --- a/chrome/browser/devtools/protocol/browser_handler.cc
 +++ b/chrome/browser/devtools/protocol/browser_handler.cc
-@@ -4,23 +4,38 @@
+@@ -4,23 +4,39 @@
  
  #include "chrome/browser/devtools/protocol/browser_handler.h"
  
@@ -11,6 +11,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
 +#include <variant>
  #include <vector>
  
++#include "base/check.h"
  #include "base/functional/bind.h"
 +#include "base/memory/raw_ptr.h"
  #include "base/memory/ref_counted_memory.h"
@@ -41,7 +42,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
  #include "content/public/browser/browser_task_traits.h"
  #include "content/public/browser/browser_thread.h"
  #include "content/public/browser/devtools_agent_host.h"
-@@ -30,10 +45,32 @@
+@@ -30,10 +46,32 @@
  #include "ui/gfx/image/image.h"
  #include "ui/gfx/image/image_png_rep.h"
  
@@ -74,7 +75,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
  BrowserWindow* GetBrowserWindow(int window_id) {
    BrowserWindow* result = nullptr;
    ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
-@@ -72,12 +109,461 @@ std::unique_ptr<protocol::Browser::Bounds> GetBrowserWindowBounds(
+@@ -72,12 +110,468 @@ std::unique_ptr<protocol::Browser::Bounds> GetBrowserWindowBounds(
        .Build();
  }
  
@@ -265,6 +266,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
 +
 +    auto collection =
 +        std::get_if<std::unique_ptr<DetachedTabCollection>>(&tab_or_collection);
++    CHECK(collection);
 +    if (std::holds_alternative<std::unique_ptr<tabs::TabGroupTabCollection>>(
 +            collection->get()->collection_)) {
 +      target_model->InsertDetachedTabGroupAt(std::move(*collection),
@@ -277,6 +279,12 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
 +                 : target_model->count(),
 +          pinned);
 +    }
++  }
++
++  const int active_index = target_model->GetIndexOfTab(active_tab);
++  if (target_model->ContainsIndex(active_index) &&
++      target_model->GetActiveTab() != active_tab) {
++    target_model->ActivateTabAt(active_index);
 +  }
 +}
 +
@@ -537,7 +545,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
    if (dispatcher)
      protocol::Browser::Dispatcher::wire(dispatcher, this);
  }
-@@ -120,6 +606,65 @@ Response BrowserHandler::GetWindowForTarget(
+@@ -120,6 +614,65 @@ Response BrowserHandler::GetWindowForTarget(
    return Response::Success();
  }
  
@@ -603,7 +611,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
  Response BrowserHandler::GetWindowBounds(
      int window_id,
      std::unique_ptr<protocol::Browser::Bounds>* out_bounds) {
-@@ -297,3 +842,808 @@ protocol::Response BrowserHandler::AddPrivacySandboxEnrollmentOverride(
+@@ -297,3 +850,810 @@ protocol::Response BrowserHandler::AddPrivacySandboxEnrollmentOverride(
        net::SchemefulSite(url_to_add));
    return Response::Success();
  }
@@ -751,6 +759,7 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
 +  BrowserWindowInterface* replacement_bwi =
 +      GetBrowserWindowInterface(replacement_browser->session_id().id());
 +  if (!replacement_bwi) {
++    replacement_browser->window()->Close();
 +    return Response::ServerError("Failed to create replacement window");
 +  }
 +
@@ -843,7 +852,8 @@ index 30bd52d09c3fc..1515fd382c2b7 100644
 +    content::WebContents* active_wc = tab_strip->GetActiveWebContents();
 +    if (active_wc) {
 +      int index = tab_strip->GetIndexOfWebContents(active_wc);
-+      *out_tab = BuildTabInfo(active_wc, bwi, index, false);
++      const bool is_hidden = bwi->GetBrowserForMigrationOnly()->is_hidden();
++      *out_tab = BuildTabInfo(active_wc, bwi, index, is_hidden);
 +    }
 +  }
 +  return Response::Success();
