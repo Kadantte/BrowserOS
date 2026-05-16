@@ -229,7 +229,7 @@ index 30bd52d09c3fc..5ef348c475174 100644
 +                                    bool hidden,
 +                                    bool activate) {
 +  if (hidden) {
-+    window->Show();
++    window->ShowInactive();
 +    return;
 +  }
 +  if (activate) {
