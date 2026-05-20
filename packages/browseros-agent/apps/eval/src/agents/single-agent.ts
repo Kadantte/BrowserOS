@@ -9,8 +9,14 @@ import { CdpBackend } from '@browseros/server/browser/backends/cdp'
 import { registry } from '@browseros/server/tools/registry'
 import { CaptchaWaiter } from '../capture/captcha-waiter'
 import { DEFAULT_TIMEOUT_MS } from '../constants'
-import type { TaskMetadata } from '../types'
+import type { TaskMetadata, TokenUsage } from '../types'
+import { extractDatasetMetadata } from '../utils/dataset-metadata'
 import { resolveProviderConfig } from '../utils/resolve-provider-config'
+import {
+  addTokenUsageFromAiSdkStep,
+  emptyTokenUsage,
+  hasAnyTokenUsage,
+} from '../utils/token-usage'
 import { withEvalTimeout } from '../utils/with-eval-timeout'
 import type { AgentContext, AgentEvaluator, AgentResult } from './types'
 
@@ -74,6 +80,7 @@ export class SingleAgentEvaluator implements AgentEvaluator {
       : null
 
     let agent: AiSdkAgent | null = null
+    const tokenUsage: TokenUsage = emptyTokenUsage()
 
     try {
       agent = await AiSdkAgent.create({
@@ -125,7 +132,9 @@ export class SingleAgentEvaluator implements AgentEvaluator {
               }
             },
 
-            onStepFinish: async ({ toolCalls, toolResults, text }) => {
+            onStepFinish: async (step) => {
+              const { toolCalls, toolResults, text } = step
+              addTokenUsageFromAiSdkStep(tokenUsage, step)
               if (toolCalls) {
                 for (const tc of toolCalls) {
                   const inputEvent = {
@@ -173,6 +182,7 @@ export class SingleAgentEvaluator implements AgentEvaluator {
       )
 
       const endTime = Date.now()
+      const datasetMetadata = extractDatasetMetadata(task.metadata)
 
       const metadata: TaskMetadata = {
         query_id: task.query_id,
@@ -191,6 +201,8 @@ export class SingleAgentEvaluator implements AgentEvaluator {
           model: agentConfig.model,
         },
         grader_results: {},
+        ...(hasAnyTokenUsage(tokenUsage) ? { token_usage: tokenUsage } : {}),
+        ...(datasetMetadata ? { task_metadata: datasetMetadata } : {}),
       }
 
       await capture.trajectorySaver.saveMetadata(metadata)
