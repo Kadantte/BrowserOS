@@ -813,6 +813,21 @@
     max-height: 240px;
     overflow-y: auto;
   }
+  .criterion-list.collapsed { display: none; }
+  .criterion-toggle {
+    cursor: pointer;
+    user-select: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .criterion-toggle .chevron {
+    display: inline-block;
+    transition: transform 0.15s;
+    color: #6e7681;
+    font-size: 9px;
+  }
+  .criterion-toggle.open .chevron { transform: rotate(90deg); }
   .criterion-row {
     display: flex;
     align-items: flex-start;
@@ -1875,16 +1890,20 @@
       html += '</div>';
     }
 
-    // Per-criterion checklist (AGI SDK)
+    // Per-criterion checklist (AGI SDK) — collapsible, defaults to collapsed
     if (Array.isArray(task.perCriterion) && task.perCriterion.length > 0) {
       const passed = task.perCriterion.filter((c) => c.passed).length;
       const softened = task.perCriterion.filter((c) => c.softened).length;
+      const failed = task.perCriterion.length - passed;
       html += '<div class="db-section" style="flex-basis: 100%;">';
-      html += '<span class="db-label">Criteria';
+      html += '<span class="db-label criterion-toggle" id="criterion-toggle">';
+      html += '<span class="chevron">&#9656;</span>';
+      html += 'Criteria';
       html += ` <span style="font-weight:400;text-transform:none;letter-spacing:0;color:#8b949e;">${passed} / ${task.perCriterion.length} passed`;
+      if (failed > 0) html += ` · <span style="color:#f85149;">${failed} failed</span>`;
       if (softened > 0) html += ` · ${softened} soft`;
       html += '</span></span>';
-      html += '<div class="criterion-list">';
+      html += '<div class="criterion-list collapsed" id="criterion-list">';
       task.perCriterion.forEach((c) => {
         const cls = c.passed ? 'passed' : 'failed';
         const mark = c.passed ? '✓' : '✗';
@@ -1948,6 +1967,16 @@
           .then((res) => { if (!res.ok) throw new Error(`HTTP ${res.status}`); return res.json(); })
           .then((data) => { body.textContent = JSON.stringify(data, null, 2); })
           .catch((err) => { body.textContent = `Failed to load: ${err.message}`; });
+      });
+    }
+
+    // Wire up criterion checklist toggle
+    const critToggle = document.getElementById('criterion-toggle');
+    const critList = document.getElementById('criterion-list');
+    if (critToggle && critList) {
+      critToggle.addEventListener('click', () => {
+        const isOpen = critToggle.classList.toggle('open');
+        critList.classList.toggle('collapsed', !isOpen);
       });
     }
   }
