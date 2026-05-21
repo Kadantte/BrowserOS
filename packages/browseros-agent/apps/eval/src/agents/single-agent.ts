@@ -81,6 +81,12 @@ export class SingleAgentEvaluator implements AgentEvaluator {
 
     let agent: AiSdkAgent | null = null
     const tokenUsage: TokenUsage = emptyTokenUsage()
+    // Screenshots are taken in onToolCallFinish (per tool call). Track them by
+    // toolCallId so we can stamp the matching tool-output event in messages.jsonl
+    // with `screenshot: N` — this is what lets the viewer sync the agent stream
+    // to the currently displayed screenshot.
+    const screenshotByToolCallId = new Map<string, number>()
+    let currentToolCallId: string | null = null
 
     try {
       agent = await AiSdkAgent.create({
@@ -104,6 +110,7 @@ export class SingleAgentEvaluator implements AgentEvaluator {
             abortSignal: signal,
 
             experimental_onToolCallStart: ({ toolCall }) => {
+              currentToolCallId = toolCall.toolCallId
               const input = toolCall.input as
                 | Record<string, unknown>
                 | undefined
@@ -123,6 +130,9 @@ export class SingleAgentEvaluator implements AgentEvaluator {
                 const screenshotNum = await capture.screenshot.capture(
                   capture.getActivePageId(),
                 )
+                if (currentToolCallId) {
+                  screenshotByToolCallId.set(currentToolCallId, screenshotNum)
+                }
                 capture.emitEvent(task.query_id, {
                   type: 'screenshot-captured',
                   screenshot: screenshotNum,
@@ -155,8 +165,18 @@ export class SingleAgentEvaluator implements AgentEvaluator {
                     toolCallId: tr.toolCallId,
                     output: tr.output,
                   } as any
-                  await capture.messageLogger.logStreamEvent(outputEvent)
-                  capture.emitEvent(task.query_id, outputEvent)
+                  const screenshot = screenshotByToolCallId.get(tr.toolCallId)
+                  await capture.messageLogger.logStreamEvent(
+                    outputEvent,
+                    screenshot,
+                  )
+                  capture.emitEvent(task.query_id, {
+                    ...outputEvent,
+                    ...(screenshot !== undefined && { screenshot }),
+                  })
+                  if (screenshot !== undefined) {
+                    screenshotByToolCallId.delete(tr.toolCallId)
+                  }
                 }
               }
 
