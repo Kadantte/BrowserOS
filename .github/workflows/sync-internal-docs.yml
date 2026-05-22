@@ -82,11 +82,10 @@ jobs:
             --head "$BRANCH" \
             --title "chore: sync internal-docs submodule" \
             --body "Automated bump of the \`.internal-docs\` submodule pointer. Auto-merging.")
+          CLEANUP_BRANCH=0
+          trap - ERR
 
           if ! gh pr merge "$PR_URL" --squash --delete-branch; then
             echo "Immediate merge failed; enabling auto-merge for pending merge requirements."
             gh pr merge "$PR_URL" --auto --squash --delete-branch
           fi
-
-          CLEANUP_BRANCH=0
-          trap - ERR
