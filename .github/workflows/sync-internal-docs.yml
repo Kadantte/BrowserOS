@@ -86,6 +86,18 @@ jobs:
           trap - ERR
 
           if ! gh pr merge "$PR_URL" --squash --delete-branch; then
-            echo "Immediate merge failed; enabling auto-merge for pending merge requirements."
+            PR_STATE=$(gh pr view "$PR_URL" --json mergeStateStatus,statusCheckRollup)
+            MERGE_STATE=$(jq -r '.mergeStateStatus' <<<"$PR_STATE")
+            FAILED_CHECKS=$(jq '[.statusCheckRollup[] | select(
+              (.__typename == "CheckRun" and ((.conclusion // "") | test("^(FAILURE|CANCELLED|TIMED_OUT|ACTION_REQUIRED)$"))) or
+              (.__typename == "StatusContext" and ((.state // "") | test("^(FAILURE|ERROR)$")))
+            )] | length' <<<"$PR_STATE")
+
+            if [ "$MERGE_STATE" = "DIRTY" ] || [ "$FAILED_CHECKS" -gt 0 ]; then
+              echo "Immediate merge failed and PR is not auto-mergeable (mergeStateStatus=$MERGE_STATE, failedChecks=$FAILED_CHECKS). Leaving PR open."
+              exit 1
+            fi
+
+            echo "Immediate merge failed with mergeStateStatus=$MERGE_STATE and no failed checks; enabling auto-merge."
             gh pr merge "$PR_URL" --auto --squash --delete-branch
           fi
