@@ -605,7 +605,7 @@ function getUserContext(
 }
 
 // -----------------------------------------------------------------------------
-// section: security-reminder
+// section: soul
 // -----------------------------------------------------------------------------
 
 function getSoul(
@@ -617,6 +617,10 @@ function getSoul(
 
   return `<soul>\n${soulContent}\n</soul>`
 }
+
+// -----------------------------------------------------------------------------
+// section: security-reminder
+// -----------------------------------------------------------------------------
 
 function getSecurityReminder(): string {
   return `<FINAL_REMINDER>
