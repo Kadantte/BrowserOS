@@ -691,6 +691,17 @@ describe('retired memory and identity', () => {
     expect(prompt).not.toContain('soul_read')
     expect(prompt).not.toContain('soul_update')
   })
+
+  it('appends SOUL.md content in chat mode without exposing soul tools', () => {
+    const prompt = buildChatMode({
+      soulContent: '# SOUL.md\nKeep replies short.',
+    })
+
+    expect(prompt).toContain('<soul>')
+    expect(prompt).toContain('# SOUL.md\nKeep replies short.')
+    expect(prompt).not.toContain('soul_read')
+    expect(prompt).not.toContain('soul_update')
+  })
 })
 
 // ---------------------------------------------------------------------------
