@@ -23,8 +23,6 @@ import {
 import type { Browser } from '../browser/browser'
 import { logger } from '../lib/logger'
 import { metrics } from '../lib/metrics'
-import { buildSkillsCatalog } from '../skills/catalog'
-import { loadSkills } from '../skills/loader'
 import { buildFilesystemToolSet } from '../tools/filesystem/build-toolset'
 import type { ToolContext } from '../tools/framework'
 import type { ToolRegistry } from '../tools/tool-registry'
@@ -207,10 +205,6 @@ export class AiSdkAgent {
     ) {
       excludeSections.push('nudges')
     }
-    // Load skills catalog for prompt injection
-    const skills = await loadSkills()
-    const skillsCatalog =
-      skills.length > 0 ? buildSkillsCatalog(skills) : undefined
     const soulContent = await readSoulPrompt()
 
     const instructions = buildSystemPrompt({
@@ -223,7 +217,6 @@ export class AiSdkAgent {
       chatMode: config.resolvedConfig.chatMode,
       connectedApps: config.browserContext?.enabledMcpServers,
       declinedApps: config.resolvedConfig.declinedApps,
-      skillsCatalog,
       origin: config.resolvedConfig.origin,
     })
 

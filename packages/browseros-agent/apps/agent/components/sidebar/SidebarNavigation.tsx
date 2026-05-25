@@ -5,7 +5,6 @@ import {
   PlugZap,
   Settings,
   Shield,
-  Wand2,
 } from 'lucide-react'
 import type { FC } from 'react'
 import { NavLink, useLocation } from 'react-router'
@@ -44,12 +43,6 @@ const primaryNavItems: NavItem[] = [
     to: '/agents',
     icon: Cpu,
     feature: Feature.ALPHA_FEATURES_SUPPORT,
-  },
-  {
-    name: 'Skills',
-    to: '/home/skills',
-    icon: Wand2,
-    feature: Feature.SKILLS_SUPPORT,
   },
   {
     name: 'Governance',

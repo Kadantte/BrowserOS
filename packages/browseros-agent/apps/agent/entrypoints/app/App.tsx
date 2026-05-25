@@ -31,7 +31,6 @@ import { MCPSettingsPage } from './mcp-settings/MCPSettingsPage'
 import { ProfilePage } from './profile/ProfilePage'
 import { ScheduledTasksPage } from './scheduled-tasks/ScheduledTasksPage'
 import { SearchProviderPage } from './search-provider/SearchProviderPage'
-import { SkillsPage } from './skills/SkillsPage'
 import { ToolApprovalsPage } from './tool-approvals/ToolApprovalsPage'
 import { UsagePage } from './usage/UsagePage'
 
@@ -54,7 +53,6 @@ const OptionsRedirect: FC = () => {
     mcp: '/settings/mcp',
     customization: '/settings/customization',
     search: '/settings/search',
-    skills: '/home/skills',
     'jtbd-agent': '/settings/survey',
     scheduled: '/scheduled',
   }
@@ -101,7 +99,6 @@ export const App: FC = () => {
             ) : (
               <Route index element={<NewTab />} />
             )}
-            <Route path="skills" element={<SkillsPage />} />
           </Route>
 
           {/* Primary nav routes */}
@@ -172,10 +169,6 @@ export const App: FC = () => {
         <Route
           path="/settings/connect-mcp"
           element={<Navigate to="/connect-apps" replace />}
-        />
-        <Route
-          path="/settings/skills"
-          element={<Navigate to="/home/skills" replace />}
         />
         <Route
           path="/audit"

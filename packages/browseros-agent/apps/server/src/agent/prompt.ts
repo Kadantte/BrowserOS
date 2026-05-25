@@ -465,15 +465,8 @@ You can read, write, search, and execute files in this directory:
 - \`filesystem_bash\` → execute shell commands
 
 Use the filesystem to save extracted data, run scripts, or process files.
-Skills may reference scripts in their directory — use absolute paths.
 </workspace>`
 }
-
-// -----------------------------------------------------------------------------
-// section: skills
-// -----------------------------------------------------------------------------
-
-// Skills are injected via options.skillsCatalog from the catalog builder.
 
 // -----------------------------------------------------------------------------
 // section: nudges
@@ -656,8 +649,6 @@ const promptSections: Record<string, PromptSectionFn> = {
   'external-integrations': getExternalIntegrations,
   'error-recovery': getErrorRecovery,
   workspace: getWorkspace,
-  skills: (_exclude: Set<string>, options?: BuildSystemPromptOptions) =>
-    options?.skillsCatalog || '',
   nudges: getNudges,
   style: getStyle,
   'user-context': getUserContext,
@@ -677,7 +668,6 @@ export interface BuildSystemPromptOptions {
   connectedApps?: string[]
   /** Apps the user previously declined to connect (chose "do it manually"). */
   declinedApps?: string[]
-  skillsCatalog?: string
   /** Where the chat session originates from — determines navigation behavior. */
   origin?: 'sidepanel' | 'newtab'
 }

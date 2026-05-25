@@ -36,7 +36,6 @@ import { createOpenClawRoutes } from './routes/openclaw'
 import { createProviderRoutes } from './routes/provider'
 import { createRefinePromptRoutes } from './routes/refine-prompt'
 import { createShutdownRoute } from './routes/shutdown'
-import { createSkillsRoutes } from './routes/skills'
 import { createStatusRoute } from './routes/status'
 import { createTerminalRoutes } from './routes/terminal'
 import { GlobalAclPolicyService } from './services/acl/global-acl-policy'
@@ -192,7 +191,6 @@ export async function createHttpServer(config: HttpServerConfig) {
       }),
     )
     .route('/status', createStatusRoute({ browser }))
-    .route('/skills', createSkillsRoutes())
     .route('/monitoring', monitoringRoutes)
     .route('/acl-rules', aclRoutes)
     .route('/test-provider', createProviderRoutes({ browserosId }))
