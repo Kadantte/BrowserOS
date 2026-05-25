@@ -47,6 +47,7 @@ import {
   getHermesHostStateDir,
 } from '../hermes/hermes-paths'
 import { ContainerAgentRuntime } from './container-agent-runtime'
+import { RuntimeNotReadyError } from './errors'
 import { getAgentRuntimeRegistry } from './registry'
 import type { ExecSpec } from './types'
 
@@ -351,6 +352,26 @@ export function startHermesRuntimeBestEffort(
   void runtime
     .executeAction({ type: 'start' })
     .catch((err) => onError('start', err))
+  return runtime
+}
+
+/**
+ * Configure and start Hermes on demand for the first Hermes agent.
+ * Startup intentionally does not call this, because `start` can create
+ * the shared BrowserOS VM; agent creation is the user intent boundary.
+ */
+export async function ensureHermesRuntimeReady(
+  options: ConfigureHermesRuntimeOptions = {},
+): Promise<HermesContainerRuntime> {
+  const runtime = getHermesRuntime() ?? configureHermesRuntime(options)
+  if (!runtime) {
+    throw new RuntimeNotReadyError(
+      'hermes',
+      'unavailable',
+      'Hermes container runtime is not available on this platform.',
+    )
+  }
+  await runtime.executeAction({ type: 'start' })
   return runtime
 }
 

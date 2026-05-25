@@ -26,6 +26,7 @@ export { ActionNotSupportedError, RuntimeNotReadyError } from './errors'
 export {
   type ConfigureHermesRuntimeOptions,
   configureHermesRuntime,
+  ensureHermesRuntimeReady,
   getHermesRuntime,
   HermesContainerRuntime,
   type HermesContainerRuntimeConfig,

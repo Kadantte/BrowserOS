@@ -15,6 +15,7 @@ import {
 } from '../../../../../../packages/shared/src/constants/hermes'
 import {
   configureHermesRuntime,
+  ensureHermesRuntimeReady,
   getAgentRuntimeRegistry,
   getHermesRuntime,
   HermesContainerRuntime,
@@ -322,6 +323,34 @@ describe('HermesContainerRuntime', () => {
         { phase: 'install', message: 'install failed' },
         { phase: 'start', message: 'start failed' },
       ])
+    })
+  })
+
+  describe('ensureHermesRuntimeReady', () => {
+    it('starts the registered Hermes runtime on demand', async () => {
+      const lockDir = mkTempDir()
+      const { deps } = makeDeps({ lockDir })
+      const runtime = new HermesContainerRuntime(deps, {
+        hermesHarnessHostDir: '/host/browseros/vm/hermes/harness',
+      })
+      getAgentRuntimeRegistry().register(runtime)
+
+      const result = await ensureHermesRuntimeReady()
+
+      expect(result).toBe(runtime)
+      expect(runtime.getState()).toBe('running')
+    })
+
+    it('throws a runtime-not-ready error when Hermes is unavailable', async () => {
+      const originalPlatform = process.platform
+      Object.defineProperty(process, 'platform', { value: 'linux' })
+      try {
+        await expect(ensureHermesRuntimeReady()).rejects.toThrow(
+          /Runtime "hermes" is not ready/,
+        )
+      } finally {
+        Object.defineProperty(process, 'platform', { value: originalPlatform })
+      }
     })
   })
 })
