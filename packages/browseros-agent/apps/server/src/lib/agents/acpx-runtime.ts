@@ -714,7 +714,7 @@ function resolveBrowserosHostAcpAdapterCommand(input: {
       input.adapter === 'claude' ? CLAUDE_ACP_PACKAGE : CODEX_ACP_PACKAGE
     const bin = input.adapter === 'claude' ? CLAUDE_ACP_BIN : CODEX_ACP_BIN
     return {
-      command: `${shellQuote(bun)} x --bun --silent --package ${pkg} ${bin}`,
+      command: `${shellQuote(bun)} x --bun --silent --package ${shellQuote(pkg)} ${shellQuote(bin)}`,
       addMacosAdapterEnv: true,
     }
   }
@@ -737,8 +737,8 @@ function withMacosAcpAdapterEnv(
     ...env,
     BUN_INSTALL_CACHE_DIR: join(browserosDir, 'cache', 'bun-install'),
     PATH: buildMacosAcpAdapterPath({
-      basePath: process.env.PATH,
-      home: process.env.HOME,
+      basePath: env.PATH ?? process.env.PATH,
+      home: env.HOME ?? process.env.HOME,
     }),
   }
 }

@@ -26,10 +26,11 @@ from ..modules.storage.r2 import (
 LIMA_RELEASE_BASE = "https://github.com/lima-vm/lima/releases/download"
 LIMA_R2_PREFIX = "artifacts/vendor/third_party/lima"
 LIMA_MANIFEST_KEY = f"{LIMA_R2_PREFIX}/manifest.json"
-LIMA_HTTP_TIMEOUT_S = 60
+HTTP_TIMEOUT_S = 60
 BUN_RELEASE_BASE = "https://github.com/oven-sh/bun/releases/download"
 BUN_R2_PREFIX = "artifacts/vendor/third_party/bun"
 BUN_MANIFEST_KEY = f"{BUN_R2_PREFIX}/manifest.json"
+BUN_HTTP_TIMEOUT_S = 120
 
 
 @dataclass(frozen=True)
@@ -215,6 +216,8 @@ def _normalize_version_tag(version: str) -> str:
 def _normalize_bun_version_tag(version: str) -> str:
     if version.startswith("bun-v"):
         return version
+    if version.startswith("bun-"):
+        return f"bun-v{version[len('bun-') :]}"
     return f"bun-{_normalize_version_tag(version)}"
 
 
@@ -336,7 +339,7 @@ def _process_bun_arch(
     zip_path = tmp_dir / zip_name
     url = f"{BUN_RELEASE_BASE}/{tag}/{zip_name}"
     log_info(f"Downloading {url}")
-    _download(url, zip_path)
+    _download(url, zip_path, timeout=BUN_HTTP_TIMEOUT_S)
 
     actual_sha = _sha256_file(zip_path)
     if actual_sha != expected_sha:
@@ -480,7 +483,7 @@ def _rollback(client: Any, bucket: str, keys: List[str]) -> None:
 
 
 def _download(url: str, dest: Path, *, timeout: Optional[int] = None) -> None:
-    response = requests.get(url, stream=True, timeout=timeout or LIMA_HTTP_TIMEOUT_S)
+    response = requests.get(url, stream=True, timeout=timeout or HTTP_TIMEOUT_S)
     response.raise_for_status()
     dest.parent.mkdir(parents=True, exist_ok=True)
     with open(dest, "wb") as out:

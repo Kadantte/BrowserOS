@@ -110,6 +110,12 @@ class NormalizeBunVersionTagTest(unittest.TestCase):
     def test_accepts_v_prefixed_semver(self) -> None:
         self.assertEqual(storage._normalize_bun_version_tag("v1.2.3"), "bun-v1.2.3")
 
+    def test_accepts_bun_prefixed_semver_without_v(self) -> None:
+        self.assertEqual(
+            storage._normalize_bun_version_tag("bun-1.2.3"),
+            "bun-v1.2.3",
+        )
+
 
 class ExtractLimaFileTest(unittest.TestCase):
     def test_extracts_limactl_binary(self) -> None:
@@ -556,6 +562,29 @@ class ProcessBunArchTest(unittest.TestCase):
                 )
             ],
         )
+
+    def test_uses_bun_download_timeout(self) -> None:
+        download_kwargs: List[Dict[str, Any]] = []
+
+        def fake_download(_url: str, dest: Path, **kwargs: Any) -> None:
+            download_kwargs.append(kwargs)
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(self.zip_bytes)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            with mock.patch.object(storage, "_download", side_effect=fake_download):
+                storage._process_bun_arch(
+                    tag="bun-v1.2.3",
+                    arch=storage.BunArch(internal="arm64", upstream="darwin-aarch64"),
+                    tmp_dir=tmp_path,
+                    checksums={"bun-darwin-aarch64.zip": self.expected_zip_sha},
+                    client=None,
+                    env=mock.Mock(r2_bucket="browseros"),
+                    dry_run=True,
+                )
+
+        self.assertEqual(download_kwargs, [{"timeout": storage.BUN_HTTP_TIMEOUT_S}])
 
     def test_sha_mismatch_aborts_before_upload(self) -> None:
         uploads: List[Tuple[str, str]] = []

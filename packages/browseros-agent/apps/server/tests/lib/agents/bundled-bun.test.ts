@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import {
@@ -28,10 +28,22 @@ describe('bundled Bun helpers', () => {
     const bunPath = join(resourcesDir, 'bin', 'third_party', 'bun')
     await mkdir(dirname(bunPath), { recursive: true })
     await writeFile(bunPath, '#!/bin/sh\n')
+    await chmod(bunPath, 0o755)
 
     expect(resolveBundledBun({ resourcesDir, platform: 'darwin' })).toBe(
       bunPath,
     )
+  })
+
+  it('ignores non-executable bundled Bun files', async () => {
+    const resourcesDir = await mkdtemp(join(tmpdir(), 'browseros-bun-'))
+    tempDirs.push(resourcesDir)
+    const bunPath = join(resourcesDir, 'bin', 'third_party', 'bun')
+    await mkdir(dirname(bunPath), { recursive: true })
+    await writeFile(bunPath, '#!/bin/sh\n')
+    await chmod(bunPath, 0o644)
+
+    expect(resolveBundledBun({ resourcesDir, platform: 'darwin' })).toBeNull()
   })
 
   it('ignores bundled Bun on non-macOS platforms', async () => {
