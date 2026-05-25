@@ -32,17 +32,11 @@ export const ToolBatch: FC<ToolBatchProps> = ({
   isLastMessage,
   isStreaming,
 }) => {
-  const hasPendingApproval = tools.some((t) => t.state === 'approval-requested')
-  const shouldBeOpen =
-    (isLastMessage && isLastBatch && isStreaming) || hasPendingApproval
+  const shouldBeOpen = isLastMessage && isLastBatch && isStreaming
   const [isOpen, setIsOpen] = useState(shouldBeOpen)
   const [hasUserInteracted, setHasUserInteracted] = useState(false)
 
   useEffect(() => {
-    if (hasPendingApproval) {
-      setIsOpen(true)
-      return
-    }
     if (isLastMessage && !hasUserInteracted) {
       if (isLastBatch) {
         setIsOpen(isStreaming)
@@ -50,18 +44,10 @@ export const ToolBatch: FC<ToolBatchProps> = ({
         setIsOpen(false)
       }
     }
-  }, [
-    isStreaming,
-    isLastMessage,
-    isLastBatch,
-    hasUserInteracted,
-    hasPendingApproval,
-  ])
+  }, [isStreaming, isLastMessage, isLastBatch, hasUserInteracted])
 
   const completedCount = tools.filter((t) => isToolCompleted(t.state)).length
-  const triggerTitle = hasPendingApproval
-    ? 'Waiting for approval...'
-    : `${completedCount}/${tools.length} actions completed`
+  const triggerTitle = `${completedCount}/${tools.length} actions completed`
 
   const onManualToggle = (newState: boolean) => {
     setHasUserInteracted(true)
