@@ -9,7 +9,7 @@ on:
       bump:
         description: Version bump level
         type: choice
-        default: offset+patch
+        default: offset+build
         options:
           - offset-only
           - offset+build
@@ -92,7 +92,7 @@ jobs:
             upload_to_r2="true"
           else
             target_ref="$DISPATCH_REF"
-            bump_mode="${DISPATCH_BUMP:-offset+patch}"
+            bump_mode="${DISPATCH_BUMP:-offset+build}"
             commit_version="${DISPATCH_COMMIT_VERSION:-false}"
             upload_to_r2="${DISPATCH_UPLOAD_TO_R2:-true}"
           fi
