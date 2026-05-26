@@ -14,7 +14,9 @@ concurrency:
 
 jobs:
   release:
-    if: github.ref == 'refs/heads/main'
+    if: |
+      github.ref == 'refs/heads/main' &&
+      contains(fromJSON('["shadowfax92","shivammittal274","DaniAkash","felarof99"]'), github.actor)
     runs-on: ubuntu-latest
     environment: release-core
     permissions:

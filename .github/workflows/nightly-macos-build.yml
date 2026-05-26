@@ -33,6 +33,9 @@ concurrency:
 
 jobs:
   build:
+    if: |
+      github.event_name == 'schedule' ||
+      contains(fromJSON('["shadowfax92","shivammittal274","DaniAkash","felarof99"]'), github.actor)
     runs-on: [self-hosted, macOS, ARM64, browseros-builder]
     timeout-minutes: 600
     env:
