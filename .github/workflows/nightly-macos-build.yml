@@ -22,7 +22,7 @@ on:
       upload_to_r2:
         description: Publish build to R2/CDN after packaging
         type: boolean
-        default: false
+        default: true
 
 permissions:
   contents: read
@@ -83,7 +83,7 @@ jobs:
             target_ref="$DISPATCH_REF"
             bump_mode="${DISPATCH_BUMP:-offset-only}"
             commit_version="${DISPATCH_COMMIT_VERSION:-false}"
-            upload_to_r2="${DISPATCH_UPLOAD_TO_R2:-false}"
+            upload_to_r2="${DISPATCH_UPLOAD_TO_R2:-true}"
           fi
 
           {

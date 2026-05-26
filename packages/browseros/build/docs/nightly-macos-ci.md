@@ -13,13 +13,14 @@ Nightly runs execute this command from the persistent build repo clone:
 uv run browseros build --config build/config/release.macos.arm64.yaml --chromium-src "$CHROMIUM_SRC"
 ```
 
-Manual runs default to artifact-only builds:
+Manual runs default to the same publishing config:
 
 ```bash
-uv run browseros build --config build/config/release.macos.arm64.noupload.yaml --chromium-src "$CHROMIUM_SRC"
+uv run browseros build --config build/config/release.macos.arm64.yaml --chromium-src "$CHROMIUM_SRC"
 ```
 
-Set `upload_to_r2=true` in the manual dispatch form to use the publishing config.
+Set `upload_to_r2=false` in the manual dispatch form to run an artifact-only
+build without publishing to R2.
 
 ## One-Time Runner Setup
 
@@ -89,7 +90,7 @@ Add these in GitHub repo settings under Actions variables:
 The workflow calls `build/scripts/bump_version.py`.
 
 - Nightly schedule: `offset+build`, commit and push enabled, R2 upload enabled
-- Manual dispatch default: `offset-only`, commit disabled, R2 upload disabled
+- Manual dispatch default: `offset-only`, commit disabled, R2 upload enabled
 - Manual hotfix option: choose `offset+patch`
 - Manual dry run option: choose `none`
 
@@ -114,7 +115,7 @@ branch in GitHub's native branch picker, then set inputs:
 
 - `bump`: `offset-only`, `offset+build`, `offset+patch`, or `none`
 - `commit_version`: commit and push the bumped version files
-- `upload_to_r2`: publish to R2/CDN after packaging
+- `upload_to_r2`: publish to R2/CDN after packaging, enabled by default
 
 The DMG is always uploaded as a run artifact when packaging succeeds.
 
@@ -146,8 +147,8 @@ confirm `MACOS_KEYCHAIN_PASSWORD` is present in `packages/browseros/.env`.
 `uv`, `gclient`, `gn`, or `autoninja` not found: update `~/actions-runner/.path`
 and restart the runner service.
 
-No R2 upload on a manual run: manual runs default to artifact-only builds. Re-run
-with `upload_to_r2=true`.
+Artifact-only manual run: set `upload_to_r2=false` to package the DMG without
+publishing it to R2.
 
 No version commit: check `commit_version`, the selected bump mode, and the
 persistent clone's push credentials.
