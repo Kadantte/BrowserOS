@@ -90,8 +90,8 @@ Add these in GitHub repo settings under Actions variables:
 The workflow calls `build/scripts/bump_version.py`.
 
 - Nightly schedule: `offset+build`, commit and push enabled, R2 upload enabled
-- Manual dispatch default: `offset-only`, commit disabled, R2 upload enabled
-- Manual hotfix option: choose `offset+patch`
+- Manual dispatch default: `offset+patch`, commit disabled, R2 upload enabled
+- Manual nightly-style option: choose `offset+build`
 - Manual dry run option: choose `none`
 
 `BROWSEROS_BUILD_OFFSET` is the internal Chromium-build monotonic counter.
