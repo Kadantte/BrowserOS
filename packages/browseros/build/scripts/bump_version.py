@@ -55,14 +55,19 @@ def bump_version(package_root: Path, mode: str) -> str:
     next_version_text = version_text
     if mode == "offset+build":
         next_version_text = _bump_version_key(version_text, "BROWSEROS_BUILD")
+        next_version_text = _replace_int_setting(
+            next_version_text,
+            "BROWSEROS_PATCH",
+            0,
+        )
     elif mode == "offset+patch":
         next_version_text = _bump_version_key(version_text, "BROWSEROS_PATCH")
 
     version = _semantic_version(next_version_text)
-    if offset is not None:
-        offset_file.write_text(f"{offset + 1}\n")
     if next_version_text != version_text:
         version_file.write_text(next_version_text)
+    if offset is not None:
+        offset_file.write_text(f"{offset + 1}\n")
     return version
 
 

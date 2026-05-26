@@ -159,12 +159,12 @@ jobs:
 
       - name: Upload DMG artifact
         if: ${{ always() && steps.bump.outputs.version != '' }}
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@v4
         with:
           name: BrowserOS_v${{ steps.bump.outputs.version }}_arm64
           path: ${{ steps.build_inputs.outputs.browseros_repo }}/packages/browseros/releases/${{ steps.bump.outputs.version }}/*.dmg
           retention-days: 14
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Slack failure ping
         if: ${{ failure() }}

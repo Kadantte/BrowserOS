@@ -65,8 +65,8 @@ Keep the runner current enough to run the action majors used by the workflow.
 
 The Mac Mini must already have:
 
-- Build repo clone, for example `/Users/shadowfax/code/browseros-release`
-- Chromium checkout, for example `/Users/shadowfax/code/chromium-release/src`
+- Build repo clone, for example `/Users/<user>/code/browseros-release`
+- Chromium checkout, for example `/Users/<user>/code/chromium-release/src`
 - `uv`, depot_tools, Xcode Command Line Tools, and signing/notarization tooling
 - `packages/browseros/.env` with signing, notarization, R2, and Slack values
 - `MACOS_KEYCHAIN_PASSWORD` in `.env` so the build can unlock the keychain
@@ -80,8 +80,8 @@ Add these in GitHub repo settings under Actions variables:
 
 | Variable | Example | Notes |
 | --- | --- | --- |
-| `BROWSEROS_REPO_PATH` | `/Users/shadowfax/code/browseros-release` | Persistent build repo clone. Use an absolute path. |
-| `BROWSEROS_CHROMIUM_SRC` | `/Users/shadowfax/code/chromium-release/src` | Chromium `src` checkout. Use an absolute path. |
+| `BROWSEROS_REPO_PATH` | `/Users/<user>/code/browseros-release` | Persistent build repo clone. Use an absolute path. |
+| `BROWSEROS_CHROMIUM_SRC` | `/Users/<user>/code/chromium-release/src` | Chromium `src` checkout. Use an absolute path. |
 | `BROWSEROS_NIGHTLY_REF` | `main` | Optional; falls back to the repo default branch. |
 
 ## Version Policy

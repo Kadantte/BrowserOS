@@ -52,6 +52,26 @@ class BumpVersionTest(unittest.TestCase):
         self.assertIn("BROWSEROS_BUILD=1\n", self.version_file.read_text())
         self.assertIn("BROWSEROS_PATCH=0\n", self.version_file.read_text())
 
+    def test_offset_and_build_resets_stale_patch(self) -> None:
+        self.version_file.write_text(
+            "\n".join(
+                [
+                    "BROWSEROS_MAJOR=0",
+                    "BROWSEROS_MINOR=46",
+                    "BROWSEROS_BUILD=2",
+                    "BROWSEROS_PATCH=1",
+                    "",
+                ]
+            )
+        )
+
+        version = self.module.bump_version(self.root, "offset+build")
+
+        self.assertEqual(version, "0.46.3")
+        self.assertEqual(self.offset_file.read_text(), "147\n")
+        self.assertIn("BROWSEROS_BUILD=3\n", self.version_file.read_text())
+        self.assertIn("BROWSEROS_PATCH=0\n", self.version_file.read_text())
+
     def test_offset_only_preserves_semantic_version(self) -> None:
         version = self.module.bump_version(self.root, "offset-only")
 
@@ -90,6 +110,17 @@ class BumpVersionTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "Missing BROWSEROS_BUILD"):
             self.module.bump_version(self.root, "offset+build")
+
+        self.assertEqual(self.offset_file.read_text(), "146\n")
+
+    def test_version_write_failure_does_not_write_offset(self) -> None:
+        self.version_file.chmod(0o400)
+
+        try:
+            with self.assertRaises(OSError):
+                self.module.bump_version(self.root, "offset+build")
+        finally:
+            self.version_file.chmod(0o600)
 
         self.assertEqual(self.offset_file.read_text(), "146\n")
 
