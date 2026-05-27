@@ -129,7 +129,6 @@ jobs:
             git checkout -f "$TARGET_REF"
             git reset --hard "$TARGET_REF"
           fi
-          git clean -fd
 
       - name: Bump version
         id: bump
