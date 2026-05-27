@@ -171,11 +171,11 @@ function VoiceButton({
 
 /**
  * Calm-composer footer shared by both `/home` (`variant="home"`) and
- * the chat surface at `/agents/:agentId` (`variant="conversation"`).
- * Pill-shaped chips on an internal dashed divider, with a right-
- * aligned keyboard hint. The agent selector is conditional via
- * `showAgentSelector`: home shows it as a filled pill on the left,
- * the chat surface hides it (the agent is locked once you're in the
+ * the chat surface at `/home/agents/:agentId` (`variant="conversation"`).
+ * Pill-shaped chips on an internal dashed divider, with a right-aligned
+ * keyboard hint. The merged provider/agent picker is conditional via
+ * `showAgentSelector`: home shows it as a filled pill on the left; the
+ * chat surface hides it (the target is locked once you're in the
  * conversation).
  */
 function CalmContextControls({
