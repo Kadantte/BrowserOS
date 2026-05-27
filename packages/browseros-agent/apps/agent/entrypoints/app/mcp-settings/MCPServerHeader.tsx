@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button'
 import { MCP_SERVER_RESTARTED_EVENT } from '@/lib/constants/analyticsEvents'
 import { sendServerMessage } from '@/lib/messaging/server/serverMessages'
 import { track } from '@/lib/metrics/track'
+import { ServerPortEditor } from './ServerPortEditor'
 
 interface MCPServerHeaderProps {
   serverUrl: string | null
@@ -161,6 +162,7 @@ export const MCPServerHeader: FC<MCPServerHeaderProps> = ({
                   <RefreshCw className="h-4 w-4" />
                 )}
               </Button>
+              <ServerPortEditor onPortChanged={onServerRestart} />
             </div>
           </div>
         </div>
