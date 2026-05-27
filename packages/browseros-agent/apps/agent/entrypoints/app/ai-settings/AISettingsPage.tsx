@@ -1,10 +1,12 @@
 import type { FC, ReactNode } from 'react'
 import { useSearchParams } from 'react-router'
 import { AdapterIcon, adapterLabel } from '@/entrypoints/app/agents/AdapterIcon'
+import type { HarnessAgentAdapter } from '@/entrypoints/app/agents/agent-harness-types'
 import { useAgentAdapters } from '@/entrypoints/app/agents/useAgents'
 import { visibleAdapters } from '@/lib/chat/adapter-visibility'
 import { BrowserOSIcon } from '@/lib/llm-providers/providerIcons'
 import { cn } from '@/lib/utils'
+import { AdapterAgentsPane } from './AdapterAgentsPane'
 import {
   type AiSettingsSection,
   BROWSEROS_SECTION,
@@ -81,7 +83,11 @@ export const AISettingsPage: FC = () => {
       </nav>
 
       <div className="min-w-0 flex-1">
-        {activeSection === BROWSEROS_SECTION ? <BrowserOsAiPane /> : null}
+        {activeSection === BROWSEROS_SECTION ? (
+          <BrowserOsAiPane />
+        ) : (
+          <AdapterAgentsPane adapterId={activeSection as HarnessAgentAdapter} />
+        )}
       </div>
     </div>
   )
