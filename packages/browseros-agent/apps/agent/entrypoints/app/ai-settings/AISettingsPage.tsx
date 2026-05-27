@@ -21,10 +21,9 @@ interface SectionItem {
 }
 
 /**
- * AI & Agents settings shell. A `?section=`-driven master-detail: BrowserOS AI
- * (the LLM-providers pane) plus one entry per visible harness adapter
- * (Claude/Codex; Hermes filtered out). The detail pane swaps on the active
- * section.
+ * AI & Agents settings shell. A `?section=`-driven tabbed page: a BrowserOS AI
+ * tab (the LLM-providers pane) plus one tab per visible harness adapter
+ * (Claude/Codex; Hermes filtered out). The pane below swaps on the active tab.
  */
 export const AISettingsPage: FC = () => {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -57,8 +56,8 @@ export const AISettingsPage: FC = () => {
   }
 
   return (
-    <div className="flex flex-col gap-6 md:flex-row">
-      <nav className="-mx-1 flex shrink-0 gap-1 overflow-x-auto px-1 md:mx-0 md:w-52 md:flex-col md:overflow-visible md:px-0">
+    <div className="flex flex-col gap-6">
+      <nav className="flex items-center gap-1 overflow-x-auto border-border/60 border-b">
         {items.map((item) => {
           const isActive = item.id === activeSection
           return (
@@ -67,22 +66,22 @@ export const AISettingsPage: FC = () => {
               type="button"
               onClick={() => selectSection(item.id)}
               className={cn(
-                'flex h-9 shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 font-medium text-sm transition-colors hover:bg-accent hover:text-accent-foreground',
+                '-mb-px flex h-9 shrink-0 items-center gap-2 whitespace-nowrap border-b-2 px-3 font-medium text-sm transition-colors',
                 isActive
-                  ? 'bg-accent text-accent-foreground'
-                  : 'text-muted-foreground',
+                  ? 'border-[var(--accent-orange)] text-foreground'
+                  : 'border-transparent text-muted-foreground hover:text-foreground',
               )}
             >
               <span className="flex size-4 shrink-0 items-center justify-center">
                 {item.icon}
               </span>
-              <span className="truncate">{item.label}</span>
+              <span>{item.label}</span>
             </button>
           )
         })}
       </nav>
 
-      <div className="min-w-0 flex-1">
+      <div className="min-w-0">
         {activeSection === BROWSEROS_SECTION ? (
           <BrowserOsAiPane />
         ) : (
