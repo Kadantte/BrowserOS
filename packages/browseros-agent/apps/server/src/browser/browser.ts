@@ -166,6 +166,33 @@ export class Browser {
     return sessionId
   }
 
+  async getActivePageForWindow(windowId: number): Promise<{
+    targetId: string
+    session: ProtocolApi
+    url: string
+  }> {
+    const result = await this.cdp.Browser.getActiveTab({ windowId })
+    const tab = result.tab
+    if (!tab) {
+      throw new Error(`No active tab in window ${windowId}`)
+    }
+    let sessionId = this.sessions.get(tab.targetId)
+    if (!sessionId) {
+      const attached = await this.cdp.Target.attachToTarget({
+        targetId: tab.targetId,
+        flatten: true,
+      })
+      sessionId = attached.sessionId
+      await this.cdp.session(sessionId).Page.enable()
+      this.sessions.set(tab.targetId, sessionId)
+    }
+    return {
+      targetId: tab.targetId,
+      session: this.cdp.session(sessionId),
+      url: tab.url,
+    }
+  }
+
   // --- Pages ---
 
   async listPages(): Promise<PageInfo[]> {
