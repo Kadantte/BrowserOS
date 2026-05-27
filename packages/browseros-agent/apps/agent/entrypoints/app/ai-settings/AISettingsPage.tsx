@@ -62,7 +62,7 @@ export const AISettingsPage: FC = () => {
 
   return (
     <div className="flex flex-col gap-6">
-      <nav className="flex items-center gap-1 overflow-x-auto border-border/60 border-b">
+      <nav className="flex items-center gap-1 border-border/60 border-b">
         {items.map((item) => {
           const isActive = item.id === activeSection
           return (
