@@ -176,21 +176,41 @@ export class Browser {
     if (!tab) {
       throw new Error(`No active tab in window ${windowId}`)
     }
-    let sessionId = this.sessions.get(tab.targetId)
+    return this.attachTab(tab.targetId, tab.url)
+  }
+
+  /** Resolve a Browser-internal pageId to a CDP session bound to its tab. */
+  async getPageSession(pageId: number): Promise<{
+    targetId: string
+    session: ProtocolApi
+    url: string
+  }> {
+    let info = this.pages.get(pageId)
+    if (!info) {
+      await this.listPages()
+      info = this.pages.get(pageId)
+    }
+    if (!info) {
+      throw new Error(`Unknown page ${pageId}`)
+    }
+    return this.attachTab(info.targetId, info.url)
+  }
+
+  private async attachTab(
+    targetId: string,
+    url: string,
+  ): Promise<{ targetId: string; session: ProtocolApi; url: string }> {
+    let sessionId = this.sessions.get(targetId)
     if (!sessionId) {
       const attached = await this.cdp.Target.attachToTarget({
-        targetId: tab.targetId,
+        targetId,
         flatten: true,
       })
       sessionId = attached.sessionId
       await this.cdp.session(sessionId).Page.enable()
-      this.sessions.set(tab.targetId, sessionId)
+      this.sessions.set(targetId, sessionId)
     }
-    return {
-      targetId: tab.targetId,
-      session: this.cdp.session(sessionId),
-      url: tab.url,
-    }
+    return { targetId, session: this.cdp.session(sessionId), url }
   }
 
   // --- Pages ---

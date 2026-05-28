@@ -63,7 +63,7 @@ describe('ScreencastManager', () => {
       try {
         const manager = new ScreencastManager(browser)
         const subA = makeFakeWs()
-        await manager.subscribe(windowId, subA.ws)
+        const handleA = await manager.subscribe(windowId, null, subA.ws)
 
         assert.ok(
           subA.inbox.some(
@@ -76,7 +76,7 @@ describe('ScreencastManager', () => {
         assert.ok(got, 'expected at least one frame within 8s')
 
         const subB = makeFakeWs()
-        await manager.subscribe(windowId, subB.ws)
+        const handleB = await manager.subscribe(windowId, null, subB.ws)
         assert.ok(
           subB.inbox.some(
             (m) => m.type === 'status' && m.status === 'connected',
@@ -84,8 +84,8 @@ describe('ScreencastManager', () => {
           'second subscriber should receive status',
         )
 
-        manager.unsubscribe(windowId, subA.ws)
-        manager.unsubscribe(windowId, subB.ws)
+        manager.unsubscribe(handleA, subA.ws)
+        manager.unsubscribe(handleB, subB.ws)
       } finally {
         await execute(close_window, { windowId })
       }

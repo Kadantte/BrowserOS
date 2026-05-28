@@ -8,13 +8,16 @@ import { Hono } from 'hono'
 import { upgradeWebSocket } from 'hono/bun'
 import type { Browser } from '../../browser/browser'
 import { logger } from '../../lib/logger'
-import { ScreencastManager } from '../services/screencast/screencast-manager'
+import {
+  ScreencastManager,
+  type SubscribeHandle,
+} from '../services/screencast/screencast-manager'
 
 interface ScreencastRouteDeps {
   browser: Browser
 }
 
-function parseWindowId(raw: string | undefined): number | null {
+function parsePositiveInt(raw: string | undefined): number | null {
   if (!raw) return null
   const n = Number(raw)
   return Number.isInteger(n) && n > 0 ? n : null
@@ -26,8 +29,9 @@ export function createScreencastRoute(deps: ScreencastRouteDeps) {
   return new Hono().get(
     '/',
     upgradeWebSocket((c) => {
-      const windowId = parseWindowId(c.req.query('windowId'))
-      let attached: number | null = null
+      const windowId = parsePositiveInt(c.req.query('windowId'))
+      const pageId = parsePositiveInt(c.req.query('pageId'))
+      let handle: SubscribeHandle | null = null
 
       return {
         onOpen: async (_evt, ws) => {
@@ -36,11 +40,11 @@ export function createScreencastRoute(deps: ScreencastRouteDeps) {
             return
           }
           try {
-            await manager.subscribe(windowId, ws)
-            attached = windowId
+            handle = await manager.subscribe(windowId, pageId, ws)
           } catch (err) {
             logger.warn('screencast subscribe failed', {
               windowId,
+              pageId,
               error: err instanceof Error ? err.message : String(err),
             })
             ws.close(
@@ -50,15 +54,15 @@ export function createScreencastRoute(deps: ScreencastRouteDeps) {
           }
         },
         onClose: (_evt, ws) => {
-          if (attached !== null) {
-            manager.unsubscribe(attached, ws)
-            attached = null
+          if (handle !== null) {
+            manager.unsubscribe(handle, ws)
+            handle = null
           }
         },
         onError: (_evt, ws) => {
-          if (attached !== null) {
-            manager.unsubscribe(attached, ws)
-            attached = null
+          if (handle !== null) {
+            manager.unsubscribe(handle, ws)
+            handle = null
           }
         },
       }

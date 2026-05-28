@@ -28,6 +28,7 @@ export interface ScreencastStatusMessage {
   type: 'status'
   status: 'connected' | 'detached'
   windowId: number
+  pageId?: number
   url?: string
 }
 
@@ -38,8 +39,9 @@ export type ScreencastOutboundMessage =
 type Subscriber = WSContext<unknown>
 
 interface ScreencastSession {
-  windowId: number
   targetId: string
+  windowId: number
+  pageId: number | null
   cdpSession: ProtocolApi
   subscribers: Set<Subscriber>
   unsubscribeFrame: () => void
@@ -47,83 +49,107 @@ interface ScreencastSession {
   // Chromium's Page.startScreencast only emits frames on compositor
   // invalidation. A static page produces one frame on attach and then
   // nothing — a late subscriber would see "live" status with a blank
-  // canvas forever. We cache the last frame and replay it to every new
-  // subscriber so the canvas paints something immediately.
+  // canvas forever. Cache the last frame and replay it on subscribe.
   lastFrame: ScreencastFrameMessage | null
+}
+
+export interface SubscribeHandle {
+  /** Pass back to `unsubscribe` so the manager doesn't have to re-resolve. */
+  targetId: string
 }
 
 const WS_OPEN: 1 = 1
 
 export class ScreencastManager {
-  private readonly sessions = new Map<number, ScreencastSession>()
-  private readonly pendingStarts = new Map<number, Promise<ScreencastSession>>()
+  // Sessions keyed by targetId — the canonical CDP page identity. Both
+  // windowId-only ("active page in this window") and explicit-pageId
+  // subscribers resolve to a targetId before hitting this map, so they
+  // share a session when they're really watching the same tab.
+  private readonly sessions = new Map<string, ScreencastSession>()
+  private readonly pendingStarts = new Map<string, Promise<ScreencastSession>>()
 
   constructor(private readonly browser: Browser) {}
 
-  async subscribe(windowId: number, ws: Subscriber): Promise<void> {
-    const session = await this.getOrStartSession(windowId)
+  async subscribe(
+    windowId: number,
+    pageId: number | null,
+    ws: Subscriber,
+  ): Promise<SubscribeHandle> {
+    const resolved = await this.resolve(windowId, pageId)
+    const session = await this.getOrStartSession(resolved, windowId, pageId)
     session.subscribers.add(ws)
     this.send(ws, {
       type: 'status',
       status: 'connected',
       windowId,
+      pageId: pageId ?? undefined,
       url: session.url,
     })
     if (session.lastFrame) {
       this.send(ws, session.lastFrame)
     } else {
-      // No cached frame yet — the page may be idle (compositor never
-      // invalidated since the screencast started). Force a one-shot
-      // screenshot so the canvas gets a starting paint. Best-effort:
-      // if it throws (target detached, etc.) the subscriber just waits
-      // for the next real frame and the status dot stays "live".
       void this.primeWithScreenshot(session, ws).catch((err) => {
         logger.warn('primeWithScreenshot failed', {
-          windowId: session.windowId,
+          targetId: session.targetId,
           error: err instanceof Error ? err.message : String(err),
         })
       })
     }
+    return { targetId: session.targetId }
   }
 
-  unsubscribe(windowId: number, ws: Subscriber): void {
-    const session = this.sessions.get(windowId)
+  unsubscribe(handle: SubscribeHandle, ws: Subscriber): void {
+    const session = this.sessions.get(handle.targetId)
     if (!session) return
     session.subscribers.delete(ws)
     if (session.subscribers.size === 0) {
-      void this.stopSession(windowId).catch((err) => {
+      void this.stopSession(handle.targetId).catch((err) => {
         logger.warn('Failed to stop idle screencast session', {
-          windowId,
+          targetId: handle.targetId,
           error: err instanceof Error ? err.message : String(err),
         })
       })
     }
   }
 
-  private async getOrStartSession(
+  private resolve(
     windowId: number,
+    pageId: number | null,
+  ): Promise<{ targetId: string; session: ProtocolApi; url: string }> {
+    return pageId === null
+      ? this.browser.getActivePageForWindow(windowId)
+      : this.browser.getPageSession(pageId)
+  }
+
+  private async getOrStartSession(
+    resolved: { targetId: string; session: ProtocolApi; url: string },
+    windowId: number,
+    pageId: number | null,
   ): Promise<ScreencastSession> {
-    const existing = this.sessions.get(windowId)
+    const existing = this.sessions.get(resolved.targetId)
     if (existing) return existing
-    const pending = this.pendingStarts.get(windowId)
+    const pending = this.pendingStarts.get(resolved.targetId)
     if (pending) return pending
-    const startPromise = this.startSession(windowId)
-    this.pendingStarts.set(windowId, startPromise)
+    const startPromise = this.startSession(resolved, windowId, pageId)
+    this.pendingStarts.set(resolved.targetId, startPromise)
     try {
       const session = await startPromise
-      this.sessions.set(windowId, session)
+      this.sessions.set(resolved.targetId, session)
       return session
     } finally {
-      this.pendingStarts.delete(windowId)
+      this.pendingStarts.delete(resolved.targetId)
     }
   }
 
-  private async startSession(windowId: number): Promise<ScreencastSession> {
-    const active = await this.browser.getActivePageForWindow(windowId)
-    // Page.enable was already called inside Browser.attachToPage; safe to
+  private async startSession(
+    resolved: { targetId: string; session: ProtocolApi; url: string },
+    windowId: number,
+    pageId: number | null,
+  ): Promise<ScreencastSession> {
+    // Page.enable was already called inside Browser.attachTab; safe to
     // skip here. startScreencast on a session without Page enabled is a
     // silent no-op, hence the ordering matters.
-    await active.session.Page.startScreencast({
+    await resolved.session.Page.startScreencast({
       format: 'jpeg',
       quality: SCREENCAST_LIMITS.DEFAULT_JPEG_QUALITY,
       everyNthFrame: SCREENCAST_LIMITS.EVERY_NTH_FRAME,
@@ -131,15 +157,16 @@ export class ScreencastManager {
       maxHeight: SCREENCAST_LIMITS.MAX_HEIGHT,
     })
     const session: ScreencastSession = {
+      targetId: resolved.targetId,
       windowId,
-      targetId: active.targetId,
-      cdpSession: active.session,
+      pageId,
+      cdpSession: resolved.session,
       subscribers: new Set(),
-      url: active.url,
+      url: resolved.url,
       unsubscribeFrame: () => undefined,
       lastFrame: null,
     }
-    session.unsubscribeFrame = active.session.Page.on(
+    session.unsubscribeFrame = resolved.session.Page.on(
       'screencastFrame',
       (params) => {
         const frame: ScreencastFrameMessage = {
@@ -157,11 +184,11 @@ export class ScreencastManager {
         }
         session.lastFrame = frame
         this.broadcast(session, frame)
-        active.session.Page.screencastFrameAck({
+        resolved.session.Page.screencastFrameAck({
           sessionId: params.sessionId,
         }).catch((err) => {
           logger.warn('screencastFrameAck failed', {
-            windowId,
+            targetId: session.targetId,
             error: err instanceof Error ? err.message : String(err),
           })
         })
@@ -184,23 +211,22 @@ export class ScreencastManager {
       data: result.data,
       metadata: {},
     }
-    // Cache for any future late joiner, and send to the requester.
     session.lastFrame = frame
     this.send(ws, frame)
   }
 
-  private async stopSession(windowId: number): Promise<void> {
-    const session = this.sessions.get(windowId)
+  private async stopSession(targetId: string): Promise<void> {
+    const session = this.sessions.get(targetId)
     if (!session) return
-    this.sessions.delete(windowId)
+    this.sessions.delete(targetId)
     session.unsubscribeFrame()
     try {
       await session.cdpSession.Page.stopScreencast()
     } catch (err) {
-      // The underlying target may already be gone (window closed, tab
-      // navigated to a new target). Best-effort.
+      // The underlying target may already be gone (tab closed, page
+      // navigated). Best-effort.
       logger.warn('stopScreencast threw', {
-        windowId,
+        targetId,
         error: err instanceof Error ? err.message : String(err),
       })
     }
@@ -217,7 +243,7 @@ export class ScreencastManager {
         ws.send(payload)
       } catch (err) {
         logger.warn('Subscriber send failed; dropping subscriber', {
-          windowId: session.windowId,
+          targetId: session.targetId,
           error: err instanceof Error ? err.message : String(err),
         })
         session.subscribers.delete(ws)
