@@ -192,6 +192,8 @@ function ensureInitialized(): Promise<CapabilitiesState> {
   return initPromise
 }
 
+// Exported for unit tests: resolves a feature's version gate directly,
+// bypassing the dev-mode/static short-circuit in `supports`.
 export function checkFeatureSupport(
   state: CapabilitiesState,
   feature: Feature,

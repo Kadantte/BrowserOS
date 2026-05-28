@@ -43,7 +43,7 @@ export async function agentsFetch<T>(
 }
 
 export function useAgentAdapters(enabled = true) {
-  const { supports } = useCapabilities()
+  const { supports, isLoading: capabilitiesLoading } = useCapabilities()
   const agentsSupported = supports(Feature.AGENT_HARNESS_SUPPORT)
   const {
     baseUrl,
@@ -65,14 +65,16 @@ export function useAgentAdapters(enabled = true) {
 
   return {
     adapters: agentsSupported ? (query.data ?? []) : [],
-    loading: agentsSupported && (query.isLoading || urlLoading),
-    error: query.error ?? urlError,
+    loading:
+      capabilitiesLoading ||
+      (agentsSupported && (query.isLoading || urlLoading)),
+    error: agentsSupported ? (query.error ?? urlError) : null,
     refetch: query.refetch,
   }
 }
 
 export function useHarnessAgents(enabled = true) {
-  const { supports } = useCapabilities()
+  const { supports, isLoading: capabilitiesLoading } = useCapabilities()
   const agentsSupported = supports(Feature.AGENT_HARNESS_SUPPORT)
   const {
     baseUrl,
@@ -105,8 +107,10 @@ export function useHarnessAgents(enabled = true) {
       ? (query.data?.agents ?? []).map(mapHarnessAgentToEntry)
       : [],
     harnessAgents: agentsSupported ? (query.data?.agents ?? []) : [],
-    loading: agentsSupported && (query.isLoading || urlLoading),
-    error: query.error ?? urlError,
+    loading:
+      capabilitiesLoading ||
+      (agentsSupported && (query.isLoading || urlLoading)),
+    error: agentsSupported ? (query.error ?? urlError) : null,
     refetch: query.refetch,
   }
 }
