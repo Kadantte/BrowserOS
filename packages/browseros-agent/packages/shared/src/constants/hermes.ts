@@ -1,15 +1,3 @@
-export const HERMES_AGENT_NAME = 'hermes'
-export const HERMES_IMAGE = 'docker.io/nousresearch/hermes-agent:v2026.4.30'
-export const HERMES_COMPOSE_PROJECT_NAME = 'browseros-hermes'
-export const HERMES_CONTAINER_NAME = `${HERMES_COMPOSE_PROJECT_NAME}-hermes-agent-1`
-// Inside the container, /data is the volume mount where per-agent HERMES_HOME
-// directories live: /data/agents/harness/<agentId>/home. The host-side
-// directory that backs this mount lives under the BrowserOS-managed VM
-// state directory (so it's reachable inside the Lima VM via the existing
-// vm/ mount); the container sees the same files via /data/agents/harness.
-export const HERMES_CONTAINER_DATA_DIR = '/data'
-export const HERMES_CONTAINER_HARNESS_DIR = `${HERMES_CONTAINER_DATA_DIR}/agents/harness`
-
 /**
  * BrowserOS LLM provider types Hermes can consume. The frontend filters
  * the global provider list to these; the backend `hermes-provider-map`
@@ -29,3 +17,25 @@ export const HERMES_SUPPORTED_BROWSEROS_PROVIDER_TYPES = [
 
 export type HermesSupportedBrowserosProviderType =
   (typeof HERMES_SUPPORTED_BROWSEROS_PROVIDER_TYPES)[number]
+
+/**
+ * Provider type the `remote-hermes` integration registers under in the
+ * shared LLMProvider enum. The chat route uses this to fork into the
+ * RemoteHermesService.
+ */
+export const REMOTE_HERMES_PROVIDER_TYPE = 'remote-hermes' as const
+
+/**
+ * `agentKind` sent to the worker on every turn. The worker preserves it
+ * for telemetry; it doesn't change dispatch — that's selected by the
+ * agent CLI inside the VM (which is always `hermes acp` here).
+ */
+export const REMOTE_HERMES_AGENT_KIND = 'browseros-remote' as const
+
+/**
+ * `agentId` the laptop sends on every turn. v1 runs a single VM-wide
+ * agent identity per install; the worker session manager keys sessions
+ * by `agentId::threadId` so this constant + the per-conversation
+ * threadId is enough to isolate concurrent conversations.
+ */
+export const REMOTE_HERMES_DEFAULT_AGENT_ID = 'default' as const

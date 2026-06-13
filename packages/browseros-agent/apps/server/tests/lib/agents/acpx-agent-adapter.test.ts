@@ -4,10 +4,12 @@
  */
 
 import { afterEach, describe, expect, it } from 'bun:test'
-import { mkdtemp, readFile, rm } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { prepareAcpxAgentContext } from '../../../src/lib/agents/acpx-agent-adapter'
+import { prepareAcpxAgentContext } from '../../../src/lib/agents/acpx/agent-adapter'
+import { resolveAgentRuntimePaths } from '../../../src/lib/agents/acpx/runtime-context'
+import { loadLatestRuntimeState } from '../../../src/lib/agents/acpx/runtime-state'
 import type { AgentDefinition } from '../../../src/lib/agents/agent-types'
 
 describe('prepareAcpxAgentContext', () => {
@@ -82,9 +84,58 @@ describe('prepareAcpxAgentContext', () => {
     expect(prepared.runPrompt).toContain('AGENT_HOME=')
   })
 
-  it('prepares Hermes with HERMES_HOME pointing at the in-container agent home (translated from the host path)', async () => {
+  it('prepares a UUID session with separate runtime-state files', async () => {
     const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
     tempDirs.push(browserosDir)
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+
+    const prepared = await prepareAcpxAgentContext({
+      browserosDir,
+      agent: makeAgent('claude'),
+      sessionId,
+      sessionKey: 'agent:claude-agent:main',
+      cwdOverride: null,
+      isSelectedCwd: false,
+      message: 'hi',
+    })
+    const paths = resolveAgentRuntimePaths({
+      browserosDir,
+      agentId: 'claude-agent',
+      sessionId,
+    })
+
+    expect(prepared.runtimeSessionKey).toMatch(
+      /^agent:claude-agent:00000000-0000-4000-8000-000000000001:[a-f0-9]{16}$/,
+    )
+    expect(await loadLatestRuntimeState(paths.runtimeSessionStatePath)).toEqual(
+      expect.objectContaining({
+        sessionId,
+        runtimeSessionKey: prepared.runtimeSessionKey,
+      }),
+    )
+    expect(await loadLatestRuntimeState(paths.runtimeStatePath)).toEqual(
+      expect.objectContaining({
+        sessionId,
+        runtimeSessionKey: prepared.runtimeSessionKey,
+      }),
+    )
+  })
+
+  it('prepares Hermes with HERMES_HOME pointing at the host agent home', async () => {
+    const browserosDir = await mkdtemp(join(tmpdir(), 'browseros-adapters-'))
+    tempDirs.push(browserosDir)
+    const legacyHome = join(
+      browserosDir,
+      'vm',
+      'hermes',
+      'harness',
+      'hermes-agent',
+      'home',
+    )
+    await mkdir(legacyHome, { recursive: true })
+    await writeFile(join(legacyHome, 'config.yaml'), 'legacy config\n')
+    await writeFile(join(legacyHome, '.env'), 'LEGACY_KEY=1\n')
+
     const prepared = await prepareAcpxAgentContext({
       browserosDir,
       agent: makeAgent('hermes'),
@@ -95,12 +146,15 @@ describe('prepareAcpxAgentContext', () => {
       message: 'remember this',
     })
 
-    // HERMES_HOME must be the *container-side* path (under /data) so the
-    // hermes binary running inside the container can actually open it.
-    // The host-side seeded files are reachable via the bind mount.
     expect(prepared.commandEnv.HERMES_HOME).toBe(
-      '/data/agents/harness/hermes-agent/home',
+      join(browserosDir, 'agents', 'hermes', 'harness', 'hermes-agent', 'home'),
     )
+    await expect(
+      readFile(join(prepared.commandEnv.HERMES_HOME, 'config.yaml'), 'utf8'),
+    ).resolves.toBe('legacy config\n')
+    await expect(
+      readFile(join(prepared.commandEnv.HERMES_HOME, '.env'), 'utf8'),
+    ).resolves.toBe('LEGACY_KEY=1\n')
     expect(prepared.commandEnv).not.toHaveProperty('AGENT_HOME')
     expect(prepared.commandEnv).not.toHaveProperty('CODEX_HOME')
     expect(prepared.commandEnv).not.toHaveProperty('CLAUDE_CONFIG_DIR')

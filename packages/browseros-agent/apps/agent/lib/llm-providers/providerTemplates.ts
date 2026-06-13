@@ -46,6 +46,14 @@ function enrichTemplate(
  */
 export const providerTemplates: ProviderTemplate[] = [
   {
+    id: 'remote-hermes',
+    name: 'Remote Hermes',
+    defaultBaseUrl: '',
+    defaultModelId: 'default',
+    supportsImages: false,
+    contextWindow: 200000,
+  },
+  {
     id: 'chatgpt-pro',
     name: 'ChatGPT Plus/Pro',
     defaultBaseUrl: 'https://chatgpt.com/backend-api',
@@ -147,9 +155,12 @@ export const providerTemplates: ProviderTemplate[] = [
  * @public
  */
 export const providerTypeOptions: { value: ProviderType; label: string }[] = [
+  { value: 'remote-hermes', label: 'Remote Hermes' },
   { value: 'chatgpt-pro', label: 'ChatGPT Plus/Pro' },
   { value: 'github-copilot', label: 'GitHub Copilot' },
   { value: 'qwen-code', label: 'Qwen Code' },
+  { value: 'codex', label: 'Codex' },
+  { value: 'claude-code', label: 'Claude Code' },
   { value: 'moonshot', label: 'Moonshot AI' },
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'openai', label: 'OpenAI' },
@@ -177,10 +188,14 @@ export const getProviderTemplate = (
  * Default base URLs for each provider type
  * Auto-fills when user selects a provider type
  */
-export const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
+const DEFAULT_BASE_URLS: Record<ProviderType, string> = {
+  'remote-hermes': '',
   'chatgpt-pro': 'https://chatgpt.com/backend-api',
   'github-copilot': 'https://api.githubcopilot.com',
   'qwen-code': 'https://portal.qwen.ai/v1',
+  codex: '',
+  'claude-code': '',
+  'acp-custom': '',
   moonshot: 'https://api.moonshot.ai/v1',
   anthropic: 'https://api.anthropic.com/v1',
   openai: 'https://api.openai.com/v1',

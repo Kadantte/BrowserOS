@@ -1,23 +1,32 @@
 import type {
   HarnessAdapterDescriptor,
   HarnessAgentAdapter,
-} from '@/entrypoints/app/agents/agent-harness-types'
+} from '@/modules/agents/agent-harness-types'
 
 /**
- * Single source of truth for which harness adapters are exposed in the UI.
- * Hermes is hidden today (kept in the backend/types). Re-enabling it later
- * is a one-line change here, and every picker / settings list / create
- * dialog inherits the result.
+ * UI visibility gate for VM-backed adapters. Hermes stays in backend
+ * catalog/types, but the product exposes it only through an alpha capability.
  */
-const HIDDEN_ADAPTERS: ReadonlySet<HarnessAgentAdapter> =
-  new Set<HarnessAgentAdapter>(['hermes'])
-
-export function isAdapterHidden(adapter: HarnessAgentAdapter): boolean {
-  return HIDDEN_ADAPTERS.has(adapter)
+export function isAdapterHidden(
+  adapter: HarnessAgentAdapter,
+  hermesAgentSupported: boolean,
+): boolean {
+  return adapter === 'hermes' && !hermesAgentSupported
 }
 
 export function visibleAdapters(
   adapters: HarnessAdapterDescriptor[],
+  hermesAgentSupported: boolean,
 ): HarnessAdapterDescriptor[] {
-  return adapters.filter((adapter) => !isAdapterHidden(adapter.id))
+  return adapters.filter(
+    (adapter) => !isAdapterHidden(adapter.id, hermesAgentSupported),
+  )
+}
+
+export function visibleHarnessAgents<
+  T extends { adapter: HarnessAgentAdapter },
+>(agents: T[], hermesAgentSupported: boolean): T[] {
+  return agents.filter(
+    (agent) => !isAdapterHidden(agent.adapter, hermesAgentSupported),
+  )
 }

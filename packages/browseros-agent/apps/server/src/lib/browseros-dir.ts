@@ -36,34 +36,6 @@ export function getDbPath(): string {
   return join(getBrowserosDir(), PATHS.DB_DIR_NAME, PATHS.DB_FILE_NAME)
 }
 
-export function getVmCacheDir(): string {
-  return join(getCacheDir(), 'vm')
-}
-
-export function getLimaHomeDir(): string {
-  return join(getBrowserosDir(), 'lima')
-}
-
-export function getVmStateDir(): string {
-  return join(getBrowserosDir(), 'vm')
-}
-
-export function getVmDisksDir(): string {
-  return getVmCacheDir()
-}
-
-export function getLazyMonitoringDir(): string {
-  return join(getBrowserosDir(), 'lazy-monitoring')
-}
-
-export function getLazyMonitoringRunsDir(): string {
-  return join(getLazyMonitoringDir(), 'runs')
-}
-
-export function getLazyMonitoringRunDir(runId: string): string {
-  return join(getLazyMonitoringRunsDir(), runId)
-}
-
 export function getServerConfigPath(): string {
   return join(getBrowserosDir(), PATHS.SERVER_CONFIG_FILE_NAME)
 }
@@ -83,15 +55,13 @@ export function removeServerConfigSync(): void {
   try {
     unlinkSync(getServerConfigPath())
   } catch {
-    // File may not exist or already be removed
+    return
   }
 }
 
 export async function ensureBrowserosDir(): Promise<void> {
   logDevelopmentBrowserosDir()
   await mkdir(getSessionsDir(), { recursive: true })
-  await mkdir(getLazyMonitoringRunsDir(), { recursive: true })
-  await mkdir(getVmDisksDir(), { recursive: true })
 }
 
 export async function cleanOldSessions(): Promise<void> {

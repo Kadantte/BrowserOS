@@ -4,16 +4,20 @@
  */
 
 import { describe, expect, it } from 'bun:test'
-import { existsSync, mkdtempSync, readFileSync } from 'node:fs'
+import { mkdtempSync, readFileSync } from 'node:fs'
 import { rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { AgentHarnessService } from '../../../../src/api/services/agents/agent-harness-service'
+import type {
+  AgentDefinition,
+  AgentSessionId,
+} from '../../../../src/lib/agents/agent-types'
+import type { AgentStore } from '../../../../src/lib/agents/storage/agent-store'
 import {
-  AgentHarnessService,
-  type EnsureVmRuntimeReady,
-} from '../../../../src/api/services/agents/agent-harness-service'
-import type { AgentStore } from '../../../../src/lib/agents/agent-store'
-import type { AgentDefinition } from '../../../../src/lib/agents/agent-types'
+  type TurnFrame,
+  TurnRegistry,
+} from '../../../../src/lib/agents/turns/active-turn-registry'
 import type {
   AgentRuntime,
   AgentStreamEvent,
@@ -149,6 +153,45 @@ describe('AgentHarnessService', () => {
     })
   })
 
+  it('reads history from a requested session id', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const runtimeInputs: unknown[] = []
+    const runtime: AgentRuntime = {
+      async status() {
+        return { state: 'ready' }
+      },
+      async listSessions() {
+        return []
+      },
+      async getHistory(input) {
+        runtimeInputs.push(input)
+        return { agentId: agent.id, sessionId: input.sessionId, items: [] }
+      },
+      async send() {
+        return new ReadableStream<AgentStreamEvent>()
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore([agent]) as AgentStore,
+      runtime,
+    })
+
+    await service.getHistory(agent.id, sessionId)
+
+    expect(runtimeInputs).toEqual([{ agent, sessionId }])
+  })
+
   it('marks an agent working while a turn streams and idle once it ends', async () => {
     const agent: AgentDefinition = {
       id: 'live-1',
@@ -251,6 +294,204 @@ describe('AgentHarnessService', () => {
     expect(listed[0]?.status).toBe('error')
   })
 
+  it('shows latest sidepanel session errors on the activity row', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const runtime: AgentRuntime = {
+      async status() {
+        return { state: 'ready' }
+      },
+      async listSessions() {
+        return []
+      },
+      async getHistory(input) {
+        return {
+          agentId: input.agent.id,
+          sessionId: input.sessionId,
+          items: [],
+        }
+      },
+      async send() {
+        return new ReadableStream<AgentStreamEvent>({
+          start(controller) {
+            controller.enqueue({ type: 'error', message: 'sidepanel failed' })
+            controller.close()
+          },
+        })
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore([agent]) as AgentStore,
+      runtime,
+    })
+
+    const turn = await service.startTurn({
+      agentId: agent.id,
+      sessionId,
+      message: 'sidepanel turn',
+    })
+    await collectFrameStream(turn.frames)
+    const listed = await service.listAgentsWithActivity()
+    expect(listed[0]?.status).toBe('error')
+    expect(listed[0]?.latestSessionId).toBe(sessionId)
+    expect(listed[0]?.lastError).toBe('sidepanel failed')
+  })
+
+  it('prefers newer live activity over an older persisted row snapshot', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const held = createHeldRuntime()
+    const runtime: AgentRuntime = {
+      ...held.runtime,
+      async getLatestRowSnapshot() {
+        return {
+          sessionId: 'main',
+          cwd: null,
+          lastUsedAt: 1,
+          lastUserMessage: 'old main prompt',
+          tokens: null,
+        }
+      },
+    }
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore([agent]) as AgentStore,
+      runtime,
+    })
+
+    const turn = await service.startTurn({
+      agentId: agent.id,
+      sessionId,
+      message: 'new sidepanel prompt',
+    })
+    const frames = collectFrameStream(turn.frames)
+    const listed = await service.listAgentsWithActivity()
+
+    expect(listed[0]?.status).toBe('working')
+    expect(listed[0]?.latestSessionId).toBe(sessionId)
+    expect(listed[0]?.activeTurnId).toBe(turn.turnId)
+    expect(listed[0]?.lastUserMessage).toBe('new sidepanel prompt')
+    expect(listed[0]?.lastUsedAt).toBeGreaterThan(1)
+
+    held.release(sessionId)
+    await frames
+  })
+
+  it('runs concurrent turns for different sessions and blocks duplicates per session', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const held = createHeldRuntime()
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore([agent]) as AgentStore,
+      runtime: held.runtime,
+    })
+
+    const main = await service.startTurn({
+      agentId: agent.id,
+      sessionId: 'main',
+      message: 'main turn',
+    })
+    const sidepanel = await service.startTurn({
+      agentId: agent.id,
+      sessionId,
+      message: 'sidepanel turn',
+    })
+
+    expect(held.inputs.map((input) => input.sessionId)).toEqual([
+      'main',
+      sessionId,
+    ])
+    await expect(
+      service.startTurn({
+        agentId: agent.id,
+        sessionId,
+        message: 'duplicate',
+      }),
+    ).rejects.toThrow('already has an active turn')
+
+    held.release('main')
+    await collectFrameStream(main.frames)
+    let listed = await service.listAgentsWithActivity()
+    expect(listed[0]?.status).toBe('working')
+    expect(listed[0]?.latestSessionId).toBe(sessionId)
+
+    held.release(sessionId)
+    await collectFrameStream(sidepanel.frames)
+    listed = await service.listAgentsWithActivity()
+    expect(listed[0]?.status).toBe('idle')
+  })
+
+  it('drains queued messages into the queued session', async () => {
+    const sessionId = '00000000-0000-4000-8000-000000000001'
+    const agent: AgentDefinition = {
+      id: 'agent-1',
+      name: 'Review bot',
+      adapter: 'codex',
+      modelId: 'gpt-5.5',
+      reasoningEffort: 'medium',
+      permissionMode: 'approve-all',
+      sessionKey: 'agent:agent-1:main',
+      createdAt: 1000,
+      updatedAt: 1000,
+    }
+    const held = createHeldRuntime()
+    const service = new AgentHarnessService({
+      agentStore: createAgentStore([agent]) as AgentStore,
+      runtime: held.runtime,
+    })
+
+    const first = await service.startTurn({
+      agentId: agent.id,
+      sessionId,
+      message: 'first',
+    })
+    const queued = await service.enqueueMessage({
+      agentId: agent.id,
+      sessionId,
+      message: 'second',
+    })
+
+    expect(queued.sessionId).toBe(sessionId)
+    held.release(sessionId)
+    await collectFrameStream(first.frames)
+    await waitFor(() => held.inputs.length === 2)
+
+    expect(held.inputs.map((input) => input.sessionId)).toEqual([
+      sessionId,
+      sessionId,
+    ])
+    held.release(sessionId)
+  })
+
   it('writes a per-agent Hermes config.yaml + .env when adapter=hermes and provider config complete', async () => {
     await withHermesBrowserosDir(async ({ browserosDir, service }) => {
       const agent = await service.createAgent({
@@ -263,7 +504,7 @@ describe('AgentHarnessService', () => {
 
       const homeDir = join(
         browserosDir,
-        'vm',
+        'agents',
         'hermes',
         'harness',
         agent.id,
@@ -275,59 +516,6 @@ describe('AgentHarnessService', () => {
       expect(yaml).toContain('"anthropic/claude-haiku-4.5"')
       expect(env).toContain('OPENROUTER_API_KEY=sk-or-v1-test-key')
     })
-  })
-
-  it('ensures the VM runtime when a Hermes agent is created', async () => {
-    const readinessCalls: string[] = []
-    await withHermesBrowserosDir(
-      async ({ service }) => {
-        await service.createAgent({
-          name: 'Hermes bot',
-          adapter: 'hermes',
-          providerType: 'openrouter',
-          apiKey: 'sk-or-v1-test-key',
-          modelId: 'anthropic/claude-haiku-4.5',
-        })
-
-        expect(readinessCalls).toEqual(['hermes'])
-      },
-      {
-        ensureVmRuntimeReady: async (adapter) => {
-          readinessCalls.push(adapter)
-        },
-      },
-    )
-  })
-
-  it('rolls back Hermes agent creation when runtime startup fails', async () => {
-    await withHermesBrowserosDir(
-      async ({ agents, browserosDir, service }) => {
-        await expect(
-          service.createAgent({
-            name: 'Broken Hermes',
-            adapter: 'hermes',
-            providerType: 'openrouter',
-            apiKey: 'sk-or-v1-test-key',
-            modelId: 'anthropic/claude-haiku-4.5',
-          }),
-        ).rejects.toThrow('hermes start failed')
-        const homeDir = join(
-          browserosDir,
-          'vm',
-          'hermes',
-          'harness',
-          'agent-1',
-          'home',
-        )
-        expect(agents).toHaveLength(0)
-        expect(existsSync(homeDir)).toBe(false)
-      },
-      {
-        ensureVmRuntimeReady: async () => {
-          throw new Error('hermes start failed')
-        },
-      },
-    )
   })
 
   it('rejects Hermes agent creation when apiKey is missing', async () => {
@@ -380,7 +568,7 @@ describe('AgentHarnessService', () => {
 
       const homeDir = join(
         browserosDir,
-        'vm',
+        'agents',
         'hermes',
         'harness',
         agent.id,
@@ -413,7 +601,7 @@ describe('AgentHarnessService', () => {
 
       const homeDir = join(
         browserosDir,
-        'vm',
+        'agents',
         'hermes',
         'harness',
         agent.id,
@@ -455,7 +643,55 @@ describe('AgentHarnessService', () => {
       expect(agents).toHaveLength(0)
     })
   })
+
+  it('strips browser-context scaffolding from the active-turn prompt', () => {
+    const { registry, service } = serviceWithRegistry()
+    registry.register('agent-1', 'main', {
+      prompt: [
+        '## Browser Context',
+        '**Window ID:** 1995357486',
+        '**Active Tab:** Tab 1995357512 (Page ID: 3) - "BrowserOS" (chrome://newtab/)',
+        '',
+        '---',
+        '',
+        '<USER_QUERY>',
+        'Open amazon.com in current tab and add sensodyne toothpaste to cart',
+        '</USER_QUERY>',
+      ].join('\n'),
+    })
+
+    expect(service.getActiveTurn('agent-1')?.prompt).toBe(
+      'Open amazon.com in current tab and add sensodyne toothpaste to cart',
+    )
+  })
+
+  it('passes a null active-turn prompt through unchanged', () => {
+    const { registry, service } = serviceWithRegistry()
+    registry.register('agent-1', 'main', { prompt: null })
+
+    expect(service.getActiveTurn('agent-1')?.prompt).toBeNull()
+  })
+
+  it('leaves an already-clean active-turn prompt unchanged', () => {
+    const { registry, service } = serviceWithRegistry()
+    registry.register('agent-1', 'main', { prompt: 'plain question' })
+
+    expect(service.getActiveTurn('agent-1')?.prompt).toBe('plain question')
+  })
 })
+
+function serviceWithRegistry(): {
+  registry: TurnRegistry
+  service: AgentHarnessService
+} {
+  const registry = new TurnRegistry()
+  const service = new AgentHarnessService({
+    agentStore: createAgentStore([]) as AgentStore,
+    runtime: stubRuntime(),
+    turnRegistry: registry,
+  })
+  return { registry, service }
+}
 
 async function withHermesBrowserosDir<T>(
   run: (input: {
@@ -463,7 +699,6 @@ async function withHermesBrowserosDir<T>(
     browserosDir: string
     service: AgentHarnessService
   }) => Promise<T>,
-  options: { ensureVmRuntimeReady?: EnsureVmRuntimeReady } = {},
 ): Promise<T> {
   const browserosDir = mkdtempSync(join(tmpdir(), 'browseros-hermes-test-'))
   const agents: AgentDefinition[] = []
@@ -471,7 +706,6 @@ async function withHermesBrowserosDir<T>(
     const service = new AgentHarnessService({
       agentStore: createAgentStore(agents) as AgentStore,
       browserosDir,
-      ensureVmRuntimeReady: options.ensureVmRuntimeReady,
       runtime: stubRuntime(),
     })
     return await run({ agents, browserosDir, service })
@@ -493,6 +727,57 @@ function stubRuntime(): AgentRuntime {
     },
     async send() {
       return new ReadableStream<AgentStreamEvent>()
+    },
+  }
+}
+
+function createHeldRuntime(): {
+  runtime: AgentRuntime
+  inputs: Array<Parameters<AgentRuntime['send']>[0]>
+  release(sessionId: AgentSessionId): void
+} {
+  const inputs: Array<Parameters<AgentRuntime['send']>[0]> = []
+  const releases = new Map<AgentSessionId, () => void>()
+  return {
+    inputs,
+    release(sessionId) {
+      const release = releases.get(sessionId)
+      if (!release) throw new Error(`No held stream for ${sessionId}`)
+      release()
+      releases.delete(sessionId)
+    },
+    runtime: {
+      async status() {
+        return { state: 'ready' }
+      },
+      async listSessions() {
+        return []
+      },
+      async getHistory(input) {
+        return {
+          agentId: input.agent.id,
+          sessionId: input.sessionId,
+          items: [],
+        }
+      },
+      async send(input) {
+        inputs.push(input)
+        const gate = new Promise<void>((resolve) => {
+          releases.set(input.sessionId, resolve)
+        })
+        return new ReadableStream<AgentStreamEvent>({
+          async start(controller) {
+            controller.enqueue({
+              type: 'text_delta',
+              text: `started ${input.sessionId}`,
+              stream: 'output',
+            })
+            await gate
+            controller.enqueue({ type: 'done', stopReason: 'end_turn' })
+            controller.close()
+          },
+        })
+      },
     },
   }
 }
@@ -567,4 +852,34 @@ async function collectStream(
     reader.releaseLock()
   }
   return events
+}
+
+async function collectFrameStream(
+  stream: ReadableStream<TurnFrame>,
+): Promise<TurnFrame[]> {
+  const reader = stream.getReader()
+  const frames: TurnFrame[] = []
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      frames.push(value)
+    }
+  } finally {
+    reader.releaseLock()
+  }
+  return frames
+}
+
+async function waitFor(
+  predicate: () => boolean,
+  timeoutMs = 500,
+): Promise<void> {
+  const started = Date.now()
+  while (!predicate()) {
+    if (Date.now() - started > timeoutMs) {
+      throw new Error('Timed out waiting for condition')
+    }
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
 }
